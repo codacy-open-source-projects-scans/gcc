@@ -14489,8 +14489,9 @@ ix86_avx_u128_mode_needed (rtx_insn *insn)
 	 modes wider than 256 bits.  It's only safe to issue a
 	 vzeroupper if all SSE registers are clobbered.  */
       const function_abi &abi = insn_callee_abi (insn);
-      if (!hard_reg_set_subset_p (reg_class_contents[SSE_REGS],
-				  abi.mode_clobbers (V4DImode)))
+      if (vzeroupper_pattern (PATTERN (insn), VOIDmode)
+	  || !hard_reg_set_subset_p (reg_class_contents[SSE_REGS],
+				     abi.mode_clobbers (V4DImode)))
 	return AVX_U128_ANY;
 
       return AVX_U128_CLEAN;
@@ -21423,16 +21424,23 @@ ix86_rtx_costs (rtx x, machine_mode mode, int outer_code_i, int opno,
       else if (XINT (x, 1) == UNSPEC_PTEST)
 	{
 	  *total = cost->sse_op;
-	  if (XVECLEN (x, 0) == 2
-	      && GET_CODE (XVECEXP (x, 0, 0)) == AND)
+	  rtx test_op0 = XVECEXP (x, 0, 0);
+	  if (!rtx_equal_p (test_op0, XVECEXP (x, 0, 1)))
+	    return false;
+	  if (GET_CODE (test_op0) == AND)
 	    {
-	      rtx andop = XVECEXP (x, 0, 0);
-	      *total += rtx_cost (XEXP (andop, 0), GET_MODE (andop),
-				  AND, opno, speed)
-			+ rtx_cost (XEXP (andop, 1), GET_MODE (andop),
-				    AND, opno, speed);
-	      return true;
+	      rtx and_op0 = XEXP (test_op0, 0);
+	      if (GET_CODE (and_op0) == NOT)
+		and_op0 = XEXP (and_op0, 0);
+	      *total += rtx_cost (and_op0, GET_MODE (and_op0),
+				  AND, 0, speed)
+			+ rtx_cost (XEXP (test_op0, 1), GET_MODE (and_op0),
+				    AND, 1, speed);
 	    }
+	  else
+	    *total = rtx_cost (test_op0, GET_MODE (test_op0),
+			       UNSPEC, 0, speed);
+	  return true;
 	}
       return false;
 
@@ -23666,6 +23674,7 @@ class ix86_vector_costs : public vector_costs
 			      stmt_vec_info stmt_info, slp_tree node,
 			      tree vectype, int misalign,
 			      vect_cost_model_location where) override;
+  void finish_cost (const vector_costs *) override;
 };
 
 /* Implement targetm.vectorize.create_costs.  */
@@ -23916,6 +23925,31 @@ ix86_vector_costs::add_stmt_cost (int count, vect_cost_for_stmt kind,
   m_costs[where] += retval;
 
   return retval;
+}
+
+void
+ix86_vector_costs::finish_cost (const vector_costs *scalar_costs)
+{
+  loop_vec_info loop_vinfo = dyn_cast<loop_vec_info> (m_vinfo);
+  if (loop_vinfo && !m_costing_for_scalar)
+    {
+      /* We are currently not asking the vectorizer to compare costs
+	 between different vector mode sizes.  When using predication
+	 that will end up always choosing the prefered mode size even
+	 if there's a smaller mode covering all lanes.  Test for this
+	 situation and artificially reject the larger mode attempt.
+	 ???  We currently lack masked ops for sub-SSE sized modes,
+	 so we could restrict this rejection to AVX and AVX512 modes
+	 but error on the safe side for now.  */
+      if (LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo)
+	  && !LOOP_VINFO_EPILOGUE_P (loop_vinfo)
+	  && LOOP_VINFO_NITERS_KNOWN_P (loop_vinfo)
+	  && (exact_log2 (LOOP_VINFO_VECT_FACTOR (loop_vinfo).to_constant ())
+	      > ceil_log2 (LOOP_VINFO_INT_NITERS (loop_vinfo))))
+	m_costs[vect_body] = INT_MAX;
+    }
+
+  vector_costs::finish_cost (scalar_costs);
 }
 
 /* Validate target specific memory model bits in VAL. */

@@ -2278,7 +2278,7 @@ ix86_expand_copysign (rtx operands[])
   else
     dest = NULL_RTX;
   op1 = lowpart_subreg (vmode, force_reg (mode, operands[2]), mode);
-  mask = ix86_build_signbit_mask (vmode, 0, 0);
+  mask = ix86_build_signbit_mask (vmode, TARGET_AVX512F && mode != HFmode, 0);
 
   if (CONST_DOUBLE_P (operands[1]))
     {
@@ -10233,6 +10233,18 @@ ix86_expand_sse_ptest (const struct builtin_description *d, tree exp,
   machine_mode mode0 = insn_data[d->icode].operand[0].mode;
   machine_mode mode1 = insn_data[d->icode].operand[1].mode;
   enum rtx_code comparison = d->comparison;
+
+  /* ptest reg, reg sets the carry flag.  */
+  if (comparison == LTU
+      && (d->code == IX86_BUILTIN_PTESTC
+	  || d->code == IX86_BUILTIN_PTESTC256)
+      && rtx_equal_p (op0, op1))
+    {
+      if (!target)
+	target = gen_reg_rtx (SImode);
+      emit_move_insn (target, const1_rtx);
+      return target;
+    }
 
   if (VECTOR_MODE_P (mode0))
     op0 = safe_vector_operand (op0, mode0);

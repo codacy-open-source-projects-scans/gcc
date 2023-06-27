@@ -3820,8 +3820,8 @@ riscv_arg_has_vector (const_tree type)
   switch (TREE_CODE (type))
     {
     case RECORD_TYPE:
-      /* If it is a record, it is further determined whether its fileds have
-         vector type.  */
+      /* If it is a record, it is further determined whether its fields have
+	 vector type.  */
       for (tree f = TYPE_FIELDS (type); f; f = DECL_CHAIN (f))
 	if (TREE_CODE (f) == FIELD_DECL)
 	  {
@@ -3835,6 +3835,8 @@ riscv_arg_has_vector (const_tree type)
       break;
     case ARRAY_TYPE:
       return riscv_arg_has_vector (TREE_TYPE (type));
+    default:
+      break;
     }
 
   return false;
@@ -7362,6 +7364,11 @@ riscv_regmode_natural_size (machine_mode mode)
      anything smaller than that.  */
   /* ??? For now, only do this for variable-width RVV registers.
      Doing it for constant-sized registers breaks lower-subreg.c.  */
+
+  /* RVV mask modes always consume a single register.  */
+  if (GET_MODE_CLASS (mode) == MODE_VECTOR_BOOL)
+    return BYTES_PER_RISCV_VECTOR;
+
   if (!riscv_vector_chunks.is_constant () && riscv_v_ext_mode_p (mode))
     {
       if (riscv_v_ext_tuple_mode_p (mode))
