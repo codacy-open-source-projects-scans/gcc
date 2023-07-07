@@ -1751,7 +1751,49 @@ Flexible array members may only appear as the last member of a
 A structure containing a flexible array member, or a union containing
 such a structure (possibly recursively), may not be a member of a
 structure or an element of an array.  (However, these uses are
-permitted by GCC as extensions.)
+permitted by GCC as extensions, see details below.)
+@end itemize
+
+The GCC extension accepts a structure containing an ISO C99 @dfn{flexible array
+member}, or a union containing such a structure (possibly recursively)
+to be a member of a structure.
+
+There are two situations:
+
+@itemize @bullet
+@item
+A structure containing a C99 flexible array member, or a union containing
+such a structure, is the last field of another structure, for example:
+
+@smallexample
+struct flex  @{ int length; char data[]; @};
+union union_flex @{ int others; struct flex f; @};
+
+struct out_flex_struct @{ int m; struct flex flex_data; @};
+struct out_flex_union @{ int n; union union_flex flex_data; @};
+@end smallexample
+
+In the above, both @code{out_flex_struct.flex_data.data[]} and
+@code{out_flex_union.flex_data.f.data[]} are considered as flexible arrays too.
+
+@item
+A structure containing a C99 flexible array member, or a union containing
+such a structure, is not the last field of another structure, for example:
+
+@smallexample
+struct flex  @{ int length; char data[]; @};
+
+struct mid_flex @{ int m; struct flex flex_data; int n; @};
+@end smallexample
+
+In the above, accessing a member of the array @code{mid_flex.flex_data.data[]}
+might have undefined behavior.  Compilers do not handle such a case
+consistently.  Any code relying on this case should be modified to ensure
+that flexible array members only end up at the ends of structures.
+
+Please use the warning option @option{-Wflex-array-member-not-at-end} to
+identify all such cases in the source code and modify them.  This extension
+is now deprecated.
 @end itemize
 
 Non-empty initialization of zero-length
@@ -4341,7 +4383,7 @@ through registers.
 In order to satisfy users with different security needs and control the
 run-time overhead at the same time, the @var{choice} parameter provides a
 flexible way to choose the subset of the call-used registers to be zeroed.
-The three basic values of @var{choice} are:
+The four basic values of @var{choice} are:
 
 @itemize @bullet
 @item
@@ -4354,10 +4396,16 @@ the function.
 
 @item
 @samp{all} zeros all call-used registers.
+
+@item
+@samp{leafy} behaves like @samp{used} in a leaf function, and like
+@samp{all} in a nonleaf function.  This makes for leaner zeroing in leaf
+functions, where the set of used registers is known, and that may be
+enough for some purposes of register zeroing.
 @end itemize
 
 In addition to these three basic choices, it is possible to modify
-@samp{used} or @samp{all} as follows:
+@samp{used}, @samp{all}, and @samp{leafy} as follows:
 
 @itemize @bullet
 @item
@@ -4404,10 +4452,28 @@ zeros all call-used registers that pass arguments.
 @item all-gpr-arg
 zeros all call-used general purpose registers that pass
 arguments.
+
+@item leafy
+Same as @samp{used} in a leaf function, and same as @samp{all} in a
+nonleaf function.
+
+@item leafy-gpr
+Same as @samp{used-gpr} in a leaf function, and same as @samp{all-gpr}
+in a nonleaf function.
+
+@item leafy-arg
+Same as @samp{used-arg} in a leaf function, and same as @samp{all-arg}
+in a nonleaf function.
+
+@item leafy-gpr-arg
+Same as @samp{used-gpr-arg} in a leaf function, and same as
+@samp{all-gpr-arg} in a nonleaf function.
+
 @end table
 
 Of this list, @samp{used-arg}, @samp{used-gpr-arg}, @samp{all-arg},
-and @samp{all-gpr-arg} are mainly used for ROP mitigation.
+@samp{all-gpr-arg}, @samp{leafy-arg}, and @samp{leafy-gpr-arg} are
+mainly used for ROP mitigation.
 
 The default for the attribute is controlled by @option{-fzero-call-used-regs}.
 @end table
@@ -7177,11 +7243,6 @@ Prefer 256-bit vector width for instructions.
 Prefer 512-bit vector width for instructions.
 @end table
 
-On the x86, the inliner does not inline a
-function that has different target options than the caller, unless the
-callee has a subset of the target options of the caller.  For example
-a function declared with @code{target("sse3")} can inline a function
-with @code{target("sse2")}, since @code{-msse3} implies @code{-msse2}.
 @end table
 
 @cindex @code{indirect_branch} function attribute, x86
@@ -7294,6 +7355,20 @@ This attribute, attached to a global variable or function, is the
 counterpart to option @option{-mno-direct-extern-access}.
 
 @end table
+
+@subsubsection Inlining rules
+On the x86, the inliner does not inline a
+function that has different target options than the caller, unless the
+callee has a subset of the target options of the caller.  For example
+a function declared with @code{target("sse3")} can inline a function
+with @code{target("sse2")}, since @code{-msse3} implies @code{-msse2}.
+
+Besides the basic rule, when a function specifies
+@code{target("arch=@var{ARCH}")} or @code{target("tune=@var{TUNE}")}
+attribute, the inlining rule will be different. It allows inlining of
+a function with default @option{-march=x86-64} and
+@option{-mtune=generic} specified, or a function that has a subset
+of ISA features and marked with always_inline.
 
 @node Xstormy16 Function Attributes
 @subsection Xstormy16 Function Attributes
@@ -15185,6 +15260,23 @@ __builtin_arc_sr()
 __builtin_arc_swi()
 @end example
 
+The following built-in functions are available for the ARCv2 family of
+processors.
+
+@example
+int __builtin_arc_clri ();
+void __builtin_arc_kflag (unsigned);
+void __builtin_arc_seti (int);
+@end example
+
+The following built-in functions are available for the ARCv2 family
+and uses @option{-mnorm}.
+
+@example
+int __builtin_arc_ffs (int);
+int __builtin_arc_fls (int);
+@end example
+
 @node ARC SIMD Built-in Functions
 @subsection ARC SIMD Built-in Functions
 
@@ -15409,6 +15501,44 @@ indicating one the registers I0-I7, and the fourth argument must be an
 @example
 void __builtin_arc_vst16_n (__v8hi, const int, const int, const int);
 void __builtin_arc_vst32_n (__v8hi, const int, const int, const int);
+@end example
+
+The following built-in functions are available on systems that uses
+@option{-mmpy-option=6} or higher.
+
+@example
+__v2hi __builtin_arc_dmach (__v2hi, __v2hi);
+__v2hi __builtin_arc_dmachu (__v2hi, __v2hi);
+__v2hi __builtin_arc_dmpyh (__v2hi, __v2hi);
+__v2hi __builtin_arc_dmpyhu (__v2hi, __v2hi);
+__v2hi __builtin_arc_vaddsub2h (__v2hi, __v2hi);
+__v2hi __builtin_arc_vsubadd2h (__v2hi, __v2hi);
+@end example
+
+The following built-in functions are available on systems that uses
+@option{-mmpy-option=7} or higher.
+
+@example
+__v2si __builtin_arc_vmac2h (__v2hi, __v2hi);
+__v2si __builtin_arc_vmac2hu (__v2hi, __v2hi);
+__v2si __builtin_arc_vmpy2h (__v2hi, __v2hi);
+__v2si __builtin_arc_vmpy2hu (__v2hi, __v2hi);
+@end example
+
+The following built-in functions are available on systems that uses
+@option{-mmpy-option=8} or higher.
+
+@example
+long long __builtin_arc_qmach (__v4hi, __v4hi);
+long long __builtin_arc_qmachu (__v4hi, __v4hi);
+long long __builtin_arc_qmpyh (__v4hi, __v4hi);
+long long __builtin_arc_qmpyhu (__v4hi, __v4hi);
+long long __builtin_arc_dmacwh (__v2si, __v2hi);
+long long __builtin_arc_dmacwhu (__v2si, __v2hi);
+_v2si __builtin_arc_vaddsub (__v2si, __v2si);
+_v2si __builtin_arc_vsubadd (__v2si, __v2si);
+_v4hi __builtin_arc_vaddsub4h (__v4hi, __v4hi);
+_v4hi __builtin_arc_vsubadd4h (__v4hi, __v4hi);
 @end example
 
 @node ARM iWMMXt Built-in Functions

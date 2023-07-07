@@ -261,11 +261,26 @@ vect_mark_relevant (vec<stmt_vec_info> *worklist, stmt_vec_info stmt_info,
 	dump_printf_loc (MSG_NOTE, vect_location,
 			 "last stmt in pattern. don't mark"
 			 " relevant/live.\n");
+
       stmt_vec_info old_stmt_info = stmt_info;
       stmt_info = STMT_VINFO_RELATED_STMT (stmt_info);
       gcc_assert (STMT_VINFO_RELATED_STMT (stmt_info) == old_stmt_info);
       save_relevant = STMT_VINFO_RELEVANT (stmt_info);
       save_live_p = STMT_VINFO_LIVE_P (stmt_info);
+
+      if (live_p && relevant == vect_unused_in_scope)
+	{
+	  if (dump_enabled_p ())
+	    dump_printf_loc (MSG_NOTE, vect_location,
+			     "vec_stmt_relevant_p: forcing live pattern stmt "
+			     "relevant.\n");
+	  relevant = vect_used_only_live;
+	}
+
+      if (dump_enabled_p ())
+	dump_printf_loc (MSG_NOTE, vect_location,
+			 "mark relevant %d, live %d: %G", relevant, live_p,
+			 stmt_info->stmt);
     }
 
   STMT_VINFO_LIVE_P (stmt_info) |= live_p;
@@ -1771,6 +1786,18 @@ check_load_store_for_partial_vectors (loop_vec_info loop_vinfo, tree vectype,
 						   gs_info->offset_vectype,
 						   gs_info->scale))
 	{
+	  ifn = (is_load
+		 ? IFN_LEN_MASK_GATHER_LOAD
+		 : IFN_LEN_MASK_SCATTER_STORE);
+	  if (internal_gather_scatter_fn_supported_p (ifn, vectype,
+						      gs_info->memory_type,
+						      gs_info->offset_vectype,
+						      gs_info->scale))
+	    {
+	      vec_loop_lens *lens = &LOOP_VINFO_LENS (loop_vinfo);
+	      vect_record_loop_len (loop_vinfo, lens, nvectors, vectype, 1);
+	      return;
+	    }
 	  if (dump_enabled_p ())
 	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
 			     "can't operate on partial vectors because"
@@ -3129,16 +3156,37 @@ vect_get_gather_scatter_ops (loop_vec_info loop_vinfo,
 static void
 vect_get_strided_load_store_ops (stmt_vec_info stmt_info,
 				 loop_vec_info loop_vinfo,
+				 gimple_stmt_iterator *gsi,
 				 gather_scatter_info *gs_info,
-				 tree *dataref_bump, tree *vec_offset)
+				 tree *dataref_bump, tree *vec_offset,
+				 vec_loop_lens *loop_lens)
 {
   struct data_reference *dr = STMT_VINFO_DATA_REF (stmt_info);
   tree vectype = STMT_VINFO_VECTYPE (stmt_info);
 
-  tree bump = size_binop (MULT_EXPR,
-			  fold_convert (sizetype, unshare_expr (DR_STEP (dr))),
-			  size_int (TYPE_VECTOR_SUBPARTS (vectype)));
-  *dataref_bump = cse_and_gimplify_to_preheader (loop_vinfo, bump);
+  if (LOOP_VINFO_USING_SELECT_VL_P (loop_vinfo))
+    {
+      /* _31 = .SELECT_VL (ivtmp_29, POLY_INT_CST [4, 4]);
+	 ivtmp_8 = _31 * 16 (step in bytes);
+	 .LEN_MASK_SCATTER_STORE (vectp_a.9_7, ... );
+	 vectp_a.9_26 = vectp_a.9_7 + ivtmp_8;  */
+      tree loop_len
+	= vect_get_loop_len (loop_vinfo, gsi, loop_lens, 1, vectype, 0, 0);
+      tree tmp
+	= fold_build2 (MULT_EXPR, sizetype,
+		       fold_convert (sizetype, unshare_expr (DR_STEP (dr))),
+		       loop_len);
+      *dataref_bump = force_gimple_operand_gsi (gsi, tmp, true, NULL_TREE, true,
+						GSI_SAME_STMT);
+    }
+  else
+    {
+      tree bump
+	= size_binop (MULT_EXPR,
+		      fold_convert (sizetype, unshare_expr (DR_STEP (dr))),
+		      size_int (TYPE_VECTOR_SUBPARTS (vectype)));
+      *dataref_bump = cse_and_gimplify_to_preheader (loop_vinfo, bump);
+    }
 
   /* The offset given in GS_INFO can have pointer type, so use the element
      type of the vector instead.  */
@@ -8685,8 +8733,8 @@ vectorizable_store (vec_info *vinfo,
   else if (memory_access_type == VMAT_GATHER_SCATTER)
     {
       aggr_type = elem_type;
-      vect_get_strided_load_store_ops (stmt_info, loop_vinfo, &gs_info,
-				       &bump, &vec_offset);
+      vect_get_strided_load_store_ops (stmt_info, loop_vinfo, gsi, &gs_info,
+				       &bump, &vec_offset, loop_lens);
     }
   else
     {
@@ -8915,6 +8963,8 @@ vectorizable_store (vec_info *vinfo,
 	      unsigned HOST_WIDE_INT align;
 
 	      tree final_mask = NULL_TREE;
+	      tree final_len = NULL_TREE;
+	      tree bias = NULL_TREE;
 	      if (loop_masks)
 		final_mask = vect_get_loop_mask (loop_vinfo, gsi, loop_masks,
 						 vec_num * ncopies,
@@ -8929,8 +8979,36 @@ vectorizable_store (vec_info *vinfo,
 		  if (STMT_VINFO_GATHER_SCATTER_P (stmt_info))
 		    vec_offset = vec_offsets[vec_num * j + i];
 		  tree scale = size_int (gs_info.scale);
+
+		  if (gs_info.ifn == IFN_LEN_MASK_SCATTER_STORE)
+		    {
+		      if (loop_lens)
+			final_len
+			  = vect_get_loop_len (loop_vinfo, gsi, loop_lens,
+					       vec_num * ncopies, vectype,
+					       vec_num * j + i, 1);
+		      else
+			final_len
+			  = build_int_cst (sizetype,
+					   TYPE_VECTOR_SUBPARTS (vectype));
+		      signed char biasval
+			= LOOP_VINFO_PARTIAL_LOAD_STORE_BIAS (loop_vinfo);
+		      bias = build_int_cst (intQI_type_node, biasval);
+		      if (!final_mask)
+			{
+			  mask_vectype = truth_type_for (vectype);
+			  final_mask = build_minus_one_cst (mask_vectype);
+			}
+		    }
+
 		  gcall *call;
-		  if (final_mask)
+		  if (final_len && final_mask)
+		    call
+		      = gimple_build_call_internal (IFN_LEN_MASK_SCATTER_STORE,
+						    7, dataref_ptr, vec_offset,
+						    scale, vec_oprnd, final_mask,
+						    final_len, bias);
+		  else if (final_mask)
 		    call = gimple_build_call_internal
 		      (IFN_MASK_SCATTER_STORE, 5, dataref_ptr, vec_offset,
 		       scale, vec_oprnd, final_mask);
@@ -9047,9 +9125,6 @@ vectorizable_store (vec_info *vinfo,
 	      machine_mode vmode = TYPE_MODE (vectype);
 	      machine_mode new_vmode = vmode;
 	      internal_fn partial_ifn = IFN_LAST;
-	      /* Produce 'len' and 'bias' argument.  */
-	      tree final_len = NULL_TREE;
-	      tree bias = NULL_TREE;
 	      if (loop_lens)
 		{
 		  opt_machine_mode new_ovmode
@@ -9122,13 +9197,14 @@ vectorizable_store (vec_info *vinfo,
 		  if (partial_ifn == IFN_LEN_MASK_STORE)
 		    call = gimple_build_call_internal (IFN_LEN_MASK_STORE, 6,
 						       dataref_ptr, ptr,
-						       final_len, final_mask,
-						       vec_oprnd, bias);
+						       final_len, bias,
+						       final_mask, vec_oprnd);
 		  else
 		    call
 		      = gimple_build_call_internal (IFN_LEN_STORE, 5,
-						    dataref_ptr, ptr, final_len,
-						    vec_oprnd, bias);
+						    dataref_ptr, ptr,
+						    final_len, bias,
+						    vec_oprnd);
 		  gimple_call_set_nothrow (call, true);
 		  vect_finish_stmt_generation (vinfo, stmt_info, call, gsi);
 		  new_stmt = call;
@@ -10176,8 +10252,8 @@ vectorizable_load (vec_info *vinfo,
   else if (memory_access_type == VMAT_GATHER_SCATTER)
     {
       aggr_type = elem_type;
-      vect_get_strided_load_store_ops (stmt_info, loop_vinfo, &gs_info,
-				       &bump, &vec_offset);
+      vect_get_strided_load_store_ops (stmt_info, loop_vinfo, gsi, &gs_info,
+				       &bump, &vec_offset, loop_lens);
     }
   else
     {
@@ -10338,6 +10414,8 @@ vectorizable_load (vec_info *vinfo,
 	  for (i = 0; i < vec_num; i++)
 	    {
 	      tree final_mask = NULL_TREE;
+	      tree final_len = NULL_TREE;
+	      tree bias = NULL_TREE;
 	      if (loop_masks
 		  && memory_access_type != VMAT_INVARIANT)
 		final_mask = vect_get_loop_mask (loop_vinfo, gsi, loop_masks,
@@ -10367,8 +10445,35 @@ vectorizable_load (vec_info *vinfo,
 			  vec_offset = vec_offsets[vec_num * j + i];
 			tree zero = build_zero_cst (vectype);
 			tree scale = size_int (gs_info.scale);
+
+			if (gs_info.ifn == IFN_LEN_MASK_GATHER_LOAD)
+			  {
+			    if (loop_lens)
+			      final_len
+				= vect_get_loop_len (loop_vinfo, gsi, loop_lens,
+						     vec_num * ncopies, vectype,
+						     vec_num * j + i, 1);
+			    else
+			      final_len = build_int_cst (sizetype,
+							 TYPE_VECTOR_SUBPARTS (
+							   vectype));
+			    signed char biasval
+			      = LOOP_VINFO_PARTIAL_LOAD_STORE_BIAS (loop_vinfo);
+			    bias = build_int_cst (intQI_type_node, biasval);
+			    if (!final_mask)
+			      {
+				mask_vectype = truth_type_for (vectype);
+				final_mask = build_minus_one_cst (mask_vectype);
+			      }
+			  }
+
 			gcall *call;
-			if (final_mask)
+			if (final_len && final_mask)
+			  call = gimple_build_call_internal (
+			    IFN_LEN_MASK_GATHER_LOAD, 7, dataref_ptr,
+			    vec_offset, scale, zero, final_mask, final_len,
+			    bias);
+			else if (final_mask)
 			  call = gimple_build_call_internal
 			    (IFN_MASK_GATHER_LOAD, 5, dataref_ptr,
 			     vec_offset, scale, zero, final_mask);
@@ -10461,9 +10566,6 @@ vectorizable_load (vec_info *vinfo,
 		    machine_mode vmode = TYPE_MODE (vectype);
 		    machine_mode new_vmode = vmode;
 		    internal_fn partial_ifn = IFN_LAST;
-		    /* Produce 'len' and 'bias' argument.  */
-		    tree final_len = NULL_TREE;
-		    tree bias = NULL_TREE;
 		    if (loop_lens)
 		      {
 			opt_machine_mode new_ovmode
@@ -10523,7 +10625,7 @@ vectorizable_load (vec_info *vinfo,
 			  call = gimple_build_call_internal (IFN_LEN_MASK_LOAD,
 							     5, dataref_ptr,
 							     ptr, final_len,
-							     final_mask, bias);
+							     bias, final_mask);
 			else
 			  call = gimple_build_call_internal (IFN_LEN_LOAD, 4,
 							     dataref_ptr, ptr,
@@ -12174,8 +12276,11 @@ get_related_vectype_for_scalar_type (machine_mode prevailing_mode,
   machine_mode simd_mode;
   tree vectype;
 
-  if (!is_int_mode (TYPE_MODE (scalar_type), &inner_mode)
-      && !is_float_mode (TYPE_MODE (scalar_type), &inner_mode))
+  if ((!INTEGRAL_TYPE_P (scalar_type)
+       && !POINTER_TYPE_P (scalar_type)
+       && !SCALAR_FLOAT_TYPE_P (scalar_type))
+      || (!is_int_mode (TYPE_MODE (scalar_type), &inner_mode)
+	  && !is_float_mode (TYPE_MODE (scalar_type), &inner_mode)))
     return NULL_TREE;
 
   unsigned int nbytes = GET_MODE_SIZE (inner_mode);

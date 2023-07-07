@@ -191,6 +191,11 @@
   VNx2x4HI,VNx3x4HI,VNx4x4HI,VNx5x4HI,VNx6x4HI,VNx7x4HI,VNx8x4HI,
   VNx2x2HI,VNx3x2HI,VNx4x2HI,VNx5x2HI,VNx6x2HI,VNx7x2HI,VNx8x2HI,
   VNx2x1HI,VNx3x1HI,VNx4x1HI,VNx5x1HI,VNx6x1HI,VNx7x1HI,VNx8x1HI,
+  VNx2x32HF,VNx2x16HF,VNx3x16HF,VNx4x16HF,
+  VNx2x8HF,VNx3x8HF,VNx4x8HF,VNx5x8HF,VNx6x8HF,VNx7x8HF,VNx8x8HF,
+  VNx2x4HF,VNx3x4HF,VNx4x4HF,VNx5x4HF,VNx6x4HF,VNx7x4HF,VNx8x4HF,
+  VNx2x2HF,VNx3x2HF,VNx4x2HF,VNx5x2HF,VNx6x2HF,VNx7x2HF,VNx8x2HF,
+  VNx2x1HF,VNx3x1HF,VNx4x1HF,VNx5x1HF,VNx6x1HF,VNx7x1HF,VNx8x1HF,
   VNx2x16SI,VNx2x8SI,VNx3x8SI,VNx4x8SI,
   VNx2x4SI,VNx3x4SI,VNx4x4SI,VNx5x4SI,VNx6x4SI,VNx7x4SI,VNx8x4SI,
   VNx2x2SI,VNx3x2SI,VNx4x2SI,VNx5x2SI,VNx6x2SI,VNx7x2SI,VNx8x2SI,
@@ -282,6 +287,7 @@
 ;; rdvlenb     vector byte length vlenb csrr read
 ;; rdvl        vector length vl csrr read
 ;; wrvxrm      vector fixed-point rounding mode write
+;; wrfrm       vector floating-point rounding mode write
 ;; vsetvl      vector configuration-setting instrucions
 ;; 7. Vector Loads and Stores
 ;; vlde        vector unit-stride load instructions
@@ -385,7 +391,8 @@
    mtc,mfc,const,arith,logical,shift,slt,imul,idiv,move,fmove,fadd,fmul,
    fmadd,fdiv,fcmp,fcvt,fsqrt,multi,auipc,sfb_alu,nop,ghost,bitmanip,rotate,
    clmul,min,max,minu,maxu,clz,ctz,cpop,
-   atomic,condmove,crypto,rdvlenb,rdvl,wrvxrm,vsetvl,vlde,vste,vldm,vstm,vlds,vsts,
+   atomic,condmove,crypto,rdvlenb,rdvl,wrvxrm,wrfrm,vsetvl,
+   vlde,vste,vldm,vstm,vlds,vsts,
    vldux,vldox,vstux,vstox,vldff,vldr,vstr,
    vlsegde,vssegte,vlsegds,vssegts,vlsegdux,vlsegdox,vssegtux,vssegtox,vlsegdff,
    vialu,viwalu,vext,vicalu,vshift,vnshift,vicmp,viminmax,

@@ -1,3 +1,133 @@
+2023-07-06  Tianqiang Shuai  <1101282468@qq.com>
+
+	* config/io/basic_file_stdio.cc (xwrite) [USE_STDIO_PURE]: Fix
+	first argument.
+
+2023-07-06  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/110574
+	* doc/xml/manual/configure.xml: Describe stdio_pure argument to
+	--enable-cstdio.
+	* doc/html/manual/configure.html: Regenerate.
+
+2023-07-05  Thomas Rodgers  <trodgers@redhat.com>
+
+	* testsuite/25_algorithms/pstl/alg_sorting/set.cc: Delete
+	file.
+	* testsuite/25_algorithms/pstl/alg_sorting/set_difference.cc:
+	New file.
+	* testsuite/25_algorithms/pstl/alg_sorting/set_intersection.cc:
+	Likewise.
+	* testsuite/25_algorithms/pstl/alg_sorting/set_symmetric_difference.cc:
+	Likewise.
+	* testsuite/25_algorithms/pstl/alg_sorting/set_union.cc:
+	Likewise.
+	* testsuite/25_algorithms/pstl/alg_sorting/set_util.h:
+	Likewise.
+
+2023-07-05  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/23_containers/forward_list/debug/iterator1_neg.cc:
+	Skip as UNSUPPORTED for C++98 mode.
+	* testsuite/23_containers/forward_list/debug/iterator3_neg.cc:
+	Likewise.
+
+2023-07-05  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/110542
+	* include/bits/stl_uninitialized.h (__uninitialized_default_n):
+	Do not use std::fill_n during constant evaluation.
+
+2023-07-05  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/vector.tcc (_M_default_append): Replace try-block
+	with RAII types.
+
+2023-07-05  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/iterator_concepts.h (projected): Add typename.
+
+2023-07-03  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/27_io/headers/iosfwd/synopsis.cc: Make wsyncbuf and
+	wosyncstream depend on _GLIBCXX_USE_CXX11_ABI.
+
+2023-07-03  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/pstl/pstl_config.h (_PSTL_PRAGMA_SIMD_SCAN,
+	_PSTL_PRAGMA_SIMD_INCLUSIVE_SCAN, _PSTL_PRAGMA_SIMD_EXCLUSIVE_SCAN):
+	Define to OpenMP 5.0 pragmas even for GCC 10.0+.
+	(_PSTL_UDS_PRESENT): Define to 1 for GCC 10.0+.
+
+2023-07-03  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/alloc_traits.h (_Destroy): Qualify call.
+	* include/bits/stl_construct.h (_Destroy, _Destroy_n): Likewise.
+	* testsuite/23_containers/vector/cons/destroy-adl.cc: New test.
+
+2023-07-03  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* testsuite/lib/libstdc++.exp: Remove additional flag handled
+	by Darwin specs.
+
+2023-06-30  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/110432
+	* acinclude.m4 (GLIBCXX_CHECK_INIT_PRIORITY): New.
+	* config.h.in: Regenerate.
+	* configure: Regenerate.
+	* configure.ac: Use GLIBCXX_CHECK_INIT_PRIORITY.
+	* include/std/iostream: Use new autoconf macro as well as
+	__has_attribute.
+	* src/c++98/ios_base_init.h: Use new autoconf macro instead of
+	__has_attribute.
+
+2023-06-30  Jonathan Wakely  <jwakely@redhat.com>
+
+	* src/c++11/random.cc (random_device::_M_init): Add maybe_unused
+	attribute.
+
+2023-06-30  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/105081
+	* src/c++11/random.cc (random_device::_M_init): Throw
+	std::system_error when the requested device is a valid token but
+	not available at runtime.
+
+2023-06-30  Hans-Peter Nilsson  <hp@axis.com>
+
+	PR libstdc++/108672
+	* include/pstl/unseq_backend_simd.h (__simd_or): Re-apply using
+	__INT32_TYPE__ instead of int32_t.
+
+2023-06-29  Jonathan Wakely  <jwakely@redhat.com>
+
+	* src/c++20/tzdb.cc (USE_ATOMIC_SHARED_PTR): Define consistently
+	with USE_ATOMIC_LIST_HEAD.
+	(list_mutex): Replace global object with function. Use local
+	static object when std::mutex constructor isn't constexpr.
+
+2023-06-29  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/110462
+	* acinclude.m4 (GLIBCXX_CHECK_FILESYSTEM_DEPS): Check that
+	copy_file_range can be called with loff_t* arguments.
+	* configure: Regenerate.
+	* src/filesystem/ops-common.h (copy_file_copy_file_range):
+	Use loff_t for offsets.
+
+2023-06-29  Tom Tromey  <tromey@adacore.com>
+
+	* testsuite/lib/gdb-test.exp (gdb-test): Relax type-printer
+	regexp.
+
+2023-06-28  Jan Hubicka  <jh@suse.cz>
+
+	PR middle-end/109849
+	* include/bits/c++config (std::__terminate): Mark cold.
+	* include/bits/functexcept.h: Mark everything as cold.
+	* libsupc++/exception: Mark terminate and unexpected as cold.
+
 2023-06-26  Thomas Rodgers  <trodgers@redhat.com>
 
 	* include/pstl/algorithm_fwd.h: Synchronize with upstream.
