@@ -90,28 +90,6 @@ along with GCC; see the file COPYING3.  If not see
 /* True if bit BIT is set in VALUE.  */
 #define BITSET_P(VALUE, BIT) (((VALUE) & (1ULL << (BIT))) != 0)
 
-/* Classifies an address.
-
-   ADDRESS_REG
-       A natural register + offset address.  The register satisfies
-       riscv_valid_base_register_p and the offset is a const_arith_operand.
-
-   ADDRESS_LO_SUM
-       A LO_SUM rtx.  The first operand is a valid base register and
-       the second operand is a symbolic address.
-
-   ADDRESS_CONST_INT
-       A signed 16-bit constant address.
-
-   ADDRESS_SYMBOLIC:
-       A constant symbolic address.  */
-enum riscv_address_type {
-  ADDRESS_REG,
-  ADDRESS_LO_SUM,
-  ADDRESS_CONST_INT,
-  ADDRESS_SYMBOLIC
-};
-
 /* Information about a function's frame layout.  */
 struct GTY(())  riscv_frame_info {
   /* The size of the frame in bytes.  */
@@ -189,27 +167,6 @@ struct riscv_arg_info {
 
   /* The offset of the first register used, provided num_fprs is nonzero.  */
   unsigned int fpr_offset;
-};
-
-/* Information about an address described by riscv_address_type.
-
-   ADDRESS_CONST_INT
-       No fields are used.
-
-   ADDRESS_REG
-       REG is the base register and OFFSET is the constant offset.
-
-   ADDRESS_LO_SUM
-       REG and OFFSET are the operands to the LO_SUM and SYMBOL_TYPE
-       is the type of symbol it references.
-
-   ADDRESS_SYMBOLIC
-       SYMBOL_TYPE is the type of symbol that the address references.  */
-struct riscv_address_info {
-  enum riscv_address_type type;
-  rtx reg;
-  rtx offset;
-  enum riscv_symbol_type symbol_type;
 };
 
 /* One stage in a constant building sequence.  These sequences have
@@ -887,6 +844,26 @@ riscv_regno_mode_ok_for_base_p (int regno,
     return true;
 
   return GP_REG_P (regno);
+}
+
+/* Get valid index register class.
+   The RISC-V base instructions don't support index registers,
+   but extensions might support that.  */
+
+enum reg_class
+riscv_index_reg_class ()
+{
+  return NO_REGS;
+}
+
+/* Return true if register REGNO is a valid index register.
+   The RISC-V base instructions don't support index registers,
+   but extensions might support that.  */
+
+int
+riscv_regno_ok_for_index_p (int regno)
+{
+  return 0;
 }
 
 /* Return true if X is a valid base register for mode MODE.
@@ -2060,7 +2037,14 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
      (m, n) = base * magn + constant.
      This calculation doesn't need div operation.  */
 
-  emit_move_insn (tmp, gen_int_mode (BYTES_PER_RISCV_VECTOR, mode));
+  if (known_le (GET_MODE_SIZE (mode), GET_MODE_SIZE (Pmode)))
+    emit_move_insn (tmp, gen_int_mode (BYTES_PER_RISCV_VECTOR, mode));
+  else
+    {
+      emit_move_insn (gen_highpart (Pmode, tmp), CONST0_RTX (Pmode));
+      emit_move_insn (gen_lowpart (Pmode, tmp),
+		      gen_int_mode (BYTES_PER_RISCV_VECTOR, Pmode));
+    }
 
   if (BYTES_PER_RISCV_VECTOR.is_constant ())
     {
@@ -2167,7 +2151,7 @@ riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
 	  return false;
 	}
 
-      if (satisfies_constraint_vp (src))
+      if (satisfies_constraint_vp (src) && GET_MODE (src) == Pmode)
 	return false;
 
       if (GET_MODE_SIZE (mode).to_constant () < GET_MODE_SIZE (Pmode))
@@ -4801,7 +4785,7 @@ riscv_print_operand_address (FILE *file, machine_mode mode ATTRIBUTE_UNUSED, rtx
     switch (addr.type)
       {
       case ADDRESS_REG:
-	riscv_print_operand (file, addr.offset, 0);
+	output_addr_const (file, riscv_strip_unspec_address (addr.offset));
 	fprintf (file, "(%s)", reg_names[REGNO (addr.reg)]);
 	return;
 
@@ -7717,17 +7701,24 @@ riscv_mode_needed (int entity, rtx_insn *insn)
     }
 }
 
-/* Return true if the VXRM/FRM status of the INSN is unknown.  */
-static bool
-global_state_unknown_p (rtx_insn *insn, unsigned int regno)
-{
-  struct df_insn_info *insn_info = DF_INSN_INFO_GET (insn);
-  df_ref ref;
+/* Return TRUE that an insn is asm.  */
 
+static bool
+asm_insn_p (rtx_insn *insn)
+{
+  extract_insn (insn);
+
+  return recog_data.is_asm;
+}
+
+/* Return TRUE that an insn is unknown for VXRM.  */
+
+static bool
+vxrm_unknown_p (rtx_insn *insn)
+{
   /* Return true if there is a definition of VXRM.  */
-  for (ref = DF_INSN_INFO_DEFS (insn_info); ref; ref = DF_REF_NEXT_LOC (ref))
-    if (DF_REF_REGNO (ref) == regno)
-      return true;
+  if (reg_set_p (gen_rtx_REG (SImode, VXRM_REGNUM), insn))
+    return true;
 
   /* A CALL function may contain an instruction that modifies the VXRM,
      return true in this situation.  */
@@ -7736,25 +7727,61 @@ global_state_unknown_p (rtx_insn *insn, unsigned int regno)
 
   /* Return true for all assembly since users may hardcode a assembly
      like this: asm volatile ("csrwi vxrm, 0").  */
-  extract_insn (insn);
-  if (recog_data.is_asm)
+  if (asm_insn_p (insn))
     return true;
+
   return false;
 }
 
-static int
-riscv_entity_mode_after (int regnum, rtx_insn *insn, int mode,
-			 int (*get_attr_mode) (rtx_insn *), int default_mode)
+/* Return TRUE that an insn is unknown dynamic for FRM.  */
+
+static bool
+frm_unknown_dynamic_p (rtx_insn *insn)
 {
-  if (global_state_unknown_p (insn, regnum))
-    return default_mode;
-  else if (recog_memoized (insn) < 0)
+  /* Return true if there is a definition of FRM.  */
+  if (reg_set_p (gen_rtx_REG (SImode, FRM_REGNUM), insn))
+    return true;
+
+  /* A CALL function may contain an instruction that modifies the FRM,
+     return true in this situation.  */
+  if (CALL_P (insn))
+    return true;
+
+  return false;
+}
+
+/* Return the mode that an insn results in for VXRM.  */
+
+static int
+riscv_vxrm_mode_after (rtx_insn *insn, int mode)
+{
+  if (vxrm_unknown_p (insn))
+    return VXRM_MODE_NONE;
+
+  if (recog_memoized (insn) < 0)
     return mode;
 
-  rtx reg = gen_rtx_REG (SImode, regnum);
-  bool mentioned_p = reg_mentioned_p (reg, PATTERN (insn));
+  if (reg_mentioned_p (gen_rtx_REG (SImode, VXRM_REGNUM), PATTERN (insn)))
+    return get_attr_vxrm_mode (insn);
+  else
+    return mode;
+}
 
-  return mentioned_p ? get_attr_mode (insn): mode;
+/* Return the mode that an insn results in for FRM.  */
+
+static int
+riscv_frm_mode_after (rtx_insn *insn, int mode)
+{
+  if (frm_unknown_dynamic_p (insn))
+    return FRM_MODE_DYN;
+
+  if (recog_memoized (insn) < 0)
+    return mode;
+
+  if (reg_mentioned_p (gen_rtx_REG (SImode, FRM_REGNUM), PATTERN (insn)))
+    return get_attr_frm_mode (insn);
+  else
+    return mode;
 }
 
 /* Return the mode that an insn results in.  */
@@ -7765,13 +7792,9 @@ riscv_mode_after (int entity, int mode, rtx_insn *insn)
   switch (entity)
     {
     case RISCV_VXRM:
-      return riscv_entity_mode_after (VXRM_REGNUM, insn, mode,
-				      (int (*)(rtx_insn *)) get_attr_vxrm_mode,
-				      VXRM_MODE_NONE);
+      return riscv_vxrm_mode_after (insn, mode);
     case RISCV_FRM:
-      return riscv_entity_mode_after (FRM_REGNUM, insn, mode,
-				      (int (*)(rtx_insn *)) get_attr_frm_mode,
-				      FRM_MODE_DYN);
+      return riscv_frm_mode_after (insn, mode);
     default:
       gcc_unreachable ();
     }
@@ -7853,6 +7876,24 @@ riscv_vectorize_vec_perm_const (machine_mode vmode, machine_mode op_mode,
 						op1, sel);
 
   return false;
+}
+
+/* Implement TARGET_PREFERRED_ELSE_VALUE.  For binary operations,
+   prefer to use the first arithmetic operand as the else value if
+   the else value doesn't matter, since that exactly matches the RVV
+   destructive merging form.  For ternary operations we could either
+   pick the first operand and use VMADD-like instructions or the last
+   operand and use VMACC-like instructions; the latter seems more
+   natural.
+
+   TODO: Currently, the return value is not ideal for RVV since it will
+   let VSETVL PASS use MU or TU. We will suport undefine value that allows
+   VSETVL PASS use TA/MA in the future.  */
+
+static tree
+riscv_preferred_else_value (unsigned, tree, unsigned int nops, tree *ops)
+{
+  return nops == 3 ? ops[2] : ops[0];
 }
 
 /* Initialize the GCC target structure.  */
@@ -8155,6 +8196,9 @@ riscv_vectorize_vec_perm_const (machine_mode vmode, machine_mode op_mode,
 
 #undef TARGET_VECTORIZE_VEC_PERM_CONST
 #define TARGET_VECTORIZE_VEC_PERM_CONST riscv_vectorize_vec_perm_const
+
+#undef TARGET_PREFERRED_ELSE_VALUE
+#define TARGET_PREFERRED_ELSE_VALUE riscv_preferred_else_value
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

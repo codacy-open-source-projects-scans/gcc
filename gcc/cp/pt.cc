@@ -6388,7 +6388,8 @@ redeclare_class_template (tree type, tree parms, tree cons)
 	 DECL_CONTEXT of the template for which they are a parameter.  */
       if (TREE_CODE (parm) == TEMPLATE_DECL)
 	{
-	  gcc_assert (DECL_CONTEXT (parm) == NULL_TREE);
+	  gcc_checking_assert (DECL_CONTEXT (parm) == NULL_TREE
+			       || DECL_CONTEXT (parm) == tmpl);
 	  DECL_CONTEXT (parm) = tmpl;
 	}
     }
@@ -10344,7 +10345,9 @@ lookup_template_variable (tree templ, tree arglist, tsubst_flags_t complain)
   if (flag_concepts && variable_concept_p (templ))
     return build_concept_check (templ, arglist, tf_none);
 
-  tree parms = DECL_INNERMOST_TEMPLATE_PARMS (templ);
+  tree gen_templ = most_general_template (templ);
+  tree parms = DECL_INNERMOST_TEMPLATE_PARMS (gen_templ);
+  arglist = add_outermost_template_args (templ, arglist);
   arglist = coerce_template_parms (parms, arglist, templ, complain);
   if (arglist == error_mark_node)
     return error_mark_node;
@@ -27979,6 +27982,13 @@ value_dependent_expression_p (tree expression)
 	}
       else if (TYPE_REF_P (TREE_TYPE (expression)))
 	/* FIXME cp_finish_decl doesn't fold reference initializers.  */
+	return true;
+      /* We have a constexpr variable and we're processing a template.  When
+	 there's lifetime extension involved (for which finish_compound_literal
+	 used to create a temporary), we'll not be able to evaluate the
+	 variable until instantiating, so pretend it's value-dependent.  */
+      else if (DECL_DECLARED_CONSTEXPR_P (expression)
+	       && !TREE_CONSTANT (expression))
 	return true;
       return false;
 

@@ -529,24 +529,32 @@ gfc_find_and_cut_at_last_class_ref (gfc_expr *e, bool is_mold,
 }
 
 
-/* Reset the vptr to the declared type, e.g. after deallocation.  */
+/* Reset the vptr to the declared type, e.g. after deallocation.
+   Use the variable in CLASS_CONTAINER if available.  Otherwise, recreate
+   one with E.  The generated assignment code is added at the end of BLOCK.  */
 
 void
-gfc_reset_vptr (stmtblock_t *block, gfc_expr *e)
+gfc_reset_vptr (stmtblock_t *block, gfc_expr *e, tree class_container)
 {
-  gfc_symbol *vtab;
-  tree vptr;
-  tree vtable;
-  gfc_se se;
+  tree vptr = NULL_TREE;
 
-  /* Evaluate the expression and obtain the vptr from it.  */
-  gfc_init_se (&se, NULL);
-  if (e->rank)
-    gfc_conv_expr_descriptor (&se, e);
-  else
-    gfc_conv_expr (&se, e);
-  gfc_add_block_to_block (block, &se.pre);
-  vptr = gfc_get_vptr_from_expr (se.expr);
+  if (class_container != NULL_TREE)
+    vptr = gfc_get_vptr_from_expr (class_container);
+
+  if (vptr == NULL_TREE)
+    {
+      gfc_se se;
+
+      /* Evaluate the expression and obtain the vptr from it.  */
+      gfc_init_se (&se, NULL);
+      if (e->rank)
+	gfc_conv_expr_descriptor (&se, e);
+      else
+	gfc_conv_expr (&se, e);
+      gfc_add_block_to_block (block, &se.pre);
+
+      vptr = gfc_get_vptr_from_expr (se.expr);
+    }
 
   /* If a vptr is not found, we can do nothing more.  */
   if (vptr == NULL_TREE)
@@ -556,6 +564,9 @@ gfc_reset_vptr (stmtblock_t *block, gfc_expr *e)
     gfc_add_modify (block, vptr, build_int_cst (TREE_TYPE (vptr), 0));
   else
     {
+      gfc_symbol *vtab;
+      tree vtable;
+
       /* Return the vptr to the address of the declared type.  */
       vtab = gfc_find_derived_vtab (e->ts.u.derived);
       vtable = vtab->backend_decl;
@@ -1266,6 +1277,10 @@ gfc_conv_class_to_class (gfc_se *parmse, gfc_expr *e, gfc_typespec class_ts,
 
       slen = build_zero_cst (size_type_node);
     }
+  else if (parmse->class_container != NULL_TREE)
+    /* Don't redundantly evaluate the expression if the required information
+       is already available.  */
+    tmp = parmse->class_container;
   else
     {
       /* Remove everything after the last class reference, convert the
@@ -3078,6 +3093,11 @@ gfc_conv_variable (gfc_se * se, gfc_expr * expr)
 	  return;
 	}
 
+      if (sym->ts.type == BT_CLASS
+	  && sym->attr.class_ok
+	  && sym->ts.u.derived->attr.is_class)
+	se->class_container = se->expr;
+
       /* Dereference the expression, where needed.  */
       se->expr = gfc_maybe_dereference_var (sym, se->expr, se->descriptor_only,
 					    is_classarray);
@@ -3135,6 +3155,15 @@ gfc_conv_variable (gfc_se * se, gfc_expr * expr)
 	    conv_parent_component_references (se, ref);
 
 	  gfc_conv_component_ref (se, ref);
+
+	  if (ref->u.c.component->ts.type == BT_CLASS
+	      && ref->u.c.component->attr.class_ok
+	      && ref->u.c.component->ts.u.derived->attr.is_class)
+	    se->class_container = se->expr;
+	  else if (!(ref->u.c.sym->attr.flavor == FL_DERIVED
+		     && ref->u.c.sym->attr.is_class))
+	    se->class_container = NULL_TREE;
+
 	  if (!ref->next && ref->u.c.sym->attr.codimension
 	      && se->want_pointer && se->descriptor_only)
 	    return;
@@ -6085,9 +6114,10 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
   else
     info = NULL;
 
-  stmtblock_t post, clobbers;
+  stmtblock_t post, clobbers, dealloc_blk;
   gfc_init_block (&post);
   gfc_init_block (&clobbers);
+  gfc_init_block (&dealloc_blk);
   gfc_init_interface_mapping (&mapping);
   if (!comp)
     {
@@ -6116,6 +6146,32 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
   ulim_copy = (formal == NULL)
 	       && UNLIMITED_POLY (sym)
 	       && comp && (strcmp ("_copy", comp->name) == 0);
+
+  /* Scan for allocatable actual arguments passed to allocatable dummy
+     arguments with INTENT(OUT).  As the corresponding actual arguments are
+     deallocated before execution of the procedure, we evaluate actual
+     argument expressions to avoid problems with possible dependencies.  */
+  bool force_eval_args = false;
+  gfc_formal_arglist *tmp_formal;
+  for (arg = args, tmp_formal = formal; arg != NULL;
+       arg = arg->next, tmp_formal = tmp_formal ? tmp_formal->next : NULL)
+    {
+      e = arg->expr;
+      fsym = tmp_formal ? tmp_formal->sym : NULL;
+      if (e && fsym
+	  && e->expr_type == EXPR_VARIABLE
+	  && fsym->attr.intent == INTENT_OUT
+	  && (fsym->ts.type == BT_CLASS && fsym->attr.class_ok
+	      ? CLASS_DATA (fsym)->attr.allocatable
+	      : fsym->attr.allocatable)
+	  && e->symtree
+	  && e->symtree->n.sym
+	  && gfc_variable_attr (e, NULL).allocatable)
+	{
+	  force_eval_args = true;
+	  break;
+	}
+    }
 
   /* Evaluate the arguments.  */
   for (arg = args, argc = 0; arg != NULL;
@@ -6473,6 +6529,7 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 
 	      else
 		{
+		  bool defer_to_dealloc_blk = false;
 		  if (e->ts.type == BT_CLASS && fsym
 		      && fsym->ts.type == BT_CLASS
 		      && (!CLASS_DATA (fsym)->as
@@ -6634,6 +6691,16 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 		      stmtblock_t block;
 		      tree ptr;
 
+		      defer_to_dealloc_blk = true;
+
+		      parmse.expr = gfc_evaluate_data_ref_now (parmse.expr,
+							       &parmse.pre);
+
+		      if (parmse.class_container != NULL_TREE)
+			parmse.class_container
+			    = gfc_evaluate_data_ref_now (parmse.class_container,
+							 &parmse.pre);
+
 		      gfc_init_block  (&block);
 		      ptr = parmse.expr;
 		      if (e->ts.type == BT_CLASS)
@@ -6680,7 +6747,7 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 		      else
 			tmp = gfc_finish_block (&block);
 
-		      gfc_add_expr_to_block (&se->pre, tmp);
+		      gfc_add_expr_to_block (&dealloc_blk, tmp);
 		    }
 
 		  /* A class array element needs converting back to be a
@@ -6690,7 +6757,12 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 			&& ((CLASS_DATA (fsym)->as
 			     && CLASS_DATA (fsym)->as->type == AS_ASSUMED_RANK)
 			    || CLASS_DATA (e)->attr.dimension))
-		    gfc_conv_class_to_class (&parmse, e, fsym->ts, false,
+		    {
+		      gfc_se class_se = parmse;
+		      gfc_init_block (&class_se.pre);
+		      gfc_init_block (&class_se.post);
+
+		      gfc_conv_class_to_class (&class_se, e, fsym->ts, false,
 				     fsym->attr.intent != INTENT_IN
 				     && (CLASS_DATA (fsym)->attr.class_pointer
 					 || CLASS_DATA (fsym)->attr.allocatable),
@@ -6699,6 +6771,14 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 				     && e->symtree->n.sym->attr.optional,
 				     CLASS_DATA (fsym)->attr.class_pointer
 				     || CLASS_DATA (fsym)->attr.allocatable);
+
+		      parmse.expr = class_se.expr;
+		      stmtblock_t *class_pre_block = defer_to_dealloc_blk
+						     ? &dealloc_blk
+						     : &parmse.pre;
+		      gfc_add_block_to_block (class_pre_block, &class_se.pre);
+		      gfc_add_block_to_block (&parmse.post, &class_se.post);
+		    }
 
 		  if (fsym && (fsym->ts.type == BT_DERIVED
 			       || fsym->ts.type == BT_ASSUMED)
@@ -6776,6 +6856,25 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 	      /* Pass a class array.  */
 	      parmse.use_offset = 1;
 	      gfc_conv_expr_descriptor (&parmse, e);
+	      bool defer_to_dealloc_blk = false;
+
+	      if (fsym->attr.optional
+		  && e->expr_type == EXPR_VARIABLE
+		  && e->symtree->n.sym->attr.optional)
+		{
+		  stmtblock_t block;
+
+		  gfc_init_block (&block);
+		  gfc_add_block_to_block (&block, &parmse.pre);
+
+		  tree t = fold_build3_loc (input_location, COND_EXPR,
+			     void_type_node,
+			     gfc_conv_expr_present (e->symtree->n.sym),
+				    gfc_finish_block (&block),
+				    build_empty_stmt (input_location));
+
+		  gfc_add_expr_to_block (&parmse.pre, t);
+		}
 
 	      /* If an ALLOCATABLE dummy argument has INTENT(OUT) and is
 		 allocated on entry, it must be deallocated.  */
@@ -6784,6 +6883,18 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 		{
 		  stmtblock_t block;
 		  tree ptr;
+
+		  /* In case the data reference to deallocate is dependent on
+		     its own content, save the resulting pointer to a variable
+		     and only use that variable from now on, before the
+		     expression becomes invalid.  */
+		  parmse.expr = gfc_evaluate_data_ref_now (parmse.expr,
+							   &parmse.pre);
+
+		  if (parmse.class_container != NULL_TREE)
+		    parmse.class_container
+			= gfc_evaluate_data_ref_now (parmse.class_container,
+						     &parmse.pre);
 
 		  gfc_init_block  (&block);
 		  ptr = parmse.expr;
@@ -6798,7 +6909,7 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 					 void_type_node, ptr,
 					 null_pointer_node);
 		  gfc_add_expr_to_block (&block, tmp);
-		  gfc_reset_vptr (&block, e);
+		  gfc_reset_vptr (&block, e, parmse.class_container);
 
 		  if (fsym->attr.optional
 		      && e->expr_type == EXPR_VARIABLE
@@ -6816,12 +6927,17 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 		  else
 		    tmp = gfc_finish_block (&block);
 
-		  gfc_add_expr_to_block (&se->pre, tmp);
+		  gfc_add_expr_to_block (&dealloc_blk, tmp);
+		  defer_to_dealloc_blk = true;
 		}
+
+	      gfc_se class_se = parmse;
+	      gfc_init_block (&class_se.pre);
+	      gfc_init_block (&class_se.post);
 
 	      /* The conversion does not repackage the reference to a class
 	         array - _data descriptor.  */
-	      gfc_conv_class_to_class (&parmse, e, fsym->ts, false,
+	      gfc_conv_class_to_class (&class_se, e, fsym->ts, false,
 				     fsym->attr.intent != INTENT_IN
 				     && (CLASS_DATA (fsym)->attr.class_pointer
 					 || CLASS_DATA (fsym)->attr.allocatable),
@@ -6830,6 +6946,13 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 				     && e->symtree->n.sym->attr.optional,
 				     CLASS_DATA (fsym)->attr.class_pointer
 				     || CLASS_DATA (fsym)->attr.allocatable);
+
+	      parmse.expr = class_se.expr;
+	      stmtblock_t *class_pre_block = defer_to_dealloc_blk
+					     ? &dealloc_blk
+					     : &parmse.pre;
+	      gfc_add_block_to_block (class_pre_block, &class_se.pre);
+	      gfc_add_block_to_block (&parmse.post, &class_se.post);
 	    }
 	  else
 	    {
@@ -6980,7 +7103,7 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 					build_empty_stmt (input_location));
 		      }
 		    if (tmp != NULL_TREE)
-		      gfc_add_expr_to_block (&se->pre, tmp);
+		      gfc_add_expr_to_block (&dealloc_blk, tmp);
 		  }
 
 		  tmp = parmse.expr;
@@ -7004,7 +7127,7 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 				     void_type_node,
 				     gfc_conv_expr_present (e->symtree->n.sym),
 				       tmp, build_empty_stmt (input_location));
-		  gfc_add_expr_to_block (&se->pre, tmp);
+		  gfc_add_expr_to_block (&dealloc_blk, tmp);
 		}
 	    }
 	}
@@ -7100,6 +7223,16 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 	      parmse.string_length = e->symtree->n.sym->ts.u.cl->backend_decl;
 	    }
 	}
+
+      /* If any actual argument of the procedure is allocatable and passed
+	 to an allocatable dummy with INTENT(OUT), we conservatively
+	 evaluate actual argument expressions before deallocations are
+	 performed and the procedure is executed.  May create temporaries.
+	 This ensures we conform to F2023:15.5.3, 15.5.4.  */
+      if (e && fsym && force_eval_args
+	  && fsym->attr.intent != INTENT_OUT
+	  && !gfc_is_constant_expr (e))
+	parmse.expr = gfc_evaluate_now (parmse.expr, &parmse.pre);
 
       if (fsym && need_interface_mapping && e)
 	gfc_add_interface_mapping (&mapping, fsym, &parmse, e);
@@ -7499,6 +7632,7 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
       vec_safe_push (arglist, parmse.expr);
     }
 
+  gfc_add_block_to_block (&se->pre, &dealloc_blk);
   gfc_add_block_to_block (&se->pre, &clobbers);
   gfc_finish_interface_mapping (&mapping, &se->pre, &se->post);
 

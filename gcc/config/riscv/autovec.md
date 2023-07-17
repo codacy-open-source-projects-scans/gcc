@@ -58,6 +58,262 @@
 )
 
 ;; =========================================================================
+;; == Gather Load
+;; =========================================================================
+
+(define_expand "len_mask_gather_load<VNX1_QHSD:mode><VNX1_QHSDI:mode>"
+  [(match_operand:VNX1_QHSD 0 "register_operand")
+   (match_operand 1 "pmode_reg_or_0_operand")
+   (match_operand:VNX1_QHSDI 2 "register_operand")
+   (match_operand 3 "<VNX1_QHSD:gs_extension>")
+   (match_operand 4 "<VNX1_QHSD:gs_scale>")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX1_QHSD:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, true);
+  DONE;
+})
+
+(define_expand "len_mask_gather_load<VNX2_QHSD:mode><VNX2_QHSDI:mode>"
+  [(match_operand:VNX2_QHSD 0 "register_operand")
+   (match_operand 1 "pmode_reg_or_0_operand")
+   (match_operand:VNX2_QHSDI 2 "register_operand")
+   (match_operand 3 "<VNX2_QHSD:gs_extension>")
+   (match_operand 4 "<VNX2_QHSD:gs_scale>")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX2_QHSD:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, true);
+  DONE;
+})
+
+(define_expand "len_mask_gather_load<VNX4_QHSD:mode><VNX4_QHSDI:mode>"
+  [(match_operand:VNX4_QHSD 0 "register_operand")
+   (match_operand 1 "pmode_reg_or_0_operand")
+   (match_operand:VNX4_QHSDI 2 "register_operand")
+   (match_operand 3 "<VNX4_QHSD:gs_extension>")
+   (match_operand 4 "<VNX4_QHSD:gs_scale>")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX4_QHSD:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, true);
+  DONE;
+})
+
+(define_expand "len_mask_gather_load<VNX8_QHSD:mode><VNX8_QHSDI:mode>"
+  [(match_operand:VNX8_QHSD 0 "register_operand")
+   (match_operand 1 "pmode_reg_or_0_operand")
+   (match_operand:VNX8_QHSDI 2 "register_operand")
+   (match_operand 3 "<VNX8_QHSD:gs_extension>")
+   (match_operand 4 "<VNX8_QHSD:gs_scale>")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX8_QHSD:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, true);
+  DONE;
+})
+
+(define_expand "len_mask_gather_load<VNX16_QHSD:mode><VNX16_QHSDI:mode>"
+  [(match_operand:VNX16_QHSD 0 "register_operand")
+   (match_operand 1 "pmode_reg_or_0_operand")
+   (match_operand:VNX16_QHSDI 2 "register_operand")
+   (match_operand 3 "<VNX16_QHSD:gs_extension>")
+   (match_operand 4 "<VNX16_QHSD:gs_scale>")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX16_QHSD:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, true);
+  DONE;
+})
+
+(define_expand "len_mask_gather_load<VNX32_QHS:mode><VNX32_QHSI:mode>"
+  [(match_operand:VNX32_QHS 0 "register_operand")
+   (match_operand 1 "pmode_reg_or_0_operand")
+   (match_operand:VNX32_QHSI 2 "register_operand")
+   (match_operand 3 "<VNX32_QHS:gs_extension>")
+   (match_operand 4 "<VNX32_QHS:gs_scale>")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX32_QHS:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, true);
+  DONE;
+})
+
+(define_expand "len_mask_gather_load<VNX64_QH:mode><VNX64_QHI:mode>"
+  [(match_operand:VNX64_QH 0 "register_operand")
+   (match_operand 1 "pmode_reg_or_0_operand")
+   (match_operand:VNX64_QHI 2 "register_operand")
+   (match_operand 3 "<VNX64_QH:gs_extension>")
+   (match_operand 4 "<VNX64_QH:gs_scale>")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX64_QH:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, true);
+  DONE;
+})
+
+;; When SEW = 8 and LMUL = 8, we can't find any index mode with
+;; larger SEW. Since RVV indexed load/store support zero extend
+;; implicitly and not support scaling, we should only allow
+;; operands[3] and operands[4] to be const_1_operand.
+(define_expand "len_mask_gather_load<mode><mode>"
+  [(match_operand:VNX128_Q 0 "register_operand")
+   (match_operand 1 "pmode_reg_or_0_operand")
+   (match_operand:VNX128_Q 2 "register_operand")
+   (match_operand 3 "const_1_operand")
+   (match_operand 4 "const_1_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, true);
+  DONE;
+})
+
+;; =========================================================================
+;; == Scatter Store
+;; =========================================================================
+
+(define_expand "len_mask_scatter_store<VNX1_QHSD:mode><VNX1_QHSDI:mode>"
+  [(match_operand 0 "pmode_reg_or_0_operand")
+   (match_operand:VNX1_QHSDI 1 "register_operand")
+   (match_operand 2 "<VNX1_QHSD:gs_extension>")
+   (match_operand 3 "<VNX1_QHSD:gs_scale>")
+   (match_operand:VNX1_QHSD 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX1_QHSD:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, false);
+  DONE;
+})
+
+(define_expand "len_mask_scatter_store<VNX2_QHSD:mode><VNX2_QHSDI:mode>"
+  [(match_operand 0 "pmode_reg_or_0_operand")
+   (match_operand:VNX2_QHSDI 1 "register_operand")
+   (match_operand 2 "<VNX2_QHSD:gs_extension>")
+   (match_operand 3 "<VNX2_QHSD:gs_scale>")
+   (match_operand:VNX2_QHSD 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX2_QHSD:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, false);
+  DONE;
+})
+
+(define_expand "len_mask_scatter_store<VNX4_QHSD:mode><VNX4_QHSDI:mode>"
+  [(match_operand 0 "pmode_reg_or_0_operand")
+   (match_operand:VNX4_QHSDI 1 "register_operand")
+   (match_operand 2 "<VNX4_QHSD:gs_extension>")
+   (match_operand 3 "<VNX4_QHSD:gs_scale>")
+   (match_operand:VNX4_QHSD 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX4_QHSD:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, false);
+  DONE;
+})
+
+(define_expand "len_mask_scatter_store<VNX8_QHSD:mode><VNX8_QHSDI:mode>"
+  [(match_operand 0 "pmode_reg_or_0_operand")
+   (match_operand:VNX8_QHSDI 1 "register_operand")
+   (match_operand 2 "<VNX8_QHSD:gs_extension>")
+   (match_operand 3 "<VNX8_QHSD:gs_scale>")
+   (match_operand:VNX8_QHSD 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX8_QHSD:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, false);
+  DONE;
+})
+
+(define_expand "len_mask_scatter_store<VNX16_QHSD:mode><VNX16_QHSDI:mode>"
+  [(match_operand 0 "pmode_reg_or_0_operand")
+   (match_operand:VNX16_QHSDI 1 "register_operand")
+   (match_operand 2 "<VNX16_QHSD:gs_extension>")
+   (match_operand 3 "<VNX16_QHSD:gs_scale>")
+   (match_operand:VNX16_QHSD 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX16_QHSD:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, false);
+  DONE;
+})
+
+(define_expand "len_mask_scatter_store<VNX32_QHS:mode><VNX32_QHSI:mode>"
+  [(match_operand 0 "pmode_reg_or_0_operand")
+   (match_operand:VNX32_QHSI 1 "register_operand")
+   (match_operand 2 "<VNX32_QHS:gs_extension>")
+   (match_operand 3 "<VNX32_QHS:gs_scale>")
+   (match_operand:VNX32_QHS 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX32_QHS:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, false);
+  DONE;
+})
+
+(define_expand "len_mask_scatter_store<VNX64_QH:mode><VNX64_QHI:mode>"
+  [(match_operand 0 "pmode_reg_or_0_operand")
+   (match_operand:VNX64_QHI 1 "register_operand")
+   (match_operand 2 "<VNX64_QH:gs_extension>")
+   (match_operand 3 "<VNX64_QH:gs_scale>")
+   (match_operand:VNX64_QH 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VNX64_QH:VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, false);
+  DONE;
+})
+
+;; When SEW = 8 and LMUL = 8, we can't find any index mode with
+;; larger SEW. Since RVV indexed load/store support zero extend
+;; implicitly and not support scaling, we should only allow
+;; operands[3] and operands[4] to be const_1_operand.
+(define_expand "len_mask_scatter_store<mode><mode>"
+  [(match_operand 0 "pmode_reg_or_0_operand")
+   (match_operand:VNX128_Q 1 "register_operand")
+   (match_operand 2 "const_1_operand")
+   (match_operand 3 "const_1_operand")
+   (match_operand:VNX128_Q 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")
+   (match_operand:<VM> 7 "vector_mask_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_gather_scatter (operands, false);
+  DONE;
+})
+
+;; =========================================================================
 ;; == Vector creation
 ;; =========================================================================
 
@@ -1176,5 +1432,125 @@
 {
   riscv_vector::emit_vlmax_insn (code_for_pred (UNSPEC_VXORSIGN, <MODE>mode),
 				 riscv_vector::RVV_BINOP, operands);
+  DONE;
+})
+
+;; -------------------------------------------------------------------------
+;; ---- [INT] Highpart multiplication
+;; -------------------------------------------------------------------------
+;; Includes:
+;; - vmulh.vv
+;; - vmulhu.vv
+;; -------------------------------------------------------------------------
+
+(define_expand "smul<mode>3_highpart"
+  [(match_operand:VFULLI 0 "register_operand")
+   (match_operand:VFULLI 1 "register_operand")
+   (match_operand:VFULLI 2 "register_operand")]
+  "TARGET_VECTOR"
+{
+  insn_code icode = code_for_pred_mulh (UNSPEC_VMULHS, <MODE>mode);
+  riscv_vector::emit_vlmax_insn (icode, riscv_vector::RVV_BINOP, operands);
+  DONE;
+})
+
+(define_expand "umul<mode>3_highpart"
+  [(match_operand:VFULLI 0 "register_operand")
+   (match_operand:VFULLI 1 "register_operand")
+   (match_operand:VFULLI 2 "register_operand")]
+  "TARGET_VECTOR"
+{
+  insn_code icode = code_for_pred_mulh (UNSPEC_VMULHU, <MODE>mode);
+  riscv_vector::emit_vlmax_insn (icode, riscv_vector::RVV_BINOP, operands);
+  DONE;
+})
+
+;; -------------------------------------------------------------------------
+;; ---- [INT] Conditional binary operations
+;; -------------------------------------------------------------------------
+;; Includes:
+;; - vadd.vv/vsub.vv/...
+;; - vadd.vi/vsub.vi/...
+;; -------------------------------------------------------------------------
+
+(define_expand "cond_len_<optab><mode>"
+  [(match_operand:VI 0 "register_operand")
+   (match_operand:<VM> 1 "vector_mask_operand")
+   (any_int_binop_no_shift:VI
+     (match_operand:VI 2 "<binop_rhs1_predicate>")
+     (match_operand:VI 3 "<binop_rhs2_predicate>"))
+   (match_operand:VI 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_cond_len_binop (<CODE>, operands);
+  DONE;
+})
+
+;; -------------------------------------------------------------------------
+;; ---- [FP] Conditional binary operations
+;; -------------------------------------------------------------------------
+;; Includes:
+;; - vfadd.vv/vfsub.vv/...
+;; - vfadd.vf/vfsub.vf/...
+;; -------------------------------------------------------------------------
+
+(define_expand "cond_len_<optab><mode>"
+  [(match_operand:VF 0 "register_operand")
+   (match_operand:<VM> 1 "vector_mask_operand")
+   (any_float_binop:VF
+     (match_operand:VF 2 "register_operand")
+     (match_operand:VF 3 "register_operand"))
+   (match_operand:VF 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_cond_len_binop (<CODE>, operands);
+  DONE;
+})
+
+;; -------------------------------------------------------------------------
+;; Includes:
+;; - vfmin.vv/vfmax.vv
+;; - vfmin.vf/vfmax.vf
+;; -------------------------------------------------------------------------
+
+(define_expand "cond_len_<optab><mode>"
+  [(match_operand:VF 0 "register_operand")
+   (match_operand:<VM> 1 "vector_mask_operand")
+   (any_float_binop_nofrm:VF
+     (match_operand:VF 2 "register_operand")
+     (match_operand:VF 3 "register_operand"))
+   (match_operand:VF 4 "register_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")]
+  "TARGET_VECTOR"
+{
+  riscv_vector::expand_cond_len_binop (<CODE>, operands);
+  DONE;
+})
+
+;; -------------------------------------------------------------------------
+;; ---- [FP] Conditional ternary operations
+;; -------------------------------------------------------------------------
+;; Includes:
+;; - vfmacc/...
+;; -------------------------------------------------------------------------
+
+(define_expand "cond_len_fma<mode>"
+  [(match_operand:VF 0 "register_operand")
+   (match_operand:<VM> 1 "vector_mask_operand")
+   (match_operand:VF 2 "register_operand")
+   (match_operand:VF 3 "register_operand")
+   (match_operand:VF 4 "register_operand")
+   (match_operand:VF 5 "register_operand")
+   (match_operand 6 "autovec_length_operand")
+   (match_operand 7 "const_0_operand")]
+  "TARGET_VECTOR"
+{
+  insn_code icode = code_for_pred_mul (PLUS, <MODE>mode);
+  riscv_vector::expand_cond_len_ternop (icode, operands);
   DONE;
 })

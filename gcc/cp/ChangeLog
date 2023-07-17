@@ -1,3 +1,48 @@
+2023-07-15  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/110441
+	* call.cc (keep_unused_object_arg): Use cp_build_compound_expr
+	instead of building a COMPOUND_EXPR directly.
+
+2023-07-15  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/110524
+	* mangle.cc (write_expression): Handle TEMPLATE_ID_EXPR
+	whose template is already an IDENTIFIER_NODE.
+
+2023-07-14  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	* constexpr.cc (cxx_eval_constant_expression): Pass t to get_value.
+
+2023-07-14  Jason Merrill  <jason@redhat.com>
+
+	PR c++/110344
+	* constexpr.cc (cxx_eval_constant_expression): Move P2738 handling
+	after heap handling.
+	* name-lookup.cc (get_cxx_dialect_name): Add C++26.
+
+2023-07-14  Marek Polacek  <polacek@redhat.com>
+	    Jason Merrill  <jason@redhat.com>
+
+	PR c++/109876
+	* decl.cc (cp_finish_decl): Set TREE_CONSTANT when initializing
+	an object of empty class type.
+	* pt.cc (value_dependent_expression_p) <case VAR_DECL>: Treat a
+	constexpr-declared non-constant variable as value-dependent.
+
+2023-07-11  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/110580
+	* pt.cc (lookup_template_variable): Pass all levels of arguments
+	to coerce_template_parms, and use the parameters from the most
+	general template.
+
+2023-07-10  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/110523
+	* pt.cc (redeclare_class_template): Relax the ttp DECL_CONTEXT
+	assert, and downgrade it to a checking assert.
+
 2023-06-30  Patrick Palka  <ppalka@redhat.com>
 
 	* cp-tree.h (TEMPLATE_PARM_DESCENDANTS): Harden.

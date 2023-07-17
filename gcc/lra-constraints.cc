@@ -329,20 +329,20 @@ in_mem_p (int regno)
   return get_reg_class (regno) == NO_REGS;
 }
 
-/* Return 1 if ADDR is a valid memory address for mode MODE in address
+/* Return true if ADDR is a valid memory address for mode MODE in address
    space AS, and check that each pseudo has the proper kind of hard
    reg.	 */
-static int
+static bool
 valid_address_p (machine_mode mode ATTRIBUTE_UNUSED,
 		 rtx addr, addr_space_t as)
 {
 #ifdef GO_IF_LEGITIMATE_ADDRESS
   lra_assert (ADDR_SPACE_GENERIC_P (as));
   GO_IF_LEGITIMATE_ADDRESS (mode, addr, win);
-  return 0;
+  return false;
 
  win:
-  return 1;
+  return true;
 #else
   return targetm.addr_space.legitimate_address_p (mode, addr, 0, as);
 #endif
@@ -1624,7 +1624,7 @@ insert_move_for_subreg (rtx_insn **before, rtx_insn **after, rtx origreg,
     }
 }
 
-static int valid_address_p (machine_mode mode, rtx addr, addr_space_t as);
+static bool valid_address_p (machine_mode mode, rtx addr, addr_space_t as);
 static bool process_address (int, bool, rtx_insn **, rtx_insn **);
 
 /* Make reloads for subreg in operand NOP with internal subreg mode
@@ -1723,7 +1723,7 @@ simplify_operand_subreg (int nop, machine_mode reg_mode)
 	    = (enum reg_class) targetm.preferred_reload_class (reg, ALL_REGS);
 	  if (get_reload_reg (curr_static_id->operand[nop].type, innermode,
 			      reg, rclass, NULL,
-			      TRUE, "slow/invalid mem", &new_reg))
+			      true, "slow/invalid mem", &new_reg))
 	    {
 	      bool insert_before, insert_after;
 	      bitmap_set_bit (&lra_subreg_reload_pseudos, REGNO (new_reg));
@@ -1743,7 +1743,7 @@ simplify_operand_subreg (int nop, machine_mode reg_mode)
 	    = (enum reg_class) targetm.preferred_reload_class (reg, ALL_REGS);
 	  if (get_reload_reg (curr_static_id->operand[nop].type, mode, reg,
 			      rclass, NULL,
-			      TRUE, "slow/invalid mem", &new_reg))
+			      true, "slow/invalid mem", &new_reg))
 	    {
 	      bool insert_before, insert_after;
 	      bitmap_set_bit (&lra_subreg_reload_pseudos, REGNO (new_reg));
@@ -1828,7 +1828,7 @@ simplify_operand_subreg (int nop, machine_mode reg_mode)
 
       if (get_reload_reg (curr_static_id->operand[nop].type, reg_mode, reg,
 			  rclass, NULL,
-			  TRUE, "subreg reg", &new_reg))
+			  true, "subreg reg", &new_reg))
 	{
 	  bool insert_before, insert_after;
 	  bitmap_set_bit (&lra_subreg_reload_pseudos, REGNO (new_reg));
@@ -1902,7 +1902,7 @@ simplify_operand_subreg (int nop, machine_mode reg_mode)
 
       if (get_reload_reg (curr_static_id->operand[nop].type, mode, reg,
                           rclass, NULL,
-			  TRUE, "paradoxical subreg", &new_reg))
+			  true, "paradoxical subreg", &new_reg))
         {
 	  rtx subreg;
 	  bool insert_before, insert_after;
@@ -4578,7 +4578,7 @@ curr_insn_transform (bool check_only_p)
 		     lra-lives.cc.  */
 		  match_reload (i, goal_alt_matched[i], outputs, goal_alt[i],
 				&goal_alt_exclude_start_hard_regs[i], &before,
-				&after, TRUE);
+				&after, true);
 		}
 	      continue;
 	    }
@@ -4623,7 +4623,7 @@ curr_insn_transform (bool check_only_p)
 				/* This value does not matter for MODIFY.  */
 				GET_MODE_SIZE (GET_MODE (op)));
 	  else if (get_reload_reg (OP_IN, Pmode, *loc, rclass,
-				   NULL, FALSE,
+				   NULL, false,
 				   "offsetable address", &new_reg))
 	    {
 	      rtx addr = *loc;
@@ -4813,6 +4813,10 @@ curr_insn_transform (bool check_only_p)
       lra_update_operator_dups (curr_id);
       /* Something changes -- process the insn.	 */
       lra_update_insn_regno_info (curr_insn);
+      if (asm_noperands (PATTERN (curr_insn)) >= 0
+	  && ++curr_id->asm_reloads_num >= FIRST_PSEUDO_REGISTER)
+	/* Most probably there are no enough registers to satisfy asm insn: */
+	lra_asm_insn_error (curr_insn);
     }
   lra_process_new_insns (curr_insn, before, after, "Inserting insn reload");
   return change_p;
@@ -6184,7 +6188,7 @@ split_reg (bool before_p, int original_regno, rtx_insn *insn,
     {
       lra_assert (next_usage_insns == NULL);
       usage_insn = to;
-      after_p = TRUE;
+      after_p = true;
     }
   else
     {
@@ -6295,7 +6299,7 @@ spill_hard_reg_in_range (int regno, enum reg_class rclass, rtx_insn *from, rtx_i
 	}
       if (insn != NEXT_INSN (to))
 	continue;
-      if (split_reg (TRUE, hard_regno, from, NULL, to))
+      if (split_reg (true, hard_regno, from, NULL, to))
 	return true;
     }
   return false;

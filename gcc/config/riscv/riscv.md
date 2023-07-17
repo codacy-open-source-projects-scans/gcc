@@ -1491,11 +1491,6 @@
 	  DONE;
 	}
     }
-  else
-    {
-      emit_move_insn (operands[0], gen_rtx_AND (<MODE>mode, operands[1], operands[2]));
-      DONE;
-    }
 })
 
 (define_insn "*and<mode>3"
@@ -1594,7 +1589,7 @@
   [(set (match_operand:DI     0 "register_operand"     "=r,r")
 	(zero_extend:DI
 	    (match_operand:SI 1 "nonimmediate_operand" " r,m")))]
-  "TARGET_64BIT && !TARGET_ZBA
+  "TARGET_64BIT && !TARGET_ZBA && !TARGET_XTHEADBB
    && !(register_operand (operands[1], SImode)
         && reg_or_subregno (operands[1]) == VL_REGNUM)"
   "@
@@ -1621,7 +1616,7 @@
   [(set (match_operand:GPR    0 "register_operand"     "=r,r")
 	(zero_extend:GPR
 	    (match_operand:HI 1 "nonimmediate_operand" " r,m")))]
-  "!TARGET_ZBB"
+  "!TARGET_ZBB && !TARGET_XTHEADBB"
   "@
    #
    lhu\t%0,%1"
@@ -1677,7 +1672,7 @@
   [(set (match_operand:SUPERQI   0 "register_operand"     "=r,r")
 	(sign_extend:SUPERQI
 	    (match_operand:SHORT 1 "nonimmediate_operand" " r,m")))]
-  "!TARGET_ZBB"
+  "!TARGET_ZBB && !TARGET_XTHEADBB"
   "@
    #
    l<SHORT:size>\t%0,%1"
