@@ -95,7 +95,7 @@ FROM SymbolTable IMPORT NulSym,
                         IsProcedureReachable, IsParameter, IsConstLit,
                         IsDummy, IsVarAParam, IsProcedureVariable,
                         IsGnuAsm, IsGnuAsmVolatile, IsObject, IsTuple,
-                        IsError, IsHiddenType,
+                        IsError, IsHiddenType, IsVarHeap,
                         IsComponent, IsPublic, IsExtern, IsCtor,
       	       	     	GetMainModule, GetBaseModule, GetModule, GetLocalSym,
                         PutModuleFinallyFunction,
@@ -1584,6 +1584,33 @@ END PromoteToString ;
 
 
 (*
+   PromoteToCString - declare, sym, and then promote it to a string.
+                      Note that if sym is a single character we do
+                          *not* record it as a string
+                          but as a char however we always
+                          return a string constant.
+*)
+
+PROCEDURE PromoteToCString (tokenno: CARDINAL; sym: CARDINAL) : Tree ;
+VAR
+   size: CARDINAL ;
+   ch  : CHAR ;
+BEGIN
+   DeclareConstant (tokenno, sym) ;
+   IF IsConst (sym) AND (GetSType (sym) = Char)
+   THEN
+      PushValue (sym) ;
+      ch := PopChar (tokenno) ;
+      RETURN BuildCStringConstant (string (InitStringChar (ch)), 1)
+   ELSE
+      size := GetStringLength (sym) ;
+      RETURN BuildCStringConstant (KeyToCharStar (GetString (sym)),
+                                   size)
+   END
+END PromoteToCString ;
+
+
+(*
    WalkConstructor - walks all dependants of, sym.
 *)
 
@@ -2118,7 +2145,8 @@ END WalkTypeInfo ;
 
 PROCEDURE DeclareUnboundedProcedureParameters (sym: WORD) ;
 VAR
-   son, type,
+   param,
+   type,
    p, i     : CARDINAL ;
    location : location_t ;
 BEGIN
@@ -2129,8 +2157,8 @@ BEGIN
       WHILE i>0 DO
          IF IsUnboundedParam(sym, i)
          THEN
-            son := GetNthParam(sym, i) ;
-            type := GetSType(son) ;
+            param := GetNthParam(sym, i) ;
+            type := GetSType(param) ;
             TraverseDependants(type) ;
             IF GccKnowsAbout(type)
             THEN
@@ -2138,8 +2166,8 @@ BEGIN
                BuildTypeDeclaration(location, Mod2Gcc(type))
             END
          ELSE
-            son := GetNth(sym, i) ;
-            type := GetSType(son) ;
+            param := GetNth(sym, i) ;
+            type := GetSType(param) ;
             TraverseDependants(type)
          END ;
          DEC(i)
@@ -2154,31 +2182,24 @@ END DeclareUnboundedProcedureParameters ;
 
 PROCEDURE WalkUnboundedProcedureParameters (sym: WORD) ;
 VAR
-   son,
+   param,
    type,
    p, i: CARDINAL ;
 BEGIN
-   IF IsProcedure(sym)
+   IF IsProcedure (sym)
    THEN
-      p := NoOfParam(sym) ;
+      p := NoOfParam (sym) ;
       i := p ;
       WHILE i>0 DO
-         IF IsUnboundedParam(sym, i)
+         IF IsUnboundedParam (sym, i)
          THEN
-            son := GetNthParam(sym, i) ;
-            type := GetSType(son) ;
-            WalkTypeInfo(type) ;
-(*
-            type := GetUnboundedRecordType(type) ;
-            Assert(IsRecord(type)) ;
-            RecordNotPacked(type)      (* which is never packed.                   *)
-*)
+            param := GetNthParam (sym, i)
          ELSE
-            son := GetNth(sym, i) ;
-            type := GetSType(son) ;
-            WalkTypeInfo(type)
+            param := GetNth (sym, i)
          END ;
-         DEC(i)
+         type := GetSType (param) ;
+         WalkTypeInfo (type) ;
+         DEC (i)
       END
    END
 END WalkUnboundedProcedureParameters ;
@@ -3173,7 +3194,7 @@ VAR
    varType : CARDINAL ;
    location: location_t ;
 BEGIN
-   IF IsComponent (var)
+   IF IsComponent (var) OR IsVarHeap (var)
    THEN
       RETURN
    END ;
@@ -3908,6 +3929,10 @@ BEGIN
       IF IsComponent(sym)
       THEN
          printf0('component ')
+      END ;
+      IF IsVarHeap (sym)
+      THEN
+         printf0('heap ')
       END ;
       printf0 ('\n') ;
       PrintInitialized (sym) ;

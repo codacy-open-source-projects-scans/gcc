@@ -708,6 +708,45 @@ move_stmt (gimple *stmt, gimple_stmt_iterator *gsi, auto_bitmap &inserted_exprs)
   reset_flow_sensitive_info (name);
 }
 
+/* RAII style class to temporarily remove flow sensitive
+   from ssa names defined by a gimple statement.  */
+class auto_flow_sensitive
+{
+public:
+  auto_flow_sensitive (gimple *s);
+  ~auto_flow_sensitive ();
+private:
+  auto_vec<std::pair<tree, flow_sensitive_info_storage>, 2> stack;
+};
+
+/* Constructor for auto_flow_sensitive. Saves
+   off the ssa names' flow sensitive information
+   that was defined by gimple statement S and
+   resets it to be non-flow based ones. */
+
+auto_flow_sensitive::auto_flow_sensitive (gimple *s)
+{
+  if (!s)
+    return;
+  ssa_op_iter it;
+  tree def;
+  FOR_EACH_SSA_TREE_OPERAND (def, s, it, SSA_OP_DEF)
+    {
+      flow_sensitive_info_storage storage;
+      storage.save_and_clear (def);
+      stack.safe_push (std::make_pair (def, storage));
+    }
+}
+
+/* Deconstructor, restores the flow sensitive information
+   for the SSA names that had been saved off.  */
+
+auto_flow_sensitive::~auto_flow_sensitive ()
+{
+  for (auto p : stack)
+    p.second.restore (p.first);
+}
+
 /*  The function match_simplify_replacement does the main work of doing the
     replacement using match and simplify.  Return true if the replacement is done.
     Otherwise return false.
@@ -793,9 +832,15 @@ match_simplify_replacement (basic_block cond_bb, basic_block middle_bb,
     return false;
 
   tree type = TREE_TYPE (gimple_phi_result (phi));
-  result = gimple_simplify_phiopt (early_p, type, stmt,
-				   arg_true, arg_false,
-				   &seq);
+  {
+    auto_flow_sensitive s1(stmt_to_move);
+    auto_flow_sensitive s_alt(stmt_to_move_alt);
+
+    result = gimple_simplify_phiopt (early_p, type, stmt,
+				     arg_true, arg_false,
+				    &seq);
+  }
+
   if (!result)
     return false;
 
@@ -1580,10 +1625,6 @@ minmax_replacement (basic_block cond_bb, basic_block middle_bb, basic_block alt_
 
   tree type = TREE_TYPE (PHI_RESULT (phi));
 
-  /* The optimization may be unsafe due to NaNs.  */
-  if (HONOR_NANS (type) || HONOR_SIGNED_ZEROS (type))
-    return false;
-
   gcond *cond = as_a <gcond *> (*gsi_last_bb (cond_bb));
   enum tree_code cmp = gimple_cond_code (cond);
   tree rhs = gimple_cond_rhs (cond);
@@ -1770,6 +1811,9 @@ minmax_replacement (basic_block cond_bb, basic_block middle_bb, basic_block alt_
       else
 	return false;
     }
+  else if (HONOR_NANS (type) || HONOR_SIGNED_ZEROS (type))
+    /* The optimization may be unsafe due to NaNs.  */
+    return false;
   else if (middle_bb != alt_middle_bb && threeway_p)
     {
       /* Recognize the following case:
@@ -2103,7 +2147,19 @@ minmax_replacement (basic_block cond_bb, basic_block middle_bb, basic_block alt_
   /* Emit the statement to compute min/max.  */
   gimple_seq stmts = NULL;
   tree phi_result = PHI_RESULT (phi);
-  result = gimple_build (&stmts, minmax, TREE_TYPE (phi_result), arg0, arg1);
+
+  /* When we can't use a MIN/MAX_EXPR still make sure the expression
+     stays in a form to be recognized by ISA that map to IEEE x > y ? x : y
+     semantics (that's not IEEE max semantics).  */
+  if (HONOR_NANS (type) || HONOR_SIGNED_ZEROS (type))
+    {
+      result = gimple_build (&stmts, cmp, boolean_type_node,
+			     gimple_cond_lhs (cond), rhs);
+      result = gimple_build (&stmts, COND_EXPR, TREE_TYPE (phi_result),
+			     result, arg_true, arg_false);
+    }
+  else
+    result = gimple_build (&stmts, minmax, TREE_TYPE (phi_result), arg0, arg1);
 
   gsi = gsi_last_bb (cond_bb);
   gsi_insert_seq_before (&gsi, stmts, GSI_NEW_STMT);

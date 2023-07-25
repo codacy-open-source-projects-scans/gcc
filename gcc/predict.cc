@@ -4003,8 +4003,8 @@ estimate_bb_frequencies ()
 		break;
 	      }
 	}
-      tmp = tmp * freq_max + sreal (1, -1);
-      profile_count count = profile_count::from_gcov_type (tmp.to_int ());
+      tmp = tmp * freq_max;
+      profile_count count = profile_count::from_gcov_type (tmp.to_nearest_int ());
 
       /* If we have profile feedback in which this function was never
 	 executed, then preserve this info.  */
@@ -4142,11 +4142,11 @@ pass_profile::execute (function *fun)
     profile_status_for_fn (fun) = PROFILE_GUESSED;
  if (dump_file && (dump_flags & TDF_DETAILS))
    {
+     sreal iterations;
      for (auto loop : loops_list (cfun, LI_FROM_INNERMOST))
-       if (loop->header->count.initialized_p ())
-         fprintf (dump_file, "Loop got predicted %d to iterate %i times.\n",
-       	   loop->num,
-       	   (int)expected_loop_iterations_unbounded (loop));
+       if (expected_loop_iterations_by_profile (loop, &iterations))
+	 fprintf (dump_file, "Loop got predicted %d to iterate %f times.\n",
+	   loop->num, iterations.to_double ());
    }
   return 0;
 }

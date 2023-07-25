@@ -610,6 +610,7 @@ namespace __format
     {
       const size_t __buflen = 0x20;
       _CharT __padding_chars[__buflen];
+      __padding_chars[0] = _CharT();
       basic_string_view<_CharT> __padding{__padding_chars, __buflen};
 
       auto __pad = [&__padding] (size_t __n, _Out& __o) {
@@ -3553,14 +3554,14 @@ namespace __format
 
       using iterator = typename _Scanner<_CharT>::iterator;
 
-      void
+      constexpr void
       _M_on_chars(iterator __last) override
       {
 	basic_string_view<_CharT> __str(this->begin(), __last);
 	_M_fc.advance_to(__format::__write(_M_fc.out(), __str));
       }
 
-      void
+      constexpr void
       _M_format_arg(size_t __id) override
       {
 	using _Context = basic_format_context<_Out, _CharT>;

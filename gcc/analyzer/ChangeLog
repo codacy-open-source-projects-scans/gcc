@@ -1,3 +1,30 @@
+2023-07-21  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/110455
+	* region-model.cc (region_model::get_gassign_result): Only check
+	for bad shift counts when dealing with an integral type.
+
+2023-07-21  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/110433
+	PR middle-end/110612
+	* access-diagram.cc (class spatial_item): Add virtual dtor.
+
+2023-07-21  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/110387
+	* region.h (struct cast_region::key_t): Support "m_type" being
+	null by using "m_original_region" for empty/deleted slots.
+
+2023-07-19  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/110700
+	* region-model-manager.cc
+	(region_model_manager::get_or_create_int_cst): Assert that we have
+	an integral or pointer type.
+	* sm-taint.cc (taint_state_machine::check_for_tainted_divisor):
+	Don't check non-integral types.
+
 2023-06-29  benjamin priour  <priour.be@gmail.com>
 
 	PR analyzer/110198

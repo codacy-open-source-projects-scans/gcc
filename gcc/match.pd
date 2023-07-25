@@ -1229,7 +1229,9 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
 /* (a | b) & (a == b)  -->  a & b (boolean version of the above).  */
 (simplify
  (bit_and:c (bit_ior @0 @1) (nop_convert? (eq:c @0 @1)))
- (bit_and @0 @1))
+ (if (INTEGRAL_TYPE_P (TREE_TYPE (@0))
+      && TYPE_PRECISION (TREE_TYPE (@0)) == 1)
+  (bit_and @0 @1)))
 
 /* a | ~(a ^ b)  -->  a | ~b  */
 (simplify
@@ -1239,7 +1241,9 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
 /* a | (a == b)  -->  a | (b^1) (boolean version of the above). */
 (simplify
  (bit_ior:c @0 (nop_convert? (eq:c @0 @1)))
- (bit_ior @0 (bit_xor @1 { build_one_cst (type); })))
+ (if (INTEGRAL_TYPE_P (TREE_TYPE (@0))
+      && TYPE_PRECISION (TREE_TYPE (@0)) == 1)
+  (bit_ior @0 (bit_xor @1 { build_one_cst (type); }))))
 
 /* (a | b) | (a &^ b)  -->  a | b  */
 (for op (bit_and bit_xor)
@@ -1255,7 +1259,9 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
 /* (a & b) | (a == b)  -->  a == b  */
 (simplify
  (bit_ior:c (bit_and:c @0 @1) (nop_convert?@2 (eq @0 @1)))
- @2)
+ (if (INTEGRAL_TYPE_P (TREE_TYPE (@0))
+      && TYPE_PRECISION (TREE_TYPE (@0)) == 1)
+  @2))
 
 /* ~(~a & b)  -->  a | ~b  */
 (simplify
@@ -1641,6 +1647,12 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
  (bit_xor:c (convert1? (bit_ior:c @@0 @1)) (convert2? @0))
  (if (tree_nop_conversion_p (type, TREE_TYPE (@0)))
   (convert (bit_and @1 (bit_not @0)))))
+
+/* (~X | Y) ^ X -> ~(X & Y).  */
+(simplify
+ (bit_xor:c (nop_convert1? (bit_ior:c (nop_convert2? (bit_not @0)) @1)) @2)
+ (if (bitwise_equal_p (@0, @2))
+  (convert (bit_not (bit_and @0 (convert @1))))))
 
 /* Convert ~X ^ ~Y to X ^ Y.  */
 (simplify
@@ -3497,7 +3509,11 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
 (for minmax (min max)
  (simplify
   (minmax @0 @0)
-  @0))
+  @0)
+/* max(max(x,y),x) -> max(x,y)  */
+ (simplify
+  (minmax:c (minmax:c@2 @0 @1) @0)
+  @2))
 /* For fmin() and fmax(), skip folding when both are sNaN.  */
 (for minmax (FMIN_ALL FMAX_ALL)
  (simplify

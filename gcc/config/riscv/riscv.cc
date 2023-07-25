@@ -148,6 +148,9 @@ struct GTY(())  machine_function {
      not be considered by the prologue and epilogue.  */
   bool reg_is_wrapped_separately[FIRST_PSEUDO_REGISTER];
 
+  /* The RTL variable which stores the dynamic FRM value.  We always use this
+     RTX to restore dynamic FRM rounding mode in mode switching.  */
+  rtx dynamic_frm;
 };
 
 /* Information about a single argument.  */
@@ -861,7 +864,7 @@ riscv_index_reg_class ()
    but extensions might support that.  */
 
 int
-riscv_regno_ok_for_index_p (int regno)
+riscv_regno_ok_for_index_p (int)
 {
   return 0;
 }
@@ -969,8 +972,8 @@ riscv_valid_lo_sum_p (enum riscv_symbol_type sym_type, machine_mode mode,
 }
 
 /* Return true if mode is the RVV enabled mode.
-   For example: 'VNx1DI' mode is disabled if MIN_VLEN == 32.
-   'VNx1SI' mode is enabled if MIN_VLEN == 32.  */
+   For example: 'RVVMF2SI' mode is disabled,
+   wheras 'RVVM1SI' mode is enabled if MIN_VLEN == 32.  */
 
 bool
 riscv_v_ext_vector_mode_p (machine_mode mode)
@@ -1020,9 +1023,34 @@ riscv_v_ext_mode_p (machine_mode mode)
 poly_int64
 riscv_v_adjust_nunits (machine_mode mode, int scale)
 {
+  gcc_assert (GET_MODE_CLASS (mode) == MODE_VECTOR_BOOL);
   if (riscv_v_ext_mode_p (mode))
-    return riscv_vector_chunks * scale;
+    {
+      if (TARGET_MIN_VLEN == 32)
+	scale = scale / 2;
+      return riscv_vector_chunks * scale;
+    }
   return scale;
+}
+
+/* Call from ADJUST_NUNITS in riscv-modes.def. Return the correct
+   NUNITS size for corresponding machine_mode.  */
+
+poly_int64
+riscv_v_adjust_nunits (machine_mode mode, bool fractional_p, int lmul, int nf)
+{
+  if (riscv_v_ext_mode_p (mode))
+    {
+      scalar_mode smode = GET_MODE_INNER (mode);
+      int size = GET_MODE_SIZE (smode);
+      int nunits_per_chunk = riscv_bytes_per_vector_chunk / size;
+      if (fractional_p)
+	return nunits_per_chunk / lmul * riscv_vector_chunks * nf;
+      else
+	return nunits_per_chunk * lmul * riscv_vector_chunks * nf;
+    }
+  /* Set the disabled RVV modes size as 1 by default.  */
+  return 1;
 }
 
 /* Call from ADJUST_BYTESIZE in riscv-modes.def.  Return the correct
@@ -1032,17 +1060,20 @@ poly_int64
 riscv_v_adjust_bytesize (machine_mode mode, int scale)
 {
   if (riscv_v_ext_vector_mode_p (mode))
-  {
-    poly_uint16 mode_size = GET_MODE_SIZE (mode);
+    {
+      poly_int64 nunits = GET_MODE_NUNITS (mode);
+      poly_int64 mode_size = GET_MODE_SIZE (mode);
 
-    if (maybe_eq (mode_size, (uint16_t)-1))
-      mode_size = riscv_vector_chunks * scale;
+      if (maybe_eq (mode_size, (uint16_t) -1))
+	mode_size = riscv_vector_chunks * scale;
 
-    if (known_gt (mode_size, BYTES_PER_RISCV_VECTOR))
-      mode_size = BYTES_PER_RISCV_VECTOR;
-
-    return mode_size;
-  }
+      if (nunits.coeffs[0] > 8)
+	return exact_div (nunits, 8);
+      else if (nunits.is_constant ())
+	return 1;
+      else
+	return poly_int64 (1, 1);
+    }
 
   return scale;
 }
@@ -1053,10 +1084,7 @@ riscv_v_adjust_bytesize (machine_mode mode, int scale)
 poly_int64
 riscv_v_adjust_precision (machine_mode mode, int scale)
 {
-  if (riscv_v_ext_vector_mode_p (mode))
-    return riscv_vector_chunks * scale;
-
-  return scale;
+  return riscv_v_adjust_nunits (mode, scale);
 }
 
 /* Return true if X is a valid address for machine mode MODE.  If it is,
@@ -2052,18 +2080,21 @@ riscv_legitimize_poly_move (machine_mode mode, rtx dest, rtx tmp, rtx src)
       riscv_emit_move (dest, GEN_INT (value.to_constant ()));
       return;
     }
-  else if ((factor % vlenb) == 0)
-    div_factor = 1;
-  else if ((factor % (vlenb / 2)) == 0)
-    div_factor = 2;
-  else if ((factor % (vlenb / 4)) == 0)
-    div_factor = 4;
-  else if ((factor % (vlenb / 8)) == 0)
-    div_factor = 8;
-  else if ((factor % (vlenb / 16)) == 0)
-    div_factor = 16;
   else
-    gcc_unreachable ();
+    {
+      /* FIXME: We currently DON'T support TARGET_MIN_VLEN > 4096.  */
+      int max_power = exact_log2 (4096 / 128);
+      for (int i = 0; i < max_power; i++)
+	{
+	  int possible_div_factor = 1 << i;
+	  if (factor % (vlenb / possible_div_factor) == 0)
+	    {
+	      div_factor = possible_div_factor;
+	      break;
+	    }
+	}
+      gcc_assert (div_factor != 0);
+    }
 
   if (div_factor != 1)
     riscv_expand_op (LSHIFTRT, mode, tmp, tmp,
@@ -6476,15 +6507,8 @@ riscv_init_machine_status (void)
 static poly_uint16
 riscv_convert_vector_bits (void)
 {
-  if (TARGET_MIN_VLEN >= 128)
-    {
-      /* We have Full 'V' extension for application processors. It's specified
-	 by -march=rv64gcv/rv32gcv, The 'V' extension depends upon the Zvl128b
-	 and Zve64d extensions. Thus the number of bytes in a vector is 16 + 16
-	 * x1 which is riscv_vector_chunks * 16 = poly_int (16, 16).  */
-      riscv_bytes_per_vector_chunk = 16;
-    }
-  else if (TARGET_MIN_VLEN > 32)
+  int chunk_num;
+  if (TARGET_MIN_VLEN > 32)
     {
       /* When targetting minimum VLEN > 32, we should use 64-bit chunk size.
 	 Otherwise we can not include SEW = 64bits.
@@ -6493,6 +6517,16 @@ riscv_convert_vector_bits (void)
 	 Thus the number of bytes in a vector is 8 + 8 * x1 which is
 	 riscv_vector_chunks * 8 = poly_int (8, 8).  */
       riscv_bytes_per_vector_chunk = 8;
+      /* Adjust BYTES_PER_RISCV_VECTOR according to TARGET_MIN_VLEN:
+	   - TARGET_MIN_VLEN = 64bit: [8,8]
+	   - TARGET_MIN_VLEN = 128bit: [16,16]
+	   - TARGET_MIN_VLEN = 256bit: [32,32]
+	   - TARGET_MIN_VLEN = 512bit: [64,64]
+	   - TARGET_MIN_VLEN = 1024bit: [128,128]
+	   - TARGET_MIN_VLEN = 2048bit: [256,256]
+	   - TARGET_MIN_VLEN = 4096bit: [512,512]
+	   FIXME: We currently DON'T support TARGET_MIN_VLEN > 4096bit.  */
+      chunk_num = TARGET_MIN_VLEN / 64;
     }
   else
     {
@@ -6502,6 +6536,7 @@ riscv_convert_vector_bits (void)
 	 Thus the number of bytes in a vector is 4 + 4 * x1 which is
 	 riscv_vector_chunks * 4 = poly_int (4, 4).  */
       riscv_bytes_per_vector_chunk = 4;
+      chunk_num = 1;
     }
 
   /* Set riscv_vector_chunks as poly (1, 1) run-time constant if TARGET_VECTOR
@@ -6515,7 +6550,7 @@ riscv_convert_vector_bits (void)
       if (riscv_autovec_preference == RVV_FIXED_VLMAX)
 	return (int) TARGET_MIN_VLEN / (riscv_bytes_per_vector_chunk * 8);
       else
-	return poly_uint16 (1, 1);
+	return poly_uint16 (chunk_num, chunk_num);
     }
   else
     return 1;
@@ -6671,6 +6706,14 @@ riscv_option_override (void)
 
       riscv_stack_protector_guard_offset = offs;
     }
+
+  /* FIXME: We don't allow TARGET_MIN_VLEN > 4096 since the datatypes of
+     both GET_MODE_SIZE and GET_MODE_BITSIZE are poly_uint16.
+
+     We can only allow TARGET_MIN_VLEN * 8 (LMUL) < 65535.  */
+  if (TARGET_MIN_VLEN > 4096)
+    sorry (
+      "Current RISC-V GCC cannot support VLEN greater than 4096bit for 'V' Extension");
 
   /* Convert -march to a chunks count.  */
   riscv_vector_chunks = riscv_convert_vector_bits ();
@@ -7641,6 +7684,55 @@ riscv_vectorize_preferred_vector_alignment (const_tree type)
   return TYPE_ALIGN (type);
 }
 
+/* Return true if it is static FRM rounding mode.  */
+
+static bool
+riscv_static_frm_mode_p (int mode)
+{
+  switch (mode)
+    {
+    case FRM_MODE_RDN:
+    case FRM_MODE_RUP:
+    case FRM_MODE_RTZ:
+    case FRM_MODE_RMM:
+    case FRM_MODE_RNE:
+      return true;
+    default:
+      return false;
+    }
+
+  gcc_unreachable ();
+}
+
+/* Implement the floating-point Mode Switching.  */
+
+static void
+riscv_emit_frm_mode_set (int mode, int prev_mode)
+{
+  if (mode != prev_mode)
+    {
+      rtx backup_reg = cfun->machine->dynamic_frm;
+      /* TODO: By design, FRM_MODE_xxx used by mode switch which is
+	 different from the FRM value like FRM_RTZ defined in
+	 riscv-protos.h.  When mode switching we actually need a conversion
+	 function to convert the mode of mode switching to the actual
+	 FRM value like FRM_RTZ.  For now, the value between the mode of
+	 mode swith and the FRM value in riscv-protos.h take the same value,
+	 and then we leverage this assumption when emit.  */
+      rtx frm = gen_int_mode (mode, SImode);
+
+      if (mode == FRM_MODE_DYN_EXIT && prev_mode != FRM_MODE_DYN)
+	/* No need to emit when prev mode is DYN already.  */
+	emit_insn (gen_fsrmsi_restore_exit (backup_reg));
+      else if (mode == FRM_MODE_DYN)
+	/* Restore frm value from backup when switch to DYN mode.  */
+	emit_insn (gen_fsrmsi_restore (backup_reg));
+      else if (riscv_static_frm_mode_p (mode))
+	/* Set frm value when switch to static mode.  */
+	emit_insn (gen_fsrmsi_restore (frm));
+    }
+}
+
 /* Implement Mode switching.  */
 
 static void
@@ -7654,25 +7746,7 @@ riscv_emit_mode_set (int entity, int mode, int prev_mode,
 	emit_insn (gen_vxrmsi (gen_int_mode (mode, SImode)));
       break;
     case RISCV_FRM:
-      /* Switching to the dynamic rounding mode is not necessary.  When an
-	 instruction requests it, it effectively uses the rounding mode already
-	 set in the FRM register.  All other rounding modes require us to
-	 switch the rounding mode via the FRM register.  */
-      if (mode != FRM_MODE_DYN && mode != prev_mode)
-	{
-	  /* TODO: By design, FRM_MODE_xxx used by mode switch which is
-	     different from the FRM value like FRM_RTZ defined in
-	     riscv-protos.h.  When mode switching we actually need a conversion
-	     function to convert the mode of mode switching to the actual
-	     FRM value like FRM_RTZ.  For now, the value between the mode of
-	     mode swith and the FRM value in riscv-protos.h take the same value,
-	     and then we leverage this assumption when emit.  */
-	  rtx scaler = gen_reg_rtx (SImode);
-	  rtx imm = gen_int_mode (mode, SImode);
-
-	  emit_insn (gen_movsi (scaler, imm));
-	  emit_insn (gen_fsrm (scaler, scaler));
-	}
+      riscv_emit_frm_mode_set (mode, prev_mode);
       break;
     default:
       gcc_unreachable ();
@@ -7692,10 +7766,7 @@ riscv_mode_needed (int entity, rtx_insn *insn)
     case RISCV_VXRM:
       return code >= 0 ? get_attr_vxrm_mode (insn) : VXRM_MODE_NONE;
     case RISCV_FRM:
-      /* TODO: Here we may return FRM_MODE_NONE from get_attr_frm_mode, as well
-	 as FRM_MODE_DYN as default.  It is kind of inconsistent and we will
-	 take care of it after dynamic rounding mode.  */
-      return code >= 0 ? get_attr_frm_mode (insn) : FRM_MODE_DYN;
+      return code >= 0 ? get_attr_frm_mode (insn) : FRM_MODE_NONE;
     default:
       gcc_unreachable ();
     }
@@ -7811,10 +7882,18 @@ riscv_mode_entry (int entity)
     case RISCV_VXRM:
       return VXRM_MODE_NONE;
     case RISCV_FRM:
-      /* According to RVV 1.0 spec, all vector floating-point operations use
-	 the dynamic rounding mode in the frm register.  Likewise in other
-	 similar places.  */
-      return FRM_MODE_DYN;
+      {
+	if (!cfun->machine->dynamic_frm)
+	  {
+	    cfun->machine->dynamic_frm = gen_reg_rtx (SImode);
+	    emit_insn_at_entry (gen_frrmsi (cfun->machine->dynamic_frm));
+	  }
+
+	  /* According to RVV 1.0 spec, all vector floating-point operations use
+	     the dynamic rounding mode in the frm register.  Likewise in other
+	     similar places.  */
+	return FRM_MODE_DYN;
+      }
     default:
       gcc_unreachable ();
     }
@@ -7831,7 +7910,7 @@ riscv_mode_exit (int entity)
     case RISCV_VXRM:
       return VXRM_MODE_NONE;
     case RISCV_FRM:
-      return FRM_MODE_DYN;
+      return FRM_MODE_DYN_EXIT;
     default:
       gcc_unreachable ();
     }
