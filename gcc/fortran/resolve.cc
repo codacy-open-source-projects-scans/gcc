@@ -1396,11 +1396,14 @@ resolve_structure_cons (gfc_expr *expr, int init)
 	 the one of the structure, ensure this if the lengths are known at
  	 compile time and when we are dealing with PARAMETER or structure
 	 constructors.  */
-      if (cons->expr->ts.type == BT_CHARACTER && comp->ts.u.cl
-	  && comp->ts.u.cl->length
+      if (cons->expr->ts.type == BT_CHARACTER
+	  && comp->ts.type == BT_CHARACTER
+	  && comp->ts.u.cl && comp->ts.u.cl->length
 	  && comp->ts.u.cl->length->expr_type == EXPR_CONSTANT
 	  && cons->expr->ts.u.cl && cons->expr->ts.u.cl->length
 	  && cons->expr->ts.u.cl->length->expr_type == EXPR_CONSTANT
+	  && cons->expr->ts.u.cl->length->ts.type == BT_INTEGER
+	  && comp->ts.u.cl->length->ts.type == BT_INTEGER
 	  && mpz_cmp (cons->expr->ts.u.cl->length->value.integer,
 		      comp->ts.u.cl->length->value.integer) != 0)
 	{
@@ -17966,7 +17969,10 @@ resolve_types (gfc_namespace *ns)
 
   for (n = ns->contained; n; n = n->sibling)
     {
-      if (gfc_pure (ns->proc_name) && !gfc_pure (n->proc_name))
+      /* Exclude final wrappers with the test for the artificial attribute.  */
+      if (gfc_pure (ns->proc_name)
+	  && !gfc_pure (n->proc_name)
+	  && !n->proc_name->attr.artificial)
 	gfc_error ("Contained procedure %qs at %L of a PURE procedure must "
 		   "also be PURE", n->proc_name->name,
 		   &n->proc_name->declared_at);

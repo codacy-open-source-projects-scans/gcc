@@ -2931,7 +2931,8 @@ expand_partial_load_optab_fn (internal_fn ifn, gcall *stmt, convert_optab optab)
   type = TREE_TYPE (lhs);
   rhs = expand_call_mem_ref (type, stmt, 0);
 
-  if (optab == vec_mask_load_lanes_optab)
+  if (optab == vec_mask_load_lanes_optab
+      || optab == vec_mask_len_load_lanes_optab)
     icode = get_multi_vector_move (type, optab);
   else if (optab == len_load_optab)
     icode = direct_optab_handler (optab, TYPE_MODE (type));
@@ -2973,7 +2974,8 @@ expand_partial_store_optab_fn (internal_fn ifn, gcall *stmt, convert_optab optab
   type = TREE_TYPE (rhs);
   lhs = expand_call_mem_ref (type, stmt, 0);
 
-  if (optab == vec_mask_store_lanes_optab)
+  if (optab == vec_mask_store_lanes_optab
+      || optab == vec_mask_len_store_lanes_optab)
     icode = get_multi_vector_move (type, optab);
   else if (optab == len_store_optab)
     icode = direct_optab_handler (optab, TYPE_MODE (type));
@@ -4443,6 +4445,30 @@ get_conditional_internal_fn (internal_fn fn)
     }
 }
 
+/* If there exists an internal function like IFN that operates on vectors,
+   but with additional length and bias parameters, return the internal_fn
+   for that function, otherwise return IFN_LAST.  */
+internal_fn
+get_len_internal_fn (internal_fn fn)
+{
+  switch (fn)
+    {
+#undef DEF_INTERNAL_COND_FN
+#undef DEF_INTERNAL_SIGNED_COND_FN
+#define DEF_INTERNAL_COND_FN(NAME, ...)                                        \
+  case IFN_COND_##NAME:                                                        \
+    return IFN_COND_LEN_##NAME;
+#define DEF_INTERNAL_SIGNED_COND_FN(NAME, ...)                                 \
+  case IFN_COND_##NAME:                                                        \
+    return IFN_COND_LEN_##NAME;
+#include "internal-fn.def"
+#undef DEF_INTERNAL_COND_FN
+#undef DEF_INTERNAL_SIGNED_COND_FN
+    default:
+      return IFN_LAST;
+    }
+}
+
 /* If IFN implements the conditional form of an unconditional internal
    function, return that unconditional function, otherwise return IFN_LAST.  */
 
@@ -4552,6 +4578,7 @@ internal_load_fn_p (internal_fn fn)
     case IFN_MASK_LOAD:
     case IFN_LOAD_LANES:
     case IFN_MASK_LOAD_LANES:
+    case IFN_MASK_LEN_LOAD_LANES:
     case IFN_GATHER_LOAD:
     case IFN_MASK_GATHER_LOAD:
     case IFN_MASK_LEN_GATHER_LOAD:
@@ -4574,6 +4601,7 @@ internal_store_fn_p (internal_fn fn)
     case IFN_MASK_STORE:
     case IFN_STORE_LANES:
     case IFN_MASK_STORE_LANES:
+    case IFN_MASK_LEN_STORE_LANES:
     case IFN_SCATTER_STORE:
     case IFN_MASK_SCATTER_STORE:
     case IFN_MASK_LEN_SCATTER_STORE:
@@ -4646,6 +4674,8 @@ internal_fn_len_index (internal_fn fn)
     case IFN_COND_LEN_NEG:
     case IFN_MASK_LEN_LOAD:
     case IFN_MASK_LEN_STORE:
+    case IFN_MASK_LEN_LOAD_LANES:
+    case IFN_MASK_LEN_STORE_LANES:
       return 3;
 
     default:
@@ -4663,8 +4693,10 @@ internal_fn_mask_index (internal_fn fn)
     {
     case IFN_MASK_LOAD:
     case IFN_MASK_LOAD_LANES:
+    case IFN_MASK_LEN_LOAD_LANES:
     case IFN_MASK_STORE:
     case IFN_MASK_STORE_LANES:
+    case IFN_MASK_LEN_STORE_LANES:
     case IFN_MASK_LEN_LOAD:
     case IFN_MASK_LEN_STORE:
       return 2;
@@ -4700,6 +4732,7 @@ internal_fn_stored_value_index (internal_fn fn)
       return 4;
 
     case IFN_MASK_LEN_STORE:
+    case IFN_MASK_LEN_STORE_LANES:
       return 5;
 
     default:

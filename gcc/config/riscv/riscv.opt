@@ -243,7 +243,13 @@ TargetVariable
 int riscv_zm_subext
 
 TargetVariable
+int riscv_zc_subext
+
+TargetVariable
 int riscv_sv_subext
+
+TargetVariable
+int riscv_ztso_subext
 
 TargetVariable
 int riscv_xthead_subext

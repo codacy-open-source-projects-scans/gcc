@@ -103,7 +103,7 @@ extern const char *riscv_output_move (rtx, rtx);
 extern const char *riscv_output_return ();
 
 #ifdef RTX_CODE
-extern void riscv_expand_int_scc (rtx, enum rtx_code, rtx, rtx);
+extern void riscv_expand_int_scc (rtx, enum rtx_code, rtx, rtx, bool *invert_ptr = 0);
 extern void riscv_expand_float_scc (rtx, enum rtx_code, rtx, rtx);
 extern void riscv_expand_conditional_branch (rtx, enum rtx_code, rtx, rtx);
 extern rtx riscv_emit_binary (enum rtx_code code, rtx dest, rtx x, rtx y);
@@ -128,6 +128,7 @@ extern poly_uint64 riscv_regmode_natural_size (machine_mode);
 extern bool riscv_v_ext_vector_mode_p (machine_mode);
 extern bool riscv_v_ext_tuple_mode_p (machine_mode);
 extern bool riscv_v_ext_vls_mode_p (machine_mode);
+extern int riscv_get_v_regno_alignment (machine_mode);
 extern bool riscv_shamt_matches_mask_p (int, HOST_WIDE_INT);
 extern void riscv_subword_address (rtx, rtx *, rtx *, rtx *, rtx *);
 extern void riscv_lshift_subword (machine_mode, rtx, rtx, rtx *);
@@ -186,13 +187,16 @@ enum insn_type
   RVV_BINOP = 3,
   RVV_BINOP_MU = RVV_BINOP + 2,
   RVV_BINOP_TU = RVV_BINOP + 2,
+  RVV_BINOP_TUMU = RVV_BINOP + 2,
   RVV_MERGE_OP = 4,
   RVV_CMP_OP = 4,
   RVV_CMP_MU_OP = RVV_CMP_OP + 2, /* +2 means mask and maskoff operand.  */
   RVV_UNOP_MU = RVV_UNOP + 2,	  /* Likewise.  */
   RVV_UNOP_M = RVV_UNOP + 2,	  /* Likewise.  */
   RVV_TERNOP = 5,
+  RVV_TERNOP_MU = RVV_TERNOP + 1,
   RVV_TERNOP_TU = RVV_TERNOP + 1,
+  RVV_TERNOP_TUMU = RVV_TERNOP + 1,
   RVV_WIDEN_TERNOP = 4,
   RVV_SCALAR_MOV_OP = 4, /* +1 for VUNDEF according to vector.md.  */
   RVV_SLIDE_OP = 4,      /* Dest, VUNDEF, source and offset.  */
@@ -320,6 +324,8 @@ void expand_select_vl (rtx *);
 void expand_load_store (rtx *, bool);
 void expand_gather_scatter (rtx *, bool);
 void expand_cond_len_ternop (unsigned, rtx *);
+void prepare_ternary_operands (rtx *, bool = false);
+void expand_lanes_load_store (rtx *, bool);
 
 /* Rounding mode bitfield for fixed point VXRM.  */
 enum fixed_point_rounding_mode
@@ -344,8 +350,12 @@ enum floating_point_rounding_mode
   FRM_DYN = 7, /* Aka 0b111.  */
   FRM_STATIC_MIN = FRM_RNE,
   FRM_STATIC_MAX = FRM_RMM,
+  FRM_DYN_EXIT = 8,
+  FRM_DYN_CALL = 9,
+  FRM_NONE = 10,
 };
 
+enum floating_point_rounding_mode get_frm_mode (rtx);
 opt_machine_mode vectorize_related_mode (machine_mode, scalar_mode,
 					 poly_uint64);
 unsigned int autovectorize_vector_modes (vec<machine_mode> *, bool);

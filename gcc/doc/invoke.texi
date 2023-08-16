@@ -430,6 +430,7 @@ Objective-C and Objective-C++ Dialects}.
 -fanalyzer-checker=@var{name}
 -fno-analyzer-feasibility
 -fanalyzer-fine-grained
+-fanalyzer-show-events-in-system-headers
 -fno-analyzer-state-merge
 -fno-analyzer-state-purge
 -fno-analyzer-suppress-followups
@@ -486,6 +487,7 @@ Objective-C and Objective-C++ Dialects}.
 -Wno-analyzer-tainted-size
 -Wanalyzer-too-complex
 -Wno-analyzer-unsafe-call-within-signal-handler
+-Wno-analyzer-unterminated-string
 -Wno-analyzer-use-after-free
 -Wno-analyzer-use-of-pointer-in-stale-stack-frame
 -Wno-analyzer-use-of-uninitialized-value
@@ -1419,6 +1421,7 @@ See RS/6000 and PowerPC Options.
 -mcld  -mcx16  -msahf  -mmovbe  -mcrc32 -mmwait
 -mrecip  -mrecip=@var{opt}
 -mvzeroupper  -mprefer-avx128  -mprefer-vector-width=@var{opt}
+-mpartial-vector-fp-math
 -mmove-max=@var{bits} -mstore-max=@var{bits}
 -mmmx  -msse  -msse2  -msse3  -mssse3  -msse4.1  -msse4.2  -msse4  -mavx
 -mavx2  -mavx512f  -mavx512pf  -mavx512er  -mavx512cd  -mavx512vl
@@ -4772,7 +4775,7 @@ pointers after reallocation.
 
 @opindex Wuseless-cast
 @opindex Wno-useless-cast
-@item -Wuseless-cast @r{(C++ and Objective-C++ only)}
+@item -Wuseless-cast @r{(C, Objective-C, C++ and Objective-C++ only)}
 Warn when an expression is cast to its own type.  This warning does not
 occur when a class object is converted to a non-reference type as that
 is a way to create a temporary:
@@ -10318,6 +10321,7 @@ Enabling this option effectively enables the following warnings:
 -Wanalyzer-shift-count-overflow
 -Wanalyzer-stale-setjmp-buffer
 -Wanalyzer-unsafe-call-within-signal-handler
+-Wanalyzer-unterminated-string
 -Wanalyzer-use-after-free
 -Wanalyzer-use-of-pointer-in-stale-stack-frame
 -Wanalyzer-use-of-uninitialized-value
@@ -10907,6 +10911,17 @@ called from a signal handler.
 
 See @uref{https://cwe.mitre.org/data/definitions/479.html, CWE-479: Signal Handler Use of a Non-reentrant Function}.
 
+@opindex Wanalyzer-unterminated-string
+@opindex Wno-analyzer-unterminated-string
+@item -Wno-analyzer-unterminated-string
+This warning requires @option{-fanalyzer}, which enables it; use
+@option{-Wno-analyzer-unterminated-string} to disable it.
+
+This diagnostic warns about code paths which attempt to find the length
+of an unterminated string.  For example, passing a pointer to an unterminated
+buffer to @code{strlen} would lead to accesses beyond the end of the buffer
+whilst attempting to find the terminating zero character.
+
 @opindex Wanalyzer-use-after-free
 @opindex Wno-analyzer-use-after-free
 @item -Wno-analyzer-use-after-free
@@ -11202,6 +11217,14 @@ This option is intended for analyzer developers: if multiple diagnostics
 have been detected as being duplicates of each other, it emits a note when
 reporting the best diagnostic, giving the number of additional diagnostics
 that were suppressed by the deduplication logic.
+
+@opindex fanalyzer-show-events-in-system-headers
+@opindex fno-analyzer-show-events-in-system-headers
+@item -fanalyzer-show-events-in-system-headers
+By default the analyzer emits simplified diagnostics paths by hiding
+events fully located within a system header.
+With @option{-fanalyzer-show-events-in-system-headers} such
+events are no longer suppressed.
 
 @opindex fanalyzer-state-merge
 @opindex fno-analyzer-state-merge
@@ -20529,8 +20552,8 @@ performance of the code.  Permissible values for this option are:
 @samp{cortex-a73.cortex-a35}, @samp{cortex-a73.cortex-a53},
 @samp{cortex-a75.cortex-a55}, @samp{cortex-a76.cortex-a55},
 @samp{cortex-r82}, @samp{cortex-x1}, @samp{cortex-x1c}, @samp{cortex-x2},
-@samp{cortex-x3}, @samp{cortex-a510}, @samp{cortex-a710}, @samp{cortex-a715},
-@samp{ampere1}, @samp{ampere1a}, and @samp{native}.
+@samp{cortex-x3}, @samp{cortex-a510}, @samp{cortex-a520}, @samp{cortex-a710},
+@samp{cortex-a715}, @samp{ampere1}, @samp{ampere1a}, and @samp{native}.
 
 The values @samp{cortex-a57.cortex-a53}, @samp{cortex-a72.cortex-a53},
 @samp{cortex-a73.cortex-a35}, @samp{cortex-a73.cortex-a53},
@@ -33753,6 +33776,23 @@ This option instructs GCC to use 128-bit AVX instructions instead of
 @item -mprefer-vector-width=@var{opt}
 This option instructs GCC to use @var{opt}-bit vector width in instructions
 instead of default on the selected platform.
+
+@opindex mpartial-vector-fp-math
+@item -mpartial-vector-fp-math
+This option enables GCC to generate floating-point operations that might
+affect the set of floating-point status flags on partial vectors, where
+vector elements reside in the low part of the 128-bit SSE register.  Unless
+@option{-fno-trapping-math} is specified, the compiler guarantees correct
+behavior by sanitizing all input operands to have zeroes in the unused
+upper part of the vector register.  Note that by using built-in functions
+or inline assembly with partial vector arguments, NaNs, denormal or invalid
+values can leak into the upper part of the vector, causing possible
+performance issues when @option{-fno-trapping-math} is in effect.  These
+issues can be mitigated by manually sanitizing the upper part of the partial
+vector argument register or by using @option{-mdaz-ftz} to set
+denormals-are-zero (DAZ) flag in the MXCSR register.
+
+This option is enabled by default.
 
 @opindex mmove-max
 @item -mmove-max=@var{bits}

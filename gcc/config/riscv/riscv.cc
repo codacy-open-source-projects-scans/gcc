@@ -1213,7 +1213,8 @@ riscv_classify_address (struct riscv_address_info *info, rtx x,
 /* Implement TARGET_LEGITIMATE_ADDRESS_P.  */
 
 static bool
-riscv_legitimate_address_p (machine_mode mode, rtx x, bool strict_p)
+riscv_legitimate_address_p (machine_mode mode, rtx x, bool strict_p,
+			    code_helper = ERROR_MARK)
 {
   struct riscv_address_info addr;
 
@@ -1226,7 +1227,8 @@ static bool
 riscv_compressed_reg_p (int regno)
 {
   /* x8-x15/f8-f15 are compressible registers.  */
-  return (TARGET_RVC && (IN_RANGE (regno, GP_REG_FIRST + 8, GP_REG_FIRST + 15)
+  return ((TARGET_RVC  || TARGET_ZCA)
+	  && (IN_RANGE (regno, GP_REG_FIRST + 8, GP_REG_FIRST + 15)
 	  || IN_RANGE (regno, FP_REG_FIRST + 8, FP_REG_FIRST + 15)));
 }
 
@@ -1335,7 +1337,7 @@ riscv_const_insns (rtx x)
 	       out range of [-16, 15].
 	  - 3. const series vector.
 	  ...etc.  */
-	if (riscv_v_ext_vector_mode_p (GET_MODE (x)))
+	if (riscv_v_ext_mode_p (GET_MODE (x)))
 	  {
 	    /* const series vector.  */
 	    rtx base, step;
@@ -1804,6 +1806,22 @@ riscv_shorten_lw_offset (rtx base, HOST_WIDE_INT offset)
   return addr;
 }
 
+/* Helper for riscv_legitimize_address. Given X, return true if it
+   is a left shift by 1, 2 or 3 positions or a multiply by 2, 4 or 8.
+
+   This respectively represent canonical shift-add rtxs or scaled
+   memory addresses.  */
+static bool
+mem_shadd_or_shadd_rtx_p (rtx x)
+{
+  return ((GET_CODE (x) == ASHIFT
+	   || GET_CODE (x) == MULT)
+	  && CONST_INT_P (XEXP (x, 1))
+	  && ((GET_CODE (x) == ASHIFT && IN_RANGE (INTVAL (XEXP (x, 1)), 1, 3))
+	      || (GET_CODE (x) == MULT
+		  && IN_RANGE (exact_log2 (INTVAL (XEXP (x, 1))), 1, 3))));
+}
+
 /* This function is used to implement LEGITIMIZE_ADDRESS.  If X can
    be legitimized in a way that the generic machinery might not expect,
    return a new address, otherwise return NULL.  MODE is the mode of
@@ -1828,6 +1846,32 @@ riscv_legitimize_address (rtx x, rtx oldx ATTRIBUTE_UNUSED,
     {
       rtx base = XEXP (x, 0);
       HOST_WIDE_INT offset = INTVAL (XEXP (x, 1));
+
+      /* Handle (plus (plus (mult (a) (mem_shadd_constant)) (fp)) (C)) case.  */
+      if (GET_CODE (base) == PLUS && mem_shadd_or_shadd_rtx_p (XEXP (base, 0))
+	  && SMALL_OPERAND (offset))
+	{
+	  rtx index = XEXP (base, 0);
+	  rtx fp = XEXP (base, 1);
+	  if (REGNO (fp) == VIRTUAL_STACK_VARS_REGNUM)
+	    {
+
+	      /* If we were given a MULT, we must fix the constant
+		 as we're going to create the ASHIFT form.  */
+	      int shift_val = INTVAL (XEXP (index, 1));
+	      if (GET_CODE (index) == MULT)
+		shift_val = exact_log2 (shift_val);
+
+	      rtx reg1 = gen_reg_rtx (Pmode);
+	      rtx reg2 = gen_reg_rtx (Pmode);
+	      rtx reg3 = gen_reg_rtx (Pmode);
+	      riscv_emit_binary (PLUS, reg1, fp, GEN_INT (offset));
+	      riscv_emit_binary (ASHIFT, reg2, XEXP (index, 0), GEN_INT (shift_val));
+	      riscv_emit_binary (PLUS, reg3, reg2, reg1);
+
+	      return reg3;
+	    }
+	}
 
       if (!riscv_valid_base_register_p (base, mode, false))
 	base = copy_to_mode_reg (Pmode, base);
@@ -2487,7 +2531,8 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
 	  /* When optimizing for size, make uncompressible 32-bit addresses
 	     more expensive so that compressible 32-bit addresses are
 	     preferred.  */
-	  if (TARGET_RVC && !speed && riscv_mshorten_memrefs && mode == SImode
+	  if ((TARGET_RVC || TARGET_ZCA)
+	      && !speed && riscv_mshorten_memrefs && mode == SImode
 	      && !riscv_compressed_lw_address_p (XEXP (x, 0)))
 	    cost++;
 
@@ -2913,7 +2958,8 @@ riscv_address_cost (rtx addr, machine_mode mode,
 {
   /* When optimizing for size, make uncompressible 32-bit addresses more
    * expensive so that compressible 32-bit addresses are preferred.  */
-  if (TARGET_RVC && !speed && riscv_mshorten_memrefs && mode == SImode
+  if ((TARGET_RVC || TARGET_ZCA)
+      && !speed && riscv_mshorten_memrefs && mode == SImode
       && !riscv_compressed_lw_address_p (addr))
     return riscv_address_insns (addr, mode, false) + 1;
   return riscv_address_insns (addr, mode, false);
@@ -3499,7 +3545,7 @@ riscv_emit_float_compare (enum rtx_code *code, rtx *op0, rtx *op1)
 /* CODE-compare OP0 and OP1.  Store the result in TARGET.  */
 
 void
-riscv_expand_int_scc (rtx target, enum rtx_code code, rtx op0, rtx op1)
+riscv_expand_int_scc (rtx target, enum rtx_code code, rtx op0, rtx op1, bool *invert_ptr)
 {
   riscv_extend_comparands (code, &op0, &op1);
   op0 = force_reg (word_mode, op0);
@@ -3510,7 +3556,7 @@ riscv_expand_int_scc (rtx target, enum rtx_code code, rtx op0, rtx op1)
       riscv_emit_binary (code, target, zie, const0_rtx);
     }
   else
-    riscv_emit_int_order_test (code, 0, target, op0, op1);
+    riscv_emit_int_order_test (code, invert_ptr, target, op0, op1);
 }
 
 /* Like riscv_expand_int_scc, but for floating-point comparisons.  */
@@ -3576,15 +3622,54 @@ riscv_expand_conditional_move (rtx dest, rtx op, rtx cons, rtx alt)
       return true;
     }
   else if (TARGET_ZICOND
-	   && (code == EQ || code == NE)
 	   && GET_MODE_CLASS (mode) == MODE_INT)
     {
       /* The comparison must be comparing WORD_MODE objects.   We must
 	 enforce that so that we don't strip away a sign_extension
 	 thinking it is unnecessary.  We might consider using
 	 riscv_extend_operands if they are not already properly extended.  */
-      if (GET_MODE (op0) != word_mode || GET_MODE (op1) != word_mode)
+      if ((GET_MODE (op0) != word_mode && GET_MODE (op0) != VOIDmode)
+	  || (GET_MODE (op1) != word_mode && GET_MODE (op1) != VOIDmode))
 	return false;
+
+      /* Canonicalize the comparison.  It must be an equality comparison
+	 against 0.  If it isn't, then emit an SCC instruction so that
+	 we can then use an equality comparison against zero.  */
+      if (!equality_operator (op, VOIDmode) || op1 != CONST0_RTX (mode))
+	{
+	  enum rtx_code new_code = NE;
+	  bool *invert_ptr = 0;
+	  bool invert = false;
+
+	  if (code == LE || code == GE)
+	    invert_ptr = &invert;
+
+	  /* Emit an scc like instruction into a temporary
+	     so that we can use an EQ/NE comparison.  */
+	  rtx tmp = gen_reg_rtx (word_mode);
+
+	  /* We can support both FP and integer conditional moves.  */
+	  if (INTEGRAL_MODE_P (GET_MODE (XEXP (op, 0))))
+	    riscv_expand_int_scc (tmp, code, op0, op1, invert_ptr);
+	  else if (FLOAT_MODE_P (GET_MODE (XEXP (op, 0)))
+		   && fp_scc_comparison (op, GET_MODE (op)))
+	    riscv_expand_float_scc (tmp, code, op0, op1);
+	  else
+	    return false;
+
+	  /* If riscv_expand_int_scc inverts the condition, then it will
+	     flip the value of INVERT.  We need to know where so that
+	     we can adjust it for our needs.  */
+	  if (invert)
+	    new_code = EQ;
+
+	  op = gen_rtx_fmt_ee (new_code, mode, tmp, const0_rtx);
+
+	  /* We've generated a new comparison.  Update the local variables.  */
+	  code = GET_CODE (op);
+	  op0 = XEXP (op, 0);
+	  op1 = XEXP (op, 1);
+	}
 
       /* 0, reg or 0, imm */
       if (cons == CONST0_RTX (mode)
@@ -4726,6 +4811,10 @@ riscv_union_memmodels (enum memmodel model1, enum memmodel model2)
 static bool
 riscv_memmodel_needs_amo_acquire (enum memmodel model)
 {
+  /* ZTSO amo mappings require no annotations.  */
+  if (TARGET_ZTSO)
+    return false;
+
   switch (model)
     {
       case MEMMODEL_ACQ_REL:
@@ -4749,6 +4838,10 @@ riscv_memmodel_needs_amo_acquire (enum memmodel model)
 static bool
 riscv_memmodel_needs_amo_release (enum memmodel model)
 {
+  /* ZTSO amo mappings require no annotations.  */
+  if (TARGET_ZTSO)
+    return false;
+
   switch (model)
     {
       case MEMMODEL_ACQ_REL:
@@ -4769,7 +4862,7 @@ riscv_memmodel_needs_amo_release (enum memmodel model)
 /* Get REGNO alignment of vector mode.
    The alignment = LMUL when the LMUL >= 1.
    Otherwise, alignment = 1.  */
-static int
+int
 riscv_get_v_regno_alignment (machine_mode mode)
 {
   /* 3.3.2. LMUL = 2,4,8, register numbers should be multiple of 2,4,8.
@@ -4968,7 +5061,10 @@ riscv_print_operand (FILE *file, rtx op, int letter)
 
     case 'I': {
       const enum memmodel model = memmodel_base (INTVAL (op));
-      if (model == MEMMODEL_SEQ_CST)
+      if (TARGET_ZTSO && model != MEMMODEL_SEQ_CST)
+	/* LR ops only have an annotation for SEQ_CST in the Ztso mapping.  */
+	break;
+      else if (model == MEMMODEL_SEQ_CST)
 	fputs (".aqrl", file);
       else if (riscv_memmodel_needs_amo_acquire (model))
 	fputs (".aq", file);
@@ -4977,7 +5073,12 @@ riscv_print_operand (FILE *file, rtx op, int letter)
 
     case 'J': {
       const enum memmodel model = memmodel_base (INTVAL (op));
-      if (riscv_memmodel_needs_amo_release (model))
+      if (TARGET_ZTSO && model == MEMMODEL_SEQ_CST)
+	/* SC ops only have an annotation for SEQ_CST in the Ztso mapping.  */
+	fputs (".rl", file);
+      else if (TARGET_ZTSO)
+	break;
+      else if (riscv_memmodel_needs_amo_release (model))
 	fputs (".rl", file);
       break;
     }
@@ -5741,7 +5842,7 @@ riscv_first_stack_step (struct riscv_frame_info *frame, poly_int64 remaining_siz
       && remaining_const_size % IMM_REACH >= min_first_step)
     return remaining_const_size % IMM_REACH;
 
-  if (TARGET_RVC)
+  if (TARGET_RVC || TARGET_ZCA)
     {
       /* If we need two subtracts, and one is small enough to allow compressed
 	 loads and stores, then put that one first.  */
@@ -6614,6 +6715,31 @@ static int
 riscv_issue_rate (void)
 {
   return tune_param->issue_rate;
+}
+
+/* Implement TARGET_SCHED_VARIABLE_ISSUE.  */
+static int
+riscv_sched_variable_issue (FILE *, int, rtx_insn *insn, int more)
+{
+  if (DEBUG_INSN_P (insn))
+    return more;
+
+  rtx_code code = GET_CODE (PATTERN (insn));
+  if (code == USE || code == CLOBBER)
+    return more;
+
+  /* GHOST insns are used for blockage and similar cases which
+     effectively end a cycle.  */
+  if (get_attr_type (insn) == TYPE_GHOST)
+    return 0;
+
+#if 0
+  /* If we ever encounter an insn with an unknown type, trip
+     an assert so we can find and fix this problem.  */
+  gcc_assert (get_attr_type (insn) != TYPE_UNKNOWN);
+#endif
+
+  return more - 1;
 }
 
 /* Auxiliary function to emit RISC-V ELF attribute. */
@@ -7947,11 +8073,11 @@ riscv_static_frm_mode_p (int mode)
 {
   switch (mode)
     {
-    case FRM_MODE_RDN:
-    case FRM_MODE_RUP:
-    case FRM_MODE_RTZ:
-    case FRM_MODE_RMM:
-    case FRM_MODE_RNE:
+    case riscv_vector::FRM_RDN:
+    case riscv_vector::FRM_RUP:
+    case riscv_vector::FRM_RTZ:
+    case riscv_vector::FRM_RMM:
+    case riscv_vector::FRM_RNE:
       return true;
     default:
       return false;
@@ -7967,28 +8093,24 @@ riscv_emit_frm_mode_set (int mode, int prev_mode)
 {
   rtx backup_reg = DYNAMIC_FRM_RTL (cfun);
 
-  if (prev_mode == FRM_MODE_DYN_CALL)
+  if (prev_mode == riscv_vector::FRM_DYN_CALL)
     emit_insn (gen_frrmsi (backup_reg)); /* Backup frm when DYN_CALL.  */
 
   if (mode != prev_mode)
     {
-      /* TODO: By design, FRM_MODE_xxx used by mode switch which is
-	 different from the FRM value like FRM_RTZ defined in
-	 riscv-protos.h.  When mode switching we actually need a conversion
-	 function to convert the mode of mode switching to the actual
-	 FRM value like FRM_RTZ.  For now, the value between the mode of
-	 mode swith and the FRM value in riscv-protos.h take the same value,
-	 and then we leverage this assumption when emit.  */
       rtx frm = gen_int_mode (mode, SImode);
 
-      if (mode == FRM_MODE_DYN_CALL && prev_mode != FRM_MODE_DYN)
+      if (mode == riscv_vector::FRM_DYN_CALL
+	&& prev_mode != riscv_vector::FRM_DYN)
 	/* No need to emit when prev mode is DYN already.  */
 	emit_insn (gen_fsrmsi_restore_volatile (backup_reg));
-      else if (mode == FRM_MODE_DYN_EXIT && STATIC_FRM_P (cfun)
-	&& prev_mode != FRM_MODE_DYN && prev_mode != FRM_MODE_DYN_CALL)
+      else if (mode == riscv_vector::FRM_DYN_EXIT && STATIC_FRM_P (cfun)
+	&& prev_mode != riscv_vector::FRM_DYN
+	&& prev_mode != riscv_vector::FRM_DYN_CALL)
 	/* No need to emit when prev mode is DYN or DYN_CALL already.  */
 	emit_insn (gen_fsrmsi_restore_volatile (backup_reg));
-      else if (mode == FRM_MODE_DYN && prev_mode != FRM_MODE_DYN_CALL)
+      else if (mode == riscv_vector::FRM_DYN
+	&& prev_mode != riscv_vector::FRM_DYN_CALL)
 	/* Restore frm value from backup when switch to DYN mode.  */
 	emit_insn (gen_fsrmsi_restore (backup_reg));
       else if (riscv_static_frm_mode_p (mode))
@@ -8017,7 +8139,7 @@ riscv_emit_mode_set (int entity, int mode, int prev_mode,
     }
 }
 
-/* Adjust the FRM_MODE_NONE insn after a call to FRM_MODE_DYN for the
+/* Adjust the FRM_NONE insn after a call to FRM_DYN for the
    underlying emit.  */
 
 static int
@@ -8026,7 +8148,7 @@ riscv_frm_adjust_mode_after_call (rtx_insn *cur_insn, int mode)
   rtx_insn *insn = prev_nonnote_nondebug_insn_bb (cur_insn);
 
   if (insn && CALL_P (insn))
-    return FRM_MODE_DYN;
+    return riscv_vector::FRM_DYN;
 
   return mode;
 }
@@ -8077,12 +8199,12 @@ riscv_frm_mode_needed (rtx_insn *cur_insn, int code)
       if (!insn)
 	riscv_frm_emit_after_bb_end (cur_insn);
 
-      return FRM_MODE_DYN_CALL;
+      return riscv_vector::FRM_DYN_CALL;
     }
 
-  int mode = code >= 0 ? get_attr_frm_mode (cur_insn) : FRM_MODE_NONE;
+  int mode = code >= 0 ? get_attr_frm_mode (cur_insn) : riscv_vector::FRM_NONE;
 
-  if (mode == FRM_MODE_NONE)
+  if (mode == riscv_vector::FRM_NONE)
       /* After meet a call, we need to backup the frm because it may be
 	 updated during the call. Here, for each insn, we will check if
 	 the previous insn is a call or not. When previous insn is call,
@@ -8190,7 +8312,7 @@ riscv_frm_mode_after (rtx_insn *insn, int mode)
     return mode;
 
   if (frm_unknown_dynamic_p (insn))
-    return FRM_MODE_DYN;
+    return riscv_vector::FRM_DYN;
 
   if (recog_memoized (insn) < 0)
     return mode;
@@ -8232,7 +8354,7 @@ riscv_mode_entry (int entity)
 	  /* According to RVV 1.0 spec, all vector floating-point operations use
 	     the dynamic rounding mode in the frm register.  Likewise in other
 	     similar places.  */
-	return FRM_MODE_DYN;
+	return riscv_vector::FRM_DYN;
       }
     default:
       gcc_unreachable ();
@@ -8250,7 +8372,7 @@ riscv_mode_exit (int entity)
     case RISCV_VXRM:
       return VXRM_MODE_NONE;
     case RISCV_FRM:
-      return FRM_MODE_DYN_EXIT;
+      return riscv_vector::FRM_DYN_EXIT;
     default:
       gcc_unreachable ();
     }
@@ -8337,6 +8459,9 @@ riscv_frame_pointer_required (void)
 
 #undef TARGET_SCHED_ISSUE_RATE
 #define TARGET_SCHED_ISSUE_RATE riscv_issue_rate
+
+#undef  TARGET_SCHED_VARIABLE_ISSUE
+#define TARGET_SCHED_VARIABLE_ISSUE riscv_sched_variable_issue
 
 #undef TARGET_FUNCTION_OK_FOR_SIBCALL
 #define TARGET_FUNCTION_OK_FOR_SIBCALL riscv_function_ok_for_sibcall

@@ -1,3 +1,91 @@
+2023-08-15  Chung-Lin Tang  <cltang@codesourcery.com>
+	    Thomas Schwinge  <thomas@codesourcery.com>
+
+	* parser.cc (OACC_DATA_CLAUSE_MASK): Add PRAGMA_OACC_CLAUSE_DEFAULT.
+
+2023-08-14  gnaggnoyil  <gnaggnoyil@gmail.com>
+
+	DR 2386
+	PR c++/110216
+	* decl.cc (get_tuple_size): Update implementation for DR 2386.
+
+2023-08-14  Jason Merrill  <jason@redhat.com>
+
+	* parser.cc (cp_parser_simple_type_specifier): Handle -std=c++14
+	-fconcepts.
+
+2023-08-12  Patrick Palka  <ppalka@redhat.com>
+	    Jason Merrill  <jason@redhat.com>
+
+	PR c++/106604
+	* decl.cc (redeclaration_error_message): Remove special handling
+	for deduction guides.
+	(grokfndecl): Give deduction guides a dummy DECL_INITIAL.
+
+2023-08-11  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/110927
+	* parser.cc (cp_parser_type_requirement): Pass
+	check_dependency_p=true instead of =false.
+
+2023-08-11  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/71954
+	* decl.cc (grokdeclarator): Pass 'dname' instead of
+	'unqualified_id' as the name when building the VAR_DECL for a
+	static data member.  Call check_explicit_specialization for a
+	TEMPLATE_ID_EXPR such member.
+	* pt.cc (finish_member_template_decl): Return NULL_TREE
+	instead of 'decl' when DECL_TEMPLATE_SPECIALIZATION is not
+	set.
+
+2023-08-11  Patrick Palka  <ppalka@redhat.com>
+
+	* ptree.cc (cxx_print_decl): Check for DECL_LANG_SPECIFIC and
+	TS_DECL_COMMON only when necessary.  Print DECL_TEMPLATE_INFO
+	for all decls that have it, not just VAR_DECL or FUNCTION_DECL.
+	Also print DECL_USE_TEMPLATE.
+	(cxx_print_type): Print TYPE_TEMPLATE_INFO.
+	<case BOUND_TEMPLATE_TEMPLATE_PARM>: Don't print TYPE_TI_ARGS
+	anymore.
+	<case TEMPLATE_TYPE/TEMPLATE_PARM>: Print TEMPLATE_TYPE_PARM_INDEX
+	instead of printing the index, level and original level
+	individually.
+
+2023-08-08  Marek Polacek  <polacek@redhat.com>
+
+	* parser.cc (cp_parser_postfix_expression): Adjust the call to
+	cp_parser_braced_list.
+	(cp_parser_postfix_open_square_expression): Likewise.
+	(cp_parser_new_initializer): Likewise.
+	(cp_parser_assignment_expression): Adjust the call to
+	cp_parser_initializer_clause.
+	(cp_parser_lambda_introducer): Adjust the call to cp_parser_initializer.
+	(cp_parser_range_for): Adjust the call to cp_parser_braced_list.
+	(cp_parser_jump_statement): Likewise.
+	(cp_parser_mem_initializer): Likewise.
+	(cp_parser_template_argument): Likewise.
+	(cp_parser_default_argument): Adjust the call to cp_parser_initializer.
+	(cp_parser_initializer): Handle null is_direct_init and non_constant_p
+	arguments.
+	(cp_parser_initializer_clause): Handle null non_constant_p argument.
+	(cp_parser_braced_list): Likewise.
+	(cp_parser_initializer_list): Likewise.
+	(cp_parser_member_declaration): Adjust the call to
+	cp_parser_initializer_clause and cp_parser_initializer.
+	(cp_parser_yield_expression): Adjust the call to cp_parser_braced_list.
+	(cp_parser_functional_cast): Likewise.
+	(cp_parser_late_parse_one_default_arg): Adjust the call to
+	cp_parser_initializer.
+	(cp_parser_omp_for_loop_init): Likewise.
+	(cp_parser_omp_declare_reduction_exprs): Likewise.
+
+2023-08-08  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/100482
+	* parser.cc (cp_parser_decltype_expr): Report errors raised by
+	finish_id_expression.
+
 2023-08-04  Tamar Christina  <tamar.christina@arm.com>
 
 	* cp-tree.h (RANGE_FOR_NOVECTOR): New.

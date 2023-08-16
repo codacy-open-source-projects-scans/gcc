@@ -152,6 +152,10 @@ enum riscv_entity
 #define TARGET_ZKSH   ((riscv_zk_subext & MASK_ZKSH) != 0)
 #define TARGET_ZKT    ((riscv_zk_subext & MASK_ZKT) != 0)
 
+#define MASK_ZTSO   (1 << 0)
+
+#define TARGET_ZTSO ((riscv_ztso_subext & MASK_ZTSO) != 0)
+
 #define MASK_VECTOR_ELEN_32    (1 << 0)
 #define MASK_VECTOR_ELEN_64    (1 << 1)
 #define MASK_VECTOR_ELEN_FP_32 (1 << 2)
@@ -254,6 +258,22 @@ enum riscv_entity
 #define MASK_ZMMUL      (1 << 0)
 #define TARGET_ZMMUL    ((riscv_zm_subext & MASK_ZMMUL) != 0)
 
+#define MASK_ZCA      (1 << 0)
+#define MASK_ZCB      (1 << 1)
+#define MASK_ZCE      (1 << 2)
+#define MASK_ZCF      (1 << 3)
+#define MASK_ZCD      (1 << 4)
+#define MASK_ZCMP     (1 << 5)
+#define MASK_ZCMT     (1 << 6)
+
+#define TARGET_ZCA    ((riscv_zc_subext & MASK_ZCA) != 0)
+#define TARGET_ZCB    ((riscv_zc_subext & MASK_ZCB) != 0)
+#define TARGET_ZCE    ((riscv_zc_subext & MASK_ZCE) != 0)
+#define TARGET_ZCF    ((riscv_zc_subext & MASK_ZCF) != 0)
+#define TARGET_ZCD    ((riscv_zc_subext & MASK_ZCD) != 0)
+#define TARGET_ZCMP   ((riscv_zc_subext & MASK_ZCMP) != 0)
+#define TARGET_ZCMT   ((riscv_zc_subext & MASK_ZCMT) != 0)
+
 #define MASK_SVINVAL (1 << 0)
 #define MASK_SVNAPOT (1 << 1)
 
@@ -296,6 +316,7 @@ enum riscv_entity
 
 /* We only enable VLS modes for VLA vectorization since fixed length VLMAX mode
    is the highest priority choice and should not conflict with VLS modes.  */
-#define TARGET_VECTOR_VLS (riscv_autovec_preference == RVV_SCALABLE)
+#define TARGET_VECTOR_VLS                                                      \
+  (TARGET_VECTOR && riscv_autovec_preference == RVV_SCALABLE)
 
 #endif /* ! GCC_RISCV_OPTS_H */

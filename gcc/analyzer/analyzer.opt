@@ -214,6 +214,10 @@ Wanalyzer-tainted-size
 Common Var(warn_analyzer_tainted_size) Init(1) Warning
 Warn about code paths in which an unsanitized value is used as a size.
 
+Wanalyzer-unterminated-string
+Common Var(warn_analyzer_unterminated_string) Init(1) Warning
+Warn about code paths which attempt to find the length of an unterminated string.
+
 Wanalyzer-use-after-free
 Common Var(warn_analyzer_use_after_free) Init(1) Warning
 Warn about code paths in which a freed value is used.
@@ -289,6 +293,10 @@ Stop exploring an execution path after certain diagnostics.
 fanalyzer-transitivity
 Common Var(flag_analyzer_transitivity) Init(0)
 Enable transitivity of constraints during analysis.
+
+fanalyzer-show-events-in-system-headers
+Common Var(flag_analyzer_show_events_in_system_headers) Init(0)
+Show events within system headers in analyzer execution paths.
 
 fanalyzer-call-summaries
 Common Var(flag_analyzer_call_summaries) Init(0)

@@ -1,3 +1,692 @@
+2023-08-15  David Faust  <david.faust@oracle.com>
+
+	PR target/111029
+	* gcc.target/bpf/smov-2.c: New test.
+	* gcc.target/bpf/smov-pseudoc-2.c: New test.
+
+2023-08-15  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/68930
+	PR ipa/92497
+	* gcc.dg/ipa/pr92497-1.c: New test.
+	* gcc.dg/ipa/pr92497-2.c: Likewise.
+
+2023-08-15  Iain Buclaw  <ibuclaw@gdcproject.org>
+
+	PR d/110959
+	* gdc.dg/pr110959.d: New test.
+
+2023-08-15  Chung-Lin Tang  <cltang@codesourcery.com>
+	    Thomas Schwinge  <thomas@codesourcery.com>
+
+	* c-c++-common/goacc/default-3.c: Adjust testcase.
+	* c-c++-common/goacc/default-4.c: Adjust testcase.
+	* c-c++-common/goacc/default-5.c: Adjust testcase.
+	* gfortran.dg/goacc/default-3.f95: Adjust testcase.
+	* gfortran.dg/goacc/default-4.f: Adjust testcase.
+	* gfortran.dg/goacc/default-5.f: Adjust testcase.
+
+2023-08-15  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR target/110989
+	* gcc.target/riscv/rvv/autovec/pr110989.c: Add vsetvli assembly check.
+
+2023-08-15  Richard Biener  <rguenther@suse.de>
+
+	* gcc.dg/vect/bb-slp-75.c: New testcase.
+
+2023-08-15  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/110963
+	* gcc.dg/tree-ssa/ssa-pre-34.c: New testcase.
+
+2023-08-15  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/110991
+	* gcc.dg/tree-ssa/cunroll-16.c: New testcase.
+
+2023-08-15  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/mode-switch-ice-1.c: New test.
+
+2023-08-15  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-rec7.c: New test.
+
+2023-08-14  Mikael Morin  <mikael@gcc.gnu.org>
+
+	* gfortran.dg/value_9.f90 (val, val4, sub, sub4): Take the error
+	codes from the arguments.
+	(p): Update calls: pass explicit distinct error codes.
+
+2023-08-14  Mikael Morin  <mikael@gcc.gnu.org>
+
+	PR fortran/110360
+	PR fortran/110419
+	* gfortran.dg/bind_c_usage_13.f03: Update tree dump patterns.
+
+2023-08-14  benjamin priour  <vultkayn@gcc.gnu.org>
+
+	PR analyzer/110543
+	* g++.dg/analyzer/fanalyzer-show-events-in-system-headers-default.C:
+	New test.
+	* g++.dg/analyzer/fanalyzer-show-events-in-system-headers-no.C:
+	New test.
+	* g++.dg/analyzer/fanalyzer-show-events-in-system-headers.C:
+	New test.
+
+2023-08-14  gnaggnoyil  <gnaggnoyil@gmail.com>
+
+	DR 2386
+	PR c++/110216
+	* g++.dg/cpp1z/decomp10.C: Update expected error for DR 2386.
+	* g++.dg/cpp1z/pr110216.C: New test.
+
+2023-08-14  Jiawei  <jiawei@iscas.ac.cn>
+
+	* gcc.target/riscv/arch-24.c: New test.
+	* gcc.target/riscv/arch-25.c: New test.
+
+2023-08-14  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-sqrt.c: New test.
+
+2023-08-14  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-wnmsac.c: New test.
+
+2023-08-14  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-wmsac.c: New test.
+
+2023-08-14  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-wnmacc.c: New test.
+
+2023-08-14  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-fwmacc.c: New test.
+
+2023-08-14  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-nmsub.c: New test.
+
+2023-08-12  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	PR modula2/108119
+	* gm2/iso/check/fail/iso-check-fail.exp (gm2_init_iso): Add -fm2-plugin.
+	* gm2/switches/auto-init/fail/switches-auto-init-fail.exp
+	(gm2_init_iso): Add -fm2-plugin.
+	* gm2/switches/check-all/pim2/fail/switches-check-all-pim2-fail.exp
+	(gm2_init_pim2): Add -fm2-plugin.
+	* gm2/switches/check-all/plugin/iso/fail/switches-check-all-plugin-iso-fail.exp
+	(gm2_init_iso): Add -fm2-plugin.
+	* gm2/switches/check-all/plugin/pim2/fail/switches-check-all-plugin-pim2-fail.exp
+	(gm2_init_pim2): Add -fm2-plugin.
+
+2023-08-12  Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.dg/stdckdint-1.c: New test.
+	* gcc.dg/stdckdint-2.c: New test.
+
+2023-08-12  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR target/110994
+	* gcc.target/riscv/rvv/autovec/vls/pr110994.c: New test.
+
+2023-08-12  Patrick Palka  <ppalka@redhat.com>
+	    Jason Merrill  <jason@redhat.com>
+
+	PR c++/106604
+	* g++.dg/cpp1z/class-deduction74.C: Expect "defined" instead
+	of "declared" in the repeated deduction guide diagnostics.
+	* g++.dg/cpp1z/class-deduction116.C: New test.
+
+2023-08-12  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR target/110985
+	* gcc.target/riscv/rvv/autovec/vls-vlmax/pr110985.c: New test.
+
+2023-08-12  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.target/riscv/rvv/autovec/vls/def.h: Add VLS CONST_VECTOR tests.
+	* gcc.target/riscv/rvv/autovec/vls/const-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/const-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/const-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/const-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/const-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/series-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/series-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/series-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/series-4.c: New test.
+
+2023-08-11  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* gcc.dg/analyzer/analyzer-decls.h (__analyzer_get_strlen): New.
+	* gcc.dg/analyzer/error-1.c (test_error_unterminated): New.
+	(test_error_at_line_unterminated): New.
+	* gcc.dg/analyzer/null-terminated-strings-1.c: New test.
+	* gcc.dg/analyzer/putenv-1.c (test_unterminated): New.
+	* gcc.dg/analyzer/strchr-1.c (test_unterminated): New.
+	* gcc.dg/analyzer/strcpy-1.c (test_unterminated): New.
+	* gcc.dg/analyzer/strdup-1.c (test_unterminated): New.
+
+2023-08-11  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR middle-end/110989
+	* gcc.target/riscv/rvv/autovec/pr110989.c: New test.
+
+2023-08-11  Patrick O'Neill  <patrick@rivosinc.com>
+
+	* gcc.target/riscv/amo-table-ztso-amo-add-1.c: Add -mabi=lp64d
+	to dg-options.
+	* gcc.target/riscv/amo-table-ztso-amo-add-2.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-amo-add-3.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-amo-add-4.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-amo-add-5.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-1.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-2.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-3.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-4.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-5.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-6.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-7.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-fence-1.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-fence-2.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-fence-3.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-fence-4.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-fence-5.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-load-1.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-load-2.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-load-3.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-store-1.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-store-2.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-store-3.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-subword-amo-add-1.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-subword-amo-add-2.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-subword-amo-add-3.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-subword-amo-add-4.c: Ditto.
+	* gcc.target/riscv/amo-table-ztso-subword-amo-add-5.c: Ditto.
+
+2023-08-11  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* lib/target-supports.exp (check_effective_target_alloca): BPF
+	target does not support alloca.
+	* gcc.target/bpf/diag-alloca-1.c: New test.
+	* gcc.target/bpf/diag-alloca-2.c: Likewise.
+	* gcc.target/bpf/xbpf-callee-saved-regs-1.c: Remove test.
+	* gcc.target/bpf/xbpf-callee-saved-regs-2.c: Likewise.
+	* gcc.target/bpf/regs-availability-1.c: Likewise.
+
+2023-08-11  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* gcc.target/bpf/diag-funargs-inline-1.c: New test.
+	* gcc.target/bpf/diag-funargs.c: Adapt test.
+
+2023-08-11  Eric Feng  <ef2648@columbia.edu>
+
+	PR analyzer/107646
+	* gcc.dg/plugin/analyzer_cpython_plugin.c: Analyzer support for
+	PyList_New, PyList_Append, PyLong_FromLong
+	* gcc.dg/plugin/plugin.exp: New test.
+	* lib/target-supports.exp: New procedure.
+	* gcc.dg/plugin/cpython-plugin-test-2.c: New test.
+
+2023-08-11  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/110927
+	* g++.dg/cpp2a/concepts-requires35.C: New test.
+
+2023-08-11  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/71954
+	* g++.dg/cpp1y/var-templ84.C: New test.
+	* g++.dg/cpp1y/var-templ84a.C: New test.
+
+2023-08-11  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/110979
+	* gcc.dg/torture/pr110979.c: New testcase.
+
+2023-08-11  Richard Biener  <rguenther@suse.de>
+
+	* g++.dg/vect/slp-pr87105.cc: Adjust.
+	* gcc.dg/vect/bb-slp-17.c: Likewise.
+	* gcc.dg/vect/bb-slp-20.c: Likewise.
+	* gcc.dg/vect/bb-slp-21.c: Likewise.
+	* gcc.dg/vect/bb-slp-22.c: Likewise.
+	* gcc.dg/vect/bb-slp-subgroups-2.c: Likewise.
+
+2023-08-11  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-msub.c: New test.
+
+2023-08-11  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-nmadd.c: New test.
+
+2023-08-11  Drew Ross  <drross@redhat.com>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/109938
+	* gcc.c-torture/execute/pr109938.c: New test.
+	* gcc.dg/tree-ssa/pr109938.c: New test.
+
+2023-08-11  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-madd.c: New test.
+
+2023-08-11  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-nmsac.c: New test.
+
+2023-08-11  Jakub Jelinek  <jakub@redhat.com>
+
+	* gcc.dg/c11-typeof-2.c: New test.
+	* gcc.dg/c11-typeof-3.c: New test.
+	* gcc.dg/gnu11-typeof-3.c: New test.
+	* gcc.dg/gnu11-typeof-4.c: New test.
+
+2023-08-11  Andrew Pinski  <apinski@marvell.com>
+
+	PR tree-optimization/110954
+	* gcc.c-torture/execute/pr110954-1.c: New test.
+
+2023-08-11  Martin Uecker  <uecker@tugraz.at>
+
+	PR c/84510
+	* gcc.dg/Wuseless-cast.c: New test.
+
+2023-08-11  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-msac.c: New test.
+
+2023-08-10  Jan Hubicka  <jh@suse.cz>
+
+	PR middle-end/110923
+	* gcc.dg/tree-ssa/pr110923.c: New test.
+
+2023-08-10  Patrick O'Neill  <patrick@rivosinc.com>
+
+	* gcc.target/riscv/amo-table-ztso-amo-add-1.c: New test.
+	* gcc.target/riscv/amo-table-ztso-amo-add-2.c: New test.
+	* gcc.target/riscv/amo-table-ztso-amo-add-3.c: New test.
+	* gcc.target/riscv/amo-table-ztso-amo-add-4.c: New test.
+	* gcc.target/riscv/amo-table-ztso-amo-add-5.c: New test.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-1.c: New test.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-2.c: New test.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-3.c: New test.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-4.c: New test.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-5.c: New test.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-6.c: New test.
+	* gcc.target/riscv/amo-table-ztso-compare-exchange-7.c: New test.
+	* gcc.target/riscv/amo-table-ztso-fence-1.c: New test.
+	* gcc.target/riscv/amo-table-ztso-fence-2.c: New test.
+	* gcc.target/riscv/amo-table-ztso-fence-3.c: New test.
+	* gcc.target/riscv/amo-table-ztso-fence-4.c: New test.
+	* gcc.target/riscv/amo-table-ztso-fence-5.c: New test.
+	* gcc.target/riscv/amo-table-ztso-load-1.c: New test.
+	* gcc.target/riscv/amo-table-ztso-load-2.c: New test.
+	* gcc.target/riscv/amo-table-ztso-load-3.c: New test.
+	* gcc.target/riscv/amo-table-ztso-store-1.c: New test.
+	* gcc.target/riscv/amo-table-ztso-store-2.c: New test.
+	* gcc.target/riscv/amo-table-ztso-store-3.c: New test.
+	* gcc.target/riscv/amo-table-ztso-subword-amo-add-1.c: New test.
+	* gcc.target/riscv/amo-table-ztso-subword-amo-add-2.c: New test.
+	* gcc.target/riscv/amo-table-ztso-subword-amo-add-3.c: New test.
+	* gcc.target/riscv/amo-table-ztso-subword-amo-add-4.c: New test.
+	* gcc.target/riscv/amo-table-ztso-subword-amo-add-5.c: New test.
+
+2023-08-10  Jan Hubicka  <jh@suse.cz>
+
+	* gcc.dg/tree-ssa/phi_on_compare-1.c: Check profile consistency.
+
+2023-08-10  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-nmacc.c: New test.
+
+2023-08-10  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-macc.c: New test.
+
+2023-08-10  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR target/110964
+	* gcc.target/riscv/rvv/autovec/pr110964.c: New test.
+
+2023-08-09  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.target/riscv/rvv/autovec/gather-scatter/strided_load_run-1.c:
+	Adapt test.
+	* gcc.target/riscv/rvv/vsetvl/vlmax_back_prop-24.c: Ditto.
+	* gcc.target/riscv/rvv/vsetvl/vlmax_back_prop-25.c: Ditto.
+	* gcc.target/riscv/rvv/vsetvl/vlmax_back_prop-26.c: Ditto.
+	* gcc.target/riscv/rvv/vsetvl/vlmax_back_prop-36.c: Ditto.
+	* gcc.target/riscv/rvv/vsetvl/vlmax_switch_vtype-14.c: Ditto.
+	* gcc.target/riscv/rvv/vsetvl/vlmax_switch_vtype-15.c: Ditto.
+
+2023-08-09  David Malcolm  <dmalcolm@redhat.com>
+
+	* gcc.dg/analyzer/allocation-size-1.c: Update expected results
+	to reflect splitting of allocation size and assignment messages
+	from a single event into pairs of events
+	* gcc.dg/analyzer/allocation-size-2.c: Likewise.
+	* gcc.dg/analyzer/allocation-size-3.c: Likewise.
+	* gcc.dg/analyzer/allocation-size-4.c: Likewise.
+	* gcc.dg/analyzer/allocation-size-multiline-1.c: Likewise.
+	* gcc.dg/analyzer/allocation-size-multiline-2.c: Likewise.
+	* gcc.dg/analyzer/allocation-size-multiline-3.c: Likewise.
+	* gcc.dg/analyzer/memset-1.c (test_1): Verify that the return
+	value is the initial argument.
+	* gcc.dg/plugin/analyzer_kernel_plugin.c
+	(copy_across_boundary_fn::impl_call_pre): Ensure the LHS is set on
+	the "known zero size" case.
+	* gcc.dg/plugin/analyzer_known_fns_plugin.c
+	(known_function_attempt_to_copy::impl_call_pre): Likewise.
+
+2023-08-09  Andrew Pinski  <apinski@marvell.com>
+
+	PR tree-optimization/110937
+	PR tree-optimization/100798
+	* gcc.dg/tree-ssa/bool-14.c: New test.
+	* gcc.dg/tree-ssa/bool-15.c: New test.
+	* gcc.dg/tree-ssa/phi-opt-33.c: New test.
+	* gcc.dg/tree-ssa/20030709-2.c: Update testcase
+	so `a ? -1 : 0` is not used to hit the match
+	pattern.
+
+2023-08-09  Carl Love  <cel@us.ibm.com>
+
+	* gcc.target/powerpc/vec-cmpne-runnable.c: New execution test.
+	* gcc.target/powerpc/vec-cmpne.c (define_test_functions,
+	execute_test_functions): Move to vec-cmpne.h.  Add
+	scan-assembler-times for vcmpequb, vcmpequh, vcmpequw.
+	* gcc.target/powerpc/vec-cmpne.h: New include file for vec-cmpne.c
+	and vec-cmpne-runnable.c. Split define_test_functions definition
+	into define_test_functions and define_init_verify_functions.
+
+2023-08-09  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR target/110950
+	* gcc.target/riscv/rvv/autovec/pr110950.c: New test.
+
+2023-08-08  Jeff Law  <jlaw@ventanamicro.com>
+
+	* gcc.target/riscv/zicond-ice-1.c: New test.
+
+2023-08-08  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/100482
+	* g++.dg/cpp0x/decltype-100482.C: New test.
+
+2023-08-08  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/110832
+	* gcc.target/i386/pr110832-1.c: New test.
+	* gcc.target/i386/pr110832-2.c: New test.
+	* gcc.target/i386/pr110832-3.c: New test.
+
+2023-08-08  Andrew Pinski  <apinski@marvell.com>
+
+	PR tree-optimization/103281
+	PR tree-optimization/28794
+	* gcc.dg/tree-ssa/pr103281-1.c: New test.
+	* gcc.dg/tree-ssa/vrp-compare-1.c: New test.
+
+2023-08-08  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/base/float-point-single-rsub.c: Enhance
+	cases.
+	* gcc.target/riscv/rvv/base/float-point-single-sub.c: Ditto.
+
+2023-08-08  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.target/riscv/rvv/rvv.exp: Add condition tests.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith-6.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith-7.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith-8.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith-9.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith_run-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith_run-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith_run-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith_run-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith_run-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith_run-6.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith_run-7.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith_run-8.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_arith_run-9.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fadd-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fadd-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fadd-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fadd-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fadd_run-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fadd_run-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fadd_run-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fadd_run-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma-6.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma-7.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma-8.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma_run-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma_run-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma_run-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma_run-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma_run-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma_run-6.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma_run-7.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fma_fnma_run-8.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmax-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmax-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmax-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmax-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmax_run-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmax_run-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmax_run-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmax_run-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmin-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmin-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmin-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmin-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmin_run-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmin_run-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmin_run-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmin_run-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms-6.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms_run-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms_run-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms_run-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms_run-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms_run-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fms_fnms_run-6.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmul-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmul-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmul-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmul-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmul_run-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmul_run-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmul_run-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_fmul_run-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_logical-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_logical-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_logical-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_logical-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_logical-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_logical_run-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_logical_run-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_logical_run-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_logical_run-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_logical_run-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift-6.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift-7.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift-8.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift-9.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift_run-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift_run-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift_run-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift_run-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift_run-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift_run-6.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift_run-7.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift_run-8.c: New test.
+	* gcc.target/riscv/rvv/autovec/cond/cond_shift_run-9.c: New test.
+	* gcc.target/riscv/rvv/autovec/reduc/reduc_call-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/reduc/reduc_call-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/reduc/reduc_call-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/reduc/reduc_call-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/reduc/reduc_call-5.c: New test.
+
+2023-08-08  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/49955
+	* gfortran.dg/vect/pr49955.f: New testcase.
+
+2023-08-08  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/110924
+	* gcc.dg/torture/pr110924.c: New testcase.
+
+2023-08-08  yulong  <shiyulong@iscas.ac.cn>
+
+	* gcc.target/riscv/rvv/base/vslide1down-1.c: New test.
+	* gcc.target/riscv/rvv/base/vslide1down-2.c: New test.
+	* gcc.target/riscv/rvv/base/vslide1down-3.c: New test.
+	* gcc.target/riscv/rvv/base/vslide1up-1.c: New test.
+	* gcc.target/riscv/rvv/base/vslide1up-2.c: New test.
+	* gcc.target/riscv/rvv/base/vslide1up-3.c: New test.
+
+2023-08-08  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
+
+	PR rtl-optimization/110869
+	* gcc.dg/cmp-mem-const-1.c: Use optimization level 2.
+	* gcc.dg/cmp-mem-const-2.c: Dito.
+	* gcc.dg/cmp-mem-const-3.c: Exclude sparc from this test.
+	* gcc.dg/cmp-mem-const-4.c: Dito.
+	* gcc.dg/cmp-mem-const-5.c: Dito.
+	* gcc.dg/cmp-mem-const-6.c: Dito.
+
+2023-08-08  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.target/riscv/rvv/autovec/vls/def.h: Ditto.
+	* gcc.target/riscv/rvv/autovec/vls/neg-1.c: New test.
+
+2023-08-08  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.target/riscv/rvv/autovec/vls/def.h: Add VLS shift.
+	* gcc.target/riscv/rvv/autovec/vls/shift-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/shift-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/shift-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/shift-4.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/shift-5.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/shift-6.c: New test.
+
+2023-08-07  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.target/riscv/rvv/autovec/vls/def.h: Add basic operations.
+	* gcc.target/riscv/rvv/autovec/vls/and-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/and-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/and-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/div-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/ior-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/ior-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/ior-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/max-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/min-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/minus-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/minus-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/minus-3.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/mod-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/mult-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/plus-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/plus-2.c: New test.
+	* gcc.target/riscv/rvv/autovec/vls/plus-3.c: New test.
+
+2023-08-07  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/110378
+	* g++.dg/ipa/pr110378-1.C: New test.
+
+2023-08-07  Andrew Pinski  <apinski@marvell.com>
+
+	PR tree-optimization/109959
+	* gcc.dg/tree-ssa/builtin-sprintf-warn-23.c: Remove xfail.
+	* c-c++-common/Wrestrict.c: Update test and remove some xfail.
+	* gcc.dg/tree-ssa/cmpeq-1.c: New test.
+	* gcc.dg/tree-ssa/cmpeq-2.c: New test.
+	* gcc.dg/tree-ssa/cmpeq-3.c: New test.
+
+2023-08-07  liuhongt  <hongtao.liu@intel.com>
+
+	* gcc.target/i386/pr110762-v4hf.c: New test.
+
+2023-08-07  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.target/riscv/rvv/autovec/binop/narrow-1.c: Adapt testcase.
+
+2023-08-07  Jan Hubicka  <jh@suse.cz>
+
+	PR tree-optimization/106293
+	* gcc.dg/vect/vect-cond-11.c: Check profile consistency.
+	* gcc.dg/vect/vect-widen-mult-extern-1.c: Check profile consistency.
+
+2023-08-07  Andrew Pinski  <apinski@marvell.com>
+
+	PR tree-optimization/96695
+	* gcc.dg/pr96695-1.c: New test.
+	* gcc.dg/pr96695-10.c: New test.
+	* gcc.dg/pr96695-11.c: New test.
+	* gcc.dg/pr96695-12.c: New test.
+	* gcc.dg/pr96695-2.c: New test.
+	* gcc.dg/pr96695-3.c: New test.
+	* gcc.dg/pr96695-4.c: New test.
+	* gcc.dg/pr96695-5.c: New test.
+	* gcc.dg/pr96695-6.c: New test.
+	* gcc.dg/pr96695-7.c: New test.
+	* gcc.dg/pr96695-8.c: New test.
+	* gcc.dg/pr96695-9.c: New test.
+
+2023-08-06  Roger Sayle  <roger@nextmovesoftware.com>
+
+	PR target/110792
+	* gcc.target/i386/pr110792.c: Remove dg-final scan-assembler-not.
+
+2023-08-06  Jan Hubicka  <jh@suse.cz>
+
+	* gcc.dg/vect/vect-bitfield-read-1.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-read-2.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-read-3.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-read-4.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-read-5.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-read-6.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-read-7.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-write-1.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-write-2.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-write-3.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-write-4.c: Check profile consistency.
+	* gcc.dg/vect/vect-bitfield-write-5.c: Check profile consistency.
+	* gcc.dg/vect/vect-epilogues-2.c: Check profile consistency.
+	* gcc.dg/vect/vect-epilogues.c: Check profile consistency.
+	* gcc.dg/vect/vect-mask-store-move-1.c: Check profile consistency.
+
 2023-08-05  Gaius Mulley  <gaiusmod2@gmail.com>
 
 	PR modula2/110779

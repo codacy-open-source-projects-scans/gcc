@@ -11040,7 +11040,8 @@ ix86_validate_address_register (rtx op)
    be recognized.  */
 
 static bool
-ix86_legitimate_address_p (machine_mode, rtx addr, bool strict)
+ix86_legitimate_address_p (machine_mode, rtx addr, bool strict,
+			   code_helper = ERROR_MARK)
 {
   struct ix86_address parts;
   rtx base, index, disp;
@@ -19192,7 +19193,7 @@ ix86_vectorize_builtin_scatter (const_tree vectype,
       ? !TARGET_USE_SCATTER_2PARTS
       : (known_eq (TYPE_VECTOR_SUBPARTS (vectype), 4u)
 	 ? !TARGET_USE_SCATTER_4PARTS
-	 : !TARGET_USE_SCATTER))
+	 : !TARGET_USE_SCATTER_8PARTS))
     return NULL_TREE;
 
   if ((TREE_CODE (index_type) != INTEGER_TYPE
@@ -19454,10 +19455,10 @@ avx_vperm2f128_parallel (rtx par, machine_mode mode)
 /* Return a mask of VPTERNLOG operands that do not affect output.  */
 
 int
-vpternlog_redundant_operand_mask (rtx *operands)
+vpternlog_redundant_operand_mask (rtx pternlog_imm)
 {
   int mask = 0;
-  int imm8 = XINT (operands[4], 0);
+  int imm8 = INTVAL (pternlog_imm);
 
   if (((imm8 >> 4) & 0x0F) == (imm8 & 0x0F))
     mask |= 1;
@@ -19475,7 +19476,7 @@ vpternlog_redundant_operand_mask (rtx *operands)
 void
 substitute_vpternlog_operands (rtx *operands)
 {
-  int mask = vpternlog_redundant_operand_mask (operands);
+  int mask = vpternlog_redundant_operand_mask (operands[4]);
 
   if (mask & 1) /* The first operand is redundant.  */
     operands[1] = operands[2];
@@ -22890,7 +22891,7 @@ ix86_invalid_conversion (const_tree fromtype, const_tree totype)
 	warning (0, "%<__bfloat16%> is redefined from typedef %<short%> "
 		"to real %<__bf16%> since GCC V13, be careful of "
 		 "implicit conversion between %<__bf16%> and %<short%>; "
-		 "a explicit bitcast may be needed here");
+		 "an explicit bitcast may be needed here");
     }
 
   /* Conversion allowed.  */
