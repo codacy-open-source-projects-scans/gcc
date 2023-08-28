@@ -1248,6 +1248,9 @@ dump_omp_clause (pretty_printer *pp, tree clause, int spc, dump_flags_t flags)
 	{
 	case OMP_CLAUSE_DEFAULTMAP_CATEGORY_UNSPECIFIED:
 	  break;
+	case OMP_CLAUSE_DEFAULTMAP_CATEGORY_ALL:
+	  pp_string (pp, ":all");
+	  break;
 	case OMP_CLAUSE_DEFAULTMAP_CATEGORY_SCALAR:
 	  pp_string (pp, ":scalar");
 	  break;
@@ -3743,6 +3746,10 @@ dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
 
     case OMP_SECTION:
       pp_string (pp, "#pragma omp section");
+      goto dump_omp_body;
+
+    case OMP_STRUCTURED_BLOCK:
+      pp_string (pp, "#pragma omp __structured_block");
       goto dump_omp_body;
 
     case OMP_SCAN:

@@ -83,6 +83,7 @@ struct riscv_address_info {
 /* Routines implemented in riscv.cc.  */
 extern enum riscv_symbol_type riscv_classify_symbolic_expression (rtx);
 extern bool riscv_symbolic_constant_p (rtx, enum riscv_symbol_type *);
+extern int riscv_float_const_rtx_index_for_fli (rtx);
 extern int riscv_regno_mode_ok_for_base_p (int, machine_mode, bool);
 extern enum reg_class riscv_index_reg_class ();
 extern int riscv_regno_ok_for_index_p (int);
@@ -184,6 +185,10 @@ enum insn_type
 {
   RVV_MISC_OP = 1,
   RVV_UNOP = 2,
+  RVV_UNOP_M = RVV_UNOP + 2,
+  RVV_UNOP_MU = RVV_UNOP + 2,
+  RVV_UNOP_TU = RVV_UNOP + 2,
+  RVV_UNOP_TUMU = RVV_UNOP + 2,
   RVV_BINOP = 3,
   RVV_BINOP_MU = RVV_BINOP + 2,
   RVV_BINOP_TU = RVV_BINOP + 2,
@@ -191,8 +196,6 @@ enum insn_type
   RVV_MERGE_OP = 4,
   RVV_CMP_OP = 4,
   RVV_CMP_MU_OP = RVV_CMP_OP + 2, /* +2 means mask and maskoff operand.  */
-  RVV_UNOP_MU = RVV_UNOP + 2,	  /* Likewise.  */
-  RVV_UNOP_M = RVV_UNOP + 2,	  /* Likewise.  */
   RVV_TERNOP = 5,
   RVV_TERNOP_MU = RVV_TERNOP + 1,
   RVV_TERNOP_TU = RVV_TERNOP + 1,
@@ -205,6 +208,7 @@ enum insn_type
   RVV_SCATTER_M_OP = 4,
   RVV_REDUCTION_OP = 3,
   RVV_REDUCTION_TU_OP = RVV_REDUCTION_OP + 2,
+  RVV_CPOP = 2,
 };
 enum vlmul_type
 {
@@ -294,6 +298,7 @@ bool neg_simm5_p (rtx);
 bool has_vi_variant_p (rtx_code, rtx);
 void expand_vec_cmp (rtx, rtx_code, rtx, rtx);
 bool expand_vec_cmp_float (rtx, rtx_code, rtx, rtx, bool);
+void expand_cond_len_unop (rtx_code, rtx *);
 void expand_cond_len_binop (rtx_code, rtx *);
 void expand_reduction (rtx_code, rtx *, rtx,
 		       reduction_type = reduction_type::UNORDERED);
@@ -326,6 +331,7 @@ void expand_gather_scatter (rtx *, bool);
 void expand_cond_len_ternop (unsigned, rtx *);
 void prepare_ternary_operands (rtx *, bool = false);
 void expand_lanes_load_store (rtx *, bool);
+void expand_fold_extract_last (rtx *);
 
 /* Rounding mode bitfield for fixed point VXRM.  */
 enum fixed_point_rounding_mode

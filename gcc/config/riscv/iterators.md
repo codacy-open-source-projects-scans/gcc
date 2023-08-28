@@ -67,6 +67,11 @@
 			    (DF "TARGET_DOUBLE_FLOAT || TARGET_ZDINX")
 			    (HF "TARGET_ZFH || TARGET_ZHINX")])
 
+;; Iterator for hardware-supported load/store floating-point modes.
+(define_mode_iterator ANYLSF [(SF "TARGET_HARD_FLOAT || TARGET_ZFINX")
+			      (DF "TARGET_DOUBLE_FLOAT || TARGET_ZDINX")
+			      (HF "TARGET_ZFHMIN || TARGET_ZHINXMIN")])
+
 ;; Iterator for floating-point modes that can be loaded into X registers.
 (define_mode_iterator SOFTF [SF (DF "TARGET_64BIT") (HF "TARGET_ZFHMIN")])
 
@@ -300,3 +305,8 @@
 (define_int_attr quiet_pattern [(UNSPEC_FLT_QUIET "lt") (UNSPEC_FLE_QUIET "le")])
 (define_int_attr QUIET_PATTERN [(UNSPEC_FLT_QUIET "LT") (UNSPEC_FLE_QUIET "LE")])
 
+(define_int_iterator ROUND [UNSPEC_ROUND UNSPEC_FLOOR UNSPEC_CEIL UNSPEC_BTRUNC UNSPEC_ROUNDEVEN UNSPEC_NEARBYINT])
+(define_int_attr round_pattern [(UNSPEC_ROUND "round") (UNSPEC_FLOOR "floor") (UNSPEC_CEIL "ceil")
+				(UNSPEC_BTRUNC "btrunc") (UNSPEC_ROUNDEVEN "roundeven") (UNSPEC_NEARBYINT "nearbyint")])
+(define_int_attr round_rm [(UNSPEC_ROUND "rmm") (UNSPEC_FLOOR "rdn") (UNSPEC_CEIL "rup")
+			   (UNSPEC_BTRUNC "rtz") (UNSPEC_ROUNDEVEN "rne") (UNSPEC_NEARBYINT "dyn")])

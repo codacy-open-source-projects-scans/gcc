@@ -123,6 +123,9 @@ static const riscv_implied_info_t riscv_implied_info[] =
 
   {"zfh", "zfhmin"},
   {"zfhmin", "f"},
+
+  {"zfa", "f"},
+
   {"zvfhmin", "zve32f"},
   {"zvfh", "zve32f"},
   {"zvfh", "zfhmin"},
@@ -271,6 +274,8 @@ static const struct riscv_ext_version riscv_ext_version_table[] =
   {"zfhmin",    ISA_SPEC_CLASS_NONE, 1, 0},
   {"zvfhmin",   ISA_SPEC_CLASS_NONE, 1, 0},
   {"zvfh",      ISA_SPEC_CLASS_NONE, 1, 0},
+
+  {"zfa",     ISA_SPEC_CLASS_NONE, 0, 1},
 
   {"zmmul", ISA_SPEC_CLASS_NONE, 1, 0},
 
@@ -1434,6 +1439,8 @@ static const riscv_ext_flag_table_t riscv_ext_flag_table[] =
   {"zvfhmin",   &gcc_options::x_riscv_zf_subext, MASK_ZVFHMIN},
   {"zvfh",      &gcc_options::x_riscv_zf_subext, MASK_ZVFH},
 
+  {"zfa",       &gcc_options::x_riscv_zfa_subext, MASK_ZFA},
+
   {"zmmul", &gcc_options::x_riscv_zm_subext, MASK_ZMMUL},
 
   /* Code-size reduction extensions.  */
@@ -2016,6 +2023,8 @@ riscv_get_valid_option_values (int option_code,
 static const struct default_options riscv_option_optimization_table[] =
   {
     { OPT_LEVELS_1_PLUS, OPT_fsection_anchors, NULL, 1 },
+    /* Enable -fsched-pressure starting at -O1.  */
+    { OPT_LEVELS_1_PLUS, OPT_fsched_pressure, NULL, 1 },
     { OPT_LEVELS_2_PLUS, OPT_free, NULL, 1 },
 #if TARGET_DEFAULT_ASYNC_UNWIND_TABLES == 1
     { OPT_LEVELS_ALL, OPT_fasynchronous_unwind_tables, NULL, 1 },

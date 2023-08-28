@@ -1334,6 +1334,7 @@ enum gfc_omp_defaultmap
 enum gfc_omp_defaultmap_category
 {
   OMP_DEFAULTMAP_CAT_UNCATEGORIZED,
+  OMP_DEFAULTMAP_CAT_ALL,
   OMP_DEFAULTMAP_CAT_SCALAR,
   OMP_DEFAULTMAP_CAT_AGGREGATE,
   OMP_DEFAULTMAP_CAT_ALLOCATABLE,
@@ -2236,6 +2237,9 @@ typedef struct gfc_namespace
   /* OpenMP requires. */
   unsigned omp_requires:6;
   unsigned omp_target_seen:1;
+
+  /* Set to 1 if this is an implicit OMP structured block.  */
+  unsigned omp_structured_block:1;
 }
 gfc_namespace;
 

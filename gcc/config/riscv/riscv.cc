@@ -65,6 +65,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "cfgloop.h"
 #include "cfgrtl.h"
 #include "sel-sched.h"
+#include "sched-int.h"
 #include "fold-const.h"
 #include "gimple-iterator.h"
 #include "gimple-expr.h"
@@ -804,6 +805,138 @@ static int riscv_symbol_insns (enum riscv_symbol_type type)
     }
 }
 
+/* Immediate values loaded by the FLI.S instruction in Chapter 25 of the latest RISC-V ISA
+   Manual draft. For details, please see:
+   https://github.com/riscv/riscv-isa-manual/releases/tag/isa-449cd0c  */
+
+static unsigned HOST_WIDE_INT fli_value_hf[32] =
+{
+  0xbcp8, 0x4p8, 0x1p8, 0x2p8, 0x1cp8, 0x20p8, 0x2cp8, 0x30p8,
+  0x34p8, 0x35p8, 0x36p8, 0x37p8, 0x38p8, 0x39p8, 0x3ap8, 0x3bp8,
+  0x3cp8, 0x3dp8, 0x3ep8, 0x3fp8, 0x40p8, 0x41p8, 0x42p8, 0x44p8,
+  0x48p8, 0x4cp8, 0x58p8, 0x5cp8, 0x78p8,
+  /* Only used for filling, ensuring that 29 and 30 of HF are the same.  */
+  0x78p8,
+  0x7cp8, 0x7ep8
+};
+
+static unsigned HOST_WIDE_INT fli_value_sf[32] =
+{
+  0xbf8p20, 0x008p20, 0x378p20, 0x380p20, 0x3b8p20, 0x3c0p20, 0x3d8p20, 0x3e0p20,
+  0x3e8p20, 0x3eap20, 0x3ecp20, 0x3eep20, 0x3f0p20, 0x3f2p20, 0x3f4p20, 0x3f6p20,
+  0x3f8p20, 0x3fap20, 0x3fcp20, 0x3fep20, 0x400p20, 0x402p20, 0x404p20, 0x408p20,
+  0x410p20, 0x418p20, 0x430p20, 0x438p20, 0x470p20, 0x478p20, 0x7f8p20, 0x7fcp20
+};
+
+static unsigned HOST_WIDE_INT fli_value_df[32] =
+{
+  0xbff0p48, 0x10p48, 0x3ef0p48, 0x3f00p48,
+  0x3f70p48, 0x3f80p48, 0x3fb0p48, 0x3fc0p48,
+  0x3fd0p48, 0x3fd4p48, 0x3fd8p48, 0x3fdcp48,
+  0x3fe0p48, 0x3fe4p48, 0x3fe8p48, 0x3fecp48,
+  0x3ff0p48, 0x3ff4p48, 0x3ff8p48, 0x3ffcp48,
+  0x4000p48, 0x4004p48, 0x4008p48, 0x4010p48,
+  0x4020p48, 0x4030p48, 0x4060p48, 0x4070p48,
+  0x40e0p48, 0x40f0p48, 0x7ff0p48, 0x7ff8p48
+};
+
+/* Display floating-point values at the assembly level, which is consistent
+   with the zfa extension of llvm:
+   https://reviews.llvm.org/D145645.  */
+
+const char *fli_value_print[32] =
+{
+  "-1.0", "min", "1.52587890625e-05", "3.0517578125e-05", "0.00390625", "0.0078125", "0.0625", "0.125",
+  "0.25", "0.3125", "0.375", "0.4375", "0.5", "0.625", "0.75", "0.875",
+  "1.0", "1.25", "1.5", "1.75", "2.0", "2.5", "3.0", "4.0",
+  "8.0", "16.0", "128.0", "256.0", "32768.0", "65536.0", "inf", "nan"
+};
+
+/* Return index of the FLI instruction table if rtx X is an immediate constant that can
+   be moved using a single FLI instruction in zfa extension. Return -1 if not found.  */
+
+int
+riscv_float_const_rtx_index_for_fli (rtx x)
+{
+  unsigned HOST_WIDE_INT *fli_value_array;
+
+  machine_mode mode = GET_MODE (x);
+
+  if (!TARGET_ZFA
+      || !CONST_DOUBLE_P(x)
+      || mode == VOIDmode
+      || (mode == HFmode && !TARGET_ZFH)
+      || (mode == SFmode && !TARGET_HARD_FLOAT)
+      || (mode == DFmode && !TARGET_DOUBLE_FLOAT))
+    return -1;
+
+  if (!SCALAR_FLOAT_MODE_P (mode)
+      || GET_MODE_BITSIZE (mode).to_constant () > HOST_BITS_PER_WIDE_INT
+      /* Only support up to DF mode.  */
+      || GET_MODE_BITSIZE (mode).to_constant () > GET_MODE_BITSIZE (DFmode))
+    return -1;
+
+  unsigned HOST_WIDE_INT ival = 0;
+
+  long res[2];
+  real_to_target (res,
+		  CONST_DOUBLE_REAL_VALUE (x),
+		  REAL_MODE_FORMAT (mode));
+
+  if (mode == DFmode)
+    {
+      int order = BYTES_BIG_ENDIAN ? 1 : 0;
+      ival = zext_hwi (res[order], 32);
+      ival |= (zext_hwi (res[1 - order], 32) << 32);
+
+      /* When the lower 32 bits are not all 0, it is impossible to be in the table.  */
+      if (ival & (unsigned HOST_WIDE_INT)0xffffffff)
+	return -1;
+    }
+  else
+      ival = zext_hwi (res[0], 32);
+
+  switch (mode)
+    {
+      case E_HFmode:
+	fli_value_array = fli_value_hf;
+	break;
+      case E_SFmode:
+	fli_value_array = fli_value_sf;
+	break;
+      case E_DFmode:
+	fli_value_array = fli_value_df;
+	break;
+      default:
+	return -1;
+    }
+
+  if (fli_value_array[0] == ival)
+    return 0;
+
+  if (fli_value_array[1] == ival)
+    return 1;
+
+  /* Perform a binary search to find target index.  */
+  unsigned l, r, m;
+
+  l = 2;
+  r = 31;
+
+  while (l <= r)
+    {
+      m = (l + r) / 2;
+      if (fli_value_array[m] == ival)
+	return m;
+      else if (fli_value_array[m] < ival)
+	l = m+1;
+      else
+	r = m-1;
+    }
+
+  return -1;
+}
+
 /* Implement TARGET_LEGITIMATE_CONSTANT_P.  */
 
 static bool
@@ -830,6 +963,9 @@ riscv_cannot_force_const_mem (machine_mode mode ATTRIBUTE_UNUSED, rtx x)
      high part.  */
   if (GET_CODE (x) == HIGH)
     return true;
+
+  if (satisfies_constraint_zfli (x))
+   return true;
 
   split_const (x, &base, &offset);
   if (riscv_symbolic_constant_p (base, &type))
@@ -1323,6 +1459,10 @@ riscv_const_insns (rtx x)
       }
 
     case CONST_DOUBLE:
+      /* See if we can use FMV directly.  */
+      if (satisfies_constraint_zfli (x))
+	return 1;
+
       /* We can use x0 to load floating-point zero.  */
       return x == CONST0_RTX (GET_MODE (x)) ? 1 : 0;
     case CONST_VECTOR:
@@ -1945,6 +2085,12 @@ riscv_legitimize_const_move (machine_mode mode, rtx dest, rtx src)
       return;
     }
 
+  if (satisfies_constraint_zfli (src))
+    {
+      riscv_emit_set (dest, src);
+      return;
+    }
+
   /* Split moves of symbolic constants into high/low pairs.  */
   if (riscv_split_symbol (dest, src, MAX_MACHINE_MODE, &src))
     {
@@ -2489,6 +2635,8 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
   switch (GET_CODE (x))
     {
     case CONST_INT:
+      /* trivial constants checked using OUTER_CODE in case they are
+	 encodable in insn itself w/o need for additional insn(s).  */
       if (riscv_immediate_operand_p (outer_code, INTVAL (x)))
 	{
 	  *total = 0;
@@ -2506,17 +2654,15 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
       /* Fall through.  */
 
     case CONST:
+      /* Non trivial CONST_INT Fall through: check if need multiple insns.  */
       if ((cost = riscv_const_insns (x)) > 0)
 	{
-	  /* If the constant is likely to be stored in a GPR, SETs of
-	     single-insn constants are as cheap as register sets; we
-	     never want to CSE them.  */
-	  if (cost == 1 && outer_code == SET)
-	    *total = 0;
-	  /* When we load a constant more than once, it usually is better
-	     to duplicate the last operation in the sequence than to CSE
-	     the constant itself.  */
-	  else if (outer_code == SET || GET_MODE (x) == VOIDmode)
+	  /* 1. Hoist will GCSE constants only if TOTAL returned is non-zero.
+	     2. For constants loaded more than once, the approach so far has
+		been to duplicate the operation than to CSE the constant.
+	     3. TODO: make cost more accurate specially if riscv_const_insns
+		returns > 1.  */
+	  if (outer_code == SET || GET_MODE (x) == VOIDmode)
 	    *total = COSTS_N_INSNS (1);
 	}
       else /* The instruction will be fetched from the constant pool.  */
@@ -2994,6 +3140,10 @@ riscv_split_64bit_move_p (rtx dest, rtx src)
   if (TARGET_64BIT)
     return false;
 
+  /* There is no need to split if the FLI instruction in the `Zfa` extension can be used.  */
+  if (satisfies_constraint_zfli (src))
+    return false;
+
   /* Allow FPR <-> FPR and FPR <-> MEM moves, and permit the special case
      of zeroing an FPR with FCVT.D.W.  */
   if (TARGET_DOUBLE_FLOAT
@@ -3013,22 +3163,36 @@ riscv_split_64bit_move_p (rtx dest, rtx src)
 void
 riscv_split_doubleword_move (rtx dest, rtx src)
 {
-  /* XTheadFmv has instructions for accessing the upper bits of a double.  */
-  if (!TARGET_64BIT && TARGET_XTHEADFMV)
+  /* ZFA or XTheadFmv has instructions for accessing the upper bits of a double.  */
+  if (!TARGET_64BIT && (TARGET_ZFA || TARGET_XTHEADFMV))
     {
       if (FP_REG_RTX_P (dest))
 	{
 	  rtx low_src = riscv_subword (src, false);
 	  rtx high_src = riscv_subword (src, true);
-	  emit_insn (gen_th_fmv_hw_w_x (dest, high_src, low_src));
+
+	  if (TARGET_ZFA)
+	    emit_insn (gen_movdfsisi3_rv32 (dest, high_src, low_src));
+	  else
+	    emit_insn (gen_th_fmv_hw_w_x (dest, high_src, low_src));
 	  return;
 	}
       if (FP_REG_RTX_P (src))
 	{
 	  rtx low_dest = riscv_subword (dest, false);
 	  rtx high_dest = riscv_subword (dest, true);
-	  emit_insn (gen_th_fmv_x_w (low_dest, src));
-	  emit_insn (gen_th_fmv_x_hw (high_dest, src));
+
+	  if (TARGET_ZFA)
+	    {
+	      emit_insn (gen_movsidf2_low_rv32 (low_dest, src));
+	      emit_insn (gen_movsidf2_high_rv32 (high_dest, src));
+	      return;
+	    }
+	  else
+	    {
+	      emit_insn (gen_th_fmv_x_w (low_dest, src));
+	      emit_insn (gen_th_fmv_x_hw (high_dest, src));
+	    }
 	  return;
 	}
     }
@@ -3191,6 +3355,17 @@ riscv_output_move (rtx dest, rtx src)
 	    return "flw\t%0,%1";
 	  case 8:
 	    return "fld\t%0,%1";
+	  }
+
+      if (src_code == CONST_DOUBLE && satisfies_constraint_zfli (src))
+	switch (width)
+	  {
+	    case 2:
+	      return "fli.h\t%0,%1";
+	    case 4:
+	      return "fli.s\t%0,%1";
+	    case 8:
+	      return "fli.d\t%0,%1";
 	  }
     }
   if (dest_code == REG && GP_REG_P (REGNO (dest)) && src_code == CONST_POLY_INT)
@@ -4954,7 +5129,8 @@ riscv_print_operand (FILE *file, rtx op, int letter)
 	    else if (satisfies_constraint_Wc0 (op))
 	      asm_fprintf (file, "0");
 	    else if (satisfies_constraint_vi (op)
-		     || satisfies_constraint_vj (op))
+		     || satisfies_constraint_vj (op)
+		     || satisfies_constraint_vk (op))
 	      asm_fprintf (file, "%wd", INTVAL (elt));
 	    else
 	      output_operand_lossage ("invalid vector constant");
@@ -5119,6 +5295,24 @@ riscv_print_operand (FILE *file, rtx op, int letter)
 	  else
 	    output_address (mode, XEXP (op, 0));
 	  break;
+
+	case CONST_DOUBLE:
+	  {
+	    if (letter == 'z' && op == CONST0_RTX (GET_MODE (op)))
+	      {
+		fputs (reg_names[GP_REG_FIRST], file);
+		break;
+	      }
+
+	    int fli_index = riscv_float_const_rtx_index_for_fli (op);
+	    if (fli_index == -1 || fli_index > 31)
+	      {
+		output_operand_lossage ("invalid use of '%%%c'", letter);
+		break;
+	      }
+	    asm_fprintf (file, "%s", fli_value_print[fli_index]);
+	    break;
+	  }
 
 	default:
 	  if (letter == 'z' && op == CONST0_RTX (GET_MODE (op)))
@@ -6528,7 +6722,8 @@ riscv_secondary_memory_needed (machine_mode mode, reg_class_t class1,
   return (!riscv_v_ext_mode_p (mode)
 	  && GET_MODE_SIZE (mode).to_constant () > UNITS_PER_WORD
 	  && (class1 == FP_REGS) != (class2 == FP_REGS)
-	  && !TARGET_XTHEADFMV);
+	  && !TARGET_XTHEADFMV
+	  && !TARGET_ZFA);
 }
 
 /* Implement TARGET_REGISTER_MOVE_COST.  */
@@ -7094,6 +7289,10 @@ riscv_option_override (void)
   if (TARGET_MIN_VLEN > 4096)
     sorry (
       "Current RISC-V GCC cannot support VLEN greater than 4096bit for 'V' Extension");
+
+  SET_OPTION_IF_UNSET (&global_options, &global_options_set,
+		       param_sched_pressure_algorithm,
+		       SCHED_PRESSURE_MODEL);
 
   /* Convert -march to a chunks count.  */
   riscv_vector_chunks = riscv_convert_vector_bits ();
@@ -8419,24 +8618,6 @@ riscv_vectorize_vec_perm_const (machine_mode vmode, machine_mode op_mode,
   return false;
 }
 
-/* Implement TARGET_PREFERRED_ELSE_VALUE.  For binary operations,
-   prefer to use the first arithmetic operand as the else value if
-   the else value doesn't matter, since that exactly matches the RVV
-   destructive merging form.  For ternary operations we could either
-   pick the first operand and use VMADD-like instructions or the last
-   operand and use VMACC-like instructions; the latter seems more
-   natural.
-
-   TODO: Currently, the return value is not ideal for RVV since it will
-   let VSETVL PASS use MU or TU. We will suport undefine value that allows
-   VSETVL PASS use TA/MA in the future.  */
-
-static tree
-riscv_preferred_else_value (unsigned, tree, unsigned int nops, tree *ops)
-{
-  return nops == 3 ? ops[2] : ops[0];
-}
-
 static bool
 riscv_frame_pointer_required (void)
 {
@@ -8746,9 +8927,6 @@ riscv_frame_pointer_required (void)
 
 #undef TARGET_VECTORIZE_VEC_PERM_CONST
 #define TARGET_VECTORIZE_VEC_PERM_CONST riscv_vectorize_vec_perm_const
-
-#undef TARGET_PREFERRED_ELSE_VALUE
-#define TARGET_PREFERRED_ELSE_VALUE riscv_preferred_else_value
 
 #undef TARGET_FRAME_POINTER_REQUIRED
 #define TARGET_FRAME_POINTER_REQUIRED riscv_frame_pointer_required

@@ -1,3 +1,232 @@
+2023-08-27  benjamin priour  <vultkayn@gcc.gnu.org>
+
+	PR analyzer/96395
+	* analyzer.h (class known_function): Add virtual casts
+	to builtin_known_function.
+	(class builtin_known_function): New subclass of known_function
+	for builtins.
+	* kf.cc (class kf_alloca): Now derived from
+	builtin_known_function.
+	(class kf_calloc): Likewise.
+	(class kf_free): Likewise.
+	(class kf_malloc): Likewise.
+	(class kf_memcpy_memmove): Likewise.
+	(class kf_memset): Likewise.
+	(class kf_realloc): Likewise.
+	(class kf_strchr): Likewise.
+	(class kf_sprintf): Likewise.
+	(class kf_strcat): Likewise.
+	(class kf_strcpy): Likewise.
+	(class kf_strdup): Likewise.
+	(class kf_strlen): Likewise.
+	(class kf_strndup): Likewise.
+	(register_known_functions): Builtins are now registered as
+	known_functions by name rather than by their BUILTIN_CODE.
+	* known-function-manager.cc (get_normal_builtin): New overload.
+	* known-function-manager.h: New overload declaration.
+	* region-model.cc (region_model::get_builtin_kf): New function.
+	* region-model.h (class region_model): Add declaration of
+	get_builtin_kf.
+	* sm-fd.cc: For called recognized as builtins, use the
+	attributes of that builtin as defined in gcc/builtins.def
+	rather than the user's.
+	* sm-malloc.cc (malloc_state_machine::on_stmt): Likewise.
+
+2023-08-25  David Malcolm  <dmalcolm@redhat.com>
+
+	* access-diagram.cc (class string_region_spatial_item): Remove
+	assumption that the string is written to the start of the cluster.
+
+2023-08-24  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* call-details.cc
+	(call_details::check_for_null_terminated_string_arg): Split into
+	overloads, one taking just an arg_idx, the other a new
+	"include_terminator" param.
+	* call-details.h: Likewise.
+	* kf.cc (class kf_strcat): New.
+	(kf_strcpy::impl_call_pre): Update for change to
+	check_for_null_terminated_string_arg.
+	(register_known_functions): Register kf_strcat.
+	* region-model.cc
+	(region_model::check_for_null_terminated_string_arg): Split into
+	overloads, one taking just an arg_idx, the other a new
+	"include_terminator" param.  When returning an svalue, handle
+	"include_terminator" being false by subtracting one.
+	* region-model.h
+	(region_model::check_for_null_terminated_string_arg): Split into
+	overloads, one taking just an arg_idx, the other a new
+	"include_terminator" param.
+
+2023-08-24  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* region-model.cc (fragment::has_null_terminator): Handle
+	SK_BITS_WITHIN.
+
+2023-08-24  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* region-model-manager.cc
+	(region_model_manager::get_or_create_initial_value): Simplify
+	INIT_VAL(ELEMENT_REG(STRING_REG), CONSTANT_SVAL) to
+	CONSTANT_SVAL(STRING[N]).
+
+2023-08-24  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* region-model.cc (fragment::has_null_terminator): Move STRING_CST
+	handling to fragment::string_cst_has_null_terminator; also use it to
+	handle INIT_VAL(STRING_REG).
+	(fragment::string_cst_has_null_terminator): New, from above.
+
+2023-08-24  David Malcolm  <dmalcolm@redhat.com>
+
+	* kf.cc (kf_memcpy_memmove::impl_call_pre): Reimplement using
+	region_model::copy_bytes.
+	* region-model.cc (region_model::read_bytes): New.
+	(region_model::copy_bytes): New.
+	* region-model.h (region_model::read_bytes): New decl.
+	(region_model::copy_bytes): New decl.
+
+2023-08-24  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* region-model.cc (region_model::get_string_size): Delete both.
+	* region-model.h (region_model::get_string_size): Delete both
+	decls.
+
+2023-08-24  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* kf.cc (kf_strcpy::impl_call_pre): Reimplement using
+	check_for_null_terminated_string_arg.
+	* region-model.cc (region_model::get_store_bytes): Shortcut
+	reading all of a string_region.
+	(region_model::scan_for_null_terminator): Use get_store_value for
+	the bytes rather than "unknown" when returning an unknown length.
+	(region_model::write_bytes): New.
+	* region-model.h (region_model::write_bytes): New decl.
+
+2023-08-24  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* region-model.cc (iterable_cluster::iterable_cluster): Add
+	symbolic binding keys to m_symbolic_bindings.
+	(iterable_cluster::has_symbolic_bindings_p): New.
+	(iterable_cluster::m_symbolic_bindings): New field.
+	(region_model::scan_for_null_terminator): Treat clusters with
+	symbolic bindings as having unknown strlen.
+
+2023-08-24  David Malcolm  <dmalcolm@redhat.com>
+
+	* engine.cc (impl_path_context::impl_path_context): Add logger
+	param.
+	(impl_path_context::bifurcate): Add log message.
+	(impl_path_context::terminate_path): Likewise.
+	(impl_path_context::m_logger): New field.
+	(exploded_graph::process_node): Pass logger to path_ctxt ctor.
+
+2023-08-22  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* kf-analyzer.cc (class kf_analyzer_get_strlen): Move to kf.cc.
+	(register_known_analyzer_functions): Use make_kf_strlen.
+	* kf.cc (class kf_strlen::impl_call_pre): Replace with
+	implementation of kf_analyzer_get_strlen from kf-analyzer.cc.
+	Handle "UNKNOWN" return from check_for_null_terminated_string_arg
+	by falling back to a conjured svalue.
+	(make_kf_strlen): New.
+	(register_known_functions): Use make_kf_strlen.
+	* known-function-manager.h (make_kf_strlen): New decl.
+
+2023-08-22  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* call-details.cc (call_details::call_details): New ctor.
+	* call-details.h (call_details::call_details): New ctor decl.
+	(struct call_arg_details): Move here from region-model.cc.
+	* region-model.cc (region_model::check_call_format_attr): New.
+	(region_model::check_call_args): Call it.
+	(struct call_arg_details): Move it to call-details.h.
+	* region-model.h (region_model::check_call_format_attr): New decl.
+
+2023-08-22  David Malcolm  <dmalcolm@redhat.com>
+
+	* kf.cc (class kf_fopen): New.
+	(register_known_functions): Register it.
+
+2023-08-22  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* analyzer.opt (Wanalyzer-unterminated-string): Delete.
+	* call-details.cc
+	(call_details::check_for_null_terminated_string_arg): Convert
+	return type from void to const svalue *.  Add param "out_sval".
+	* call-details.h
+	(call_details::check_for_null_terminated_string_arg): Likewise.
+	* kf-analyzer.cc (kf_analyzer_get_strlen::impl_call_pre): Wire up
+	to result of check_for_null_terminated_string_arg.
+	* region-model.cc (get_strlen): Delete.
+	(class unterminated_string_arg): Delete.
+	(struct fragment): New.
+	(class iterable_cluster): New.
+	(region_model::get_store_bytes): New.
+	(get_tree_for_byte_offset): New.
+	(region_model::scan_for_null_terminator): New.
+	(region_model::check_for_null_terminated_string_arg): Convert
+	return type from void to const svalue *.  Add param "out_sval".
+	Reimplement in terms of scan_for_null_terminator, dropping the
+	special-case for -Wanalyzer-unterminated-string.
+	* region-model.h (region_model::get_store_bytes): New decl.
+	(region_model::scan_for_null_terminator): New decl.
+	(region_model::check_for_null_terminated_string_arg): Convert
+	return type from void to const svalue *.  Add param "out_sval".
+	* store.cc (concrete_binding::get_byte_range): New.
+	* store.h (concrete_binding::get_byte_range): New decl.
+	(store_manager::get_concrete_binding): New overload.
+
+2023-08-22  David Malcolm  <dmalcolm@redhat.com>
+
+	* region-model.cc (region_model_context_decorator::add_event):
+	Handle m_inner being NULL.
+	* region-model.h (class region_model_context_decorator): Likewise.
+	(annotating_context::warn): Likewise.
+
+2023-08-22  David Malcolm  <dmalcolm@redhat.com>
+
+	* diagnostic-manager.cc (saved_diagnostic::add_event): New.
+	(saved_diagnostic::add_any_saved_events): New.
+	(diagnostic_manager::add_event): New.
+	(dedupe_winners::emit_best): New.
+	(diagnostic_manager::emit_saved_diagnostic): Make "sd" param
+	non-const.  Call saved_diagnostic::add_any_saved_events.
+	* diagnostic-manager.h (saved_diagnostic::add_event): New decl.
+	(saved_diagnostic::add_any_saved_events): New decl.
+	(saved_diagnostic::m_saved_events): New field.
+	(diagnostic_manager::add_event): New decl.
+	(diagnostic_manager::emit_saved_diagnostic): Make "sd" param
+	non-const.
+	* engine.cc (impl_region_model_context::add_event): New.
+	* exploded-graph.h (impl_region_model_context::add_event): New decl.
+	* region-model.cc
+	(noop_region_model_context::add_event): New.
+	(region_model_context_decorator::add_event): New.
+	* region-model.h (region_model_context::add_event): New vfunc.
+	(noop_region_model_context::add_event): New decl.
+	(region_model_context_decorator::add_event): New decl.
+
+2023-08-22  David Malcolm  <dmalcolm@redhat.com>
+
+	* region-model.cc
+	(class check_external_function_for_access_attr::annotating_ctxt):
+	Convert to an annotating_context.
+	* region-model.h (class note_adding_context): Rename to...
+	(class annotating_context): ...this, updating the "warn" method.
+	(note_adding_context::make_note): Replace with...
+	(annotating_context::add_annotations): ...this.
+
 2023-08-14  benjamin priour  <vultkayn@gcc.gnu.org>
 
 	PR analyzer/110543

@@ -58,6 +58,16 @@ call_details::call_details (const gcall *call, region_model *model,
     }
 }
 
+/* call_details's ctor: copy CD, but override the context,
+   using CTXT instead.  */
+
+call_details::call_details (const call_details &cd,
+			    region_model_context *ctxt)
+{
+  *this = cd;
+  m_ctxt = ctxt;
+}
+
 /* Get the manager from m_model.  */
 
 region_model_manager *
@@ -379,8 +389,20 @@ call_details::lookup_function_attribute (const char *attr_name) const
 void
 call_details::check_for_null_terminated_string_arg (unsigned arg_idx) const
 {
+  check_for_null_terminated_string_arg (arg_idx, false, nullptr);
+}
+
+const svalue *
+call_details::
+check_for_null_terminated_string_arg (unsigned arg_idx,
+				      bool include_terminator,
+				      const svalue **out_sval) const
+{
   region_model *model = get_model ();
-  model->check_for_null_terminated_string_arg (*this, arg_idx);
+  return model->check_for_null_terminated_string_arg (*this,
+						      arg_idx,
+						      include_terminator,
+						      out_sval);
 }
 
 } // namespace ana

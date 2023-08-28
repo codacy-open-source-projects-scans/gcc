@@ -345,6 +345,7 @@ Objective-C and Objective-C++ Dialects}.
 -Wcast-align  -Wcast-align=strict  -Wcast-function-type  -Wcast-qual
 -Wchar-subscripts
 -Wclobbered  -Wcomment
+-Wcompare-distinct-pointer-types
 -Wno-complain-wrong-lang
 -Wconversion  -Wno-coverage-mismatch  -Wno-cpp
 -Wdangling-else  -Wdangling-pointer  -Wdangling-pointer=@var{n}
@@ -487,7 +488,6 @@ Objective-C and Objective-C++ Dialects}.
 -Wno-analyzer-tainted-size
 -Wanalyzer-too-complex
 -Wno-analyzer-unsafe-call-within-signal-handler
--Wno-analyzer-unterminated-string
 -Wno-analyzer-use-after-free
 -Wno-analyzer-use-of-pointer-in-stale-stack-frame
 -Wno-analyzer-use-of-uninitialized-value
@@ -9105,6 +9105,11 @@ The latter front end diagnoses
 @samp{f951: Warning: command-line option '-fno-rtti' is valid for C++/D/ObjC++ but not for Fortran},
 which may be disabled with @option{-Wno-complain-wrong-lang}.
 
+@opindex Wcompare-distinct-pointer-types
+@item -Wcompare-distinct-pointer-types @r{(C and Objective-C only)}
+Warn if pointers of distinct types are compared without a cast.  This
+warning is enabled by default.
+
 @opindex Wconversion
 @opindex Wno-conversion
 @item -Wconversion
@@ -10321,7 +10326,6 @@ Enabling this option effectively enables the following warnings:
 -Wanalyzer-shift-count-overflow
 -Wanalyzer-stale-setjmp-buffer
 -Wanalyzer-unsafe-call-within-signal-handler
--Wanalyzer-unterminated-string
 -Wanalyzer-use-after-free
 -Wanalyzer-use-of-pointer-in-stale-stack-frame
 -Wanalyzer-use-of-uninitialized-value
@@ -10911,17 +10915,6 @@ called from a signal handler.
 
 See @uref{https://cwe.mitre.org/data/definitions/479.html, CWE-479: Signal Handler Use of a Non-reentrant Function}.
 
-@opindex Wanalyzer-unterminated-string
-@opindex Wno-analyzer-unterminated-string
-@item -Wno-analyzer-unterminated-string
-This warning requires @option{-fanalyzer}, which enables it; use
-@option{-Wno-analyzer-unterminated-string} to disable it.
-
-This diagnostic warns about code paths which attempt to find the length
-of an unterminated string.  For example, passing a pointer to an unterminated
-buffer to @code{strlen} would lead to accesses beyond the end of the buffer
-whilst attempting to find the terminating zero character.
-
 @opindex Wanalyzer-use-after-free
 @opindex Wno-analyzer-use-after-free
 @item -Wno-analyzer-use-after-free
@@ -11115,6 +11108,7 @@ and of the following functions:
 @item @code{siglongjmp}
 @item @code{signal}
 @item @code{sigsetjmp}
+@item @code{strcat}
 @item @code{strchr}
 @item @code{strlen}
 @end itemize
@@ -20553,7 +20547,8 @@ performance of the code.  Permissible values for this option are:
 @samp{cortex-a75.cortex-a55}, @samp{cortex-a76.cortex-a55},
 @samp{cortex-r82}, @samp{cortex-x1}, @samp{cortex-x1c}, @samp{cortex-x2},
 @samp{cortex-x3}, @samp{cortex-a510}, @samp{cortex-a520}, @samp{cortex-a710},
-@samp{cortex-a715}, @samp{ampere1}, @samp{ampere1a}, and @samp{native}.
+@samp{cortex-a715}, @samp{cortex-a720}, @samp{ampere1}, @samp{ampere1a},
+and @samp{native}.
 
 The values @samp{cortex-a57.cortex-a53}, @samp{cortex-a72.cortex-a53},
 @samp{cortex-a73.cortex-a35}, @samp{cortex-a73.cortex-a53},
