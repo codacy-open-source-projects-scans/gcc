@@ -1,3 +1,973 @@
+2023-09-03  Pan Li  <pan2.li@intel.com>
+
+	* config/riscv/autovec-vls.md (<optab><mode>3): New pattern for
+	fmax/fmin
+	* config/riscv/vector.md: Add VLS modes to vfmax/vfmin.
+
+2023-09-02  Mikael Morin  <mikael@gcc.gnu.org>
+
+	* tree-diagnostic.cc (tree_diagnostics_defaults): Delete allocated
+	pointer before overwriting it.
+
+2023-09-02  chenxiaolong  <chenxiaolong@loongson.cn>
+
+	* config/loongarch/loongarch-builtins.cc (loongarch_init_builtins):
+	Associate the __float128 type to float128_type_node so that it can
+	be recognized by the compiler.
+	* config/loongarch/loongarch-c.cc (loongarch_cpu_cpp_builtins):
+	Add the flag "FLOAT128_TYPE" to gcc and associate a function
+	with the suffix "q" to "f128".
+	* doc/extend.texi:Added support for 128-bit floating-point functions on
+	the LoongArch architecture.
+
+2023-09-01  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/111069
+	* common.opt (fabi-version=): Document version 19.
+	* doc/invoke.texi (-fabi-version=): Likewise.
+
+2023-09-01  Lehua Ding  <lehua.ding@rivai.ai>
+
+	* config/riscv/autovec-opt.md (*cond_<optab><mode><vconvert>):
+	New combine pattern.
+	(*cond_<float_cvt><vconvert><mode>): Ditto.
+	(*cond_<optab><vnconvert><mode>): Ditto.
+	(*cond_<float_cvt><vnconvert><mode>): Ditto.
+	(*cond_<optab><mode><vnconvert>): Ditto.
+	(*cond_<float_cvt><mode><vnconvert>2): Ditto.
+	* config/riscv/autovec.md (<optab><mode><vconvert>2): Adjust.
+	(<float_cvt><vconvert><mode>2): Adjust.
+	(<optab><vnconvert><mode>2): Adjust.
+	(<float_cvt><vnconvert><mode>2): Adjust.
+	(<optab><mode><vnconvert>2): Adjust.
+	(<float_cvt><mode><vnconvert>2): Adjust.
+	* config/riscv/riscv-v.cc (needs_fp_rounding): Add INT->FP extend.
+
+2023-09-01  Lehua Ding  <lehua.ding@rivai.ai>
+
+	* config/riscv/autovec-opt.md (*cond_extend<v_double_trunc><mode>):
+	New combine pattern.
+	(*cond_trunc<mode><v_double_trunc>): Ditto.
+	* config/riscv/autovec.md: Adjust.
+	* config/riscv/riscv-v.cc (needs_fp_rounding): Add FP extend.
+
+2023-09-01  Lehua Ding  <lehua.ding@rivai.ai>
+
+	* config/riscv/autovec-opt.md (*cond_<optab><v_double_trunc><mode>):
+	New combine pattern.
+	(*cond_<optab><v_quad_trunc><mode>): Ditto.
+	(*cond_<optab><v_oct_trunc><mode>): Ditto.
+	(*cond_trunc<mode><v_double_trunc>): Ditto.
+	* config/riscv/autovec.md (<optab><v_quad_trunc><mode>2): Adjust.
+	(<optab><v_oct_trunc><mode>2): Ditto.
+
+2023-09-01  Lehua Ding  <lehua.ding@rivai.ai>
+
+	* config/riscv/autovec.md: Adjust.
+	* config/riscv/riscv-protos.h (expand_cond_len_unop): Ditto.
+	(expand_cond_len_binop): Ditto.
+	* config/riscv/riscv-v.cc (needs_fp_rounding): Ditto.
+	(expand_cond_len_op): Ditto.
+	(expand_cond_len_unop): Ditto.
+	(expand_cond_len_binop): Ditto.
+	(expand_cond_len_ternop): Ditto.
+
+2023-09-01  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-v.cc (autovectorize_vector_modes): Enable
+	VECT_COMPARE_COSTS by default.
+
+2023-09-01  Robin Dapp  <rdapp@ventanamicro.com>
+
+	* config/riscv/autovec.md (vec_extract<mode>qi): New expander.
+
+2023-09-01  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-opts.h (enum riscv_autovec_lmul_enum): Add
+	dynamic enum.
+	* config/riscv/riscv.opt: Add dynamic compile option.
+
+2023-09-01  Pan Li  <pan2.li@intel.com>
+
+	* config/riscv/autovec-vls.md (<optab><mode>3): New pattern for
+	vls floating-point autovec.
+	* config/riscv/vector-iterators.md: New iterator for
+	floating-point V and VLS.
+	* config/riscv/vector.md: Add VLS to floating-point binop.
+
+2023-09-01  Andrew Pinski  <apinski@marvell.com>
+
+	PR tree-optimization/19832
+	* match.pd: Add pattern to optimize
+	`(a != b) ? a OP b : c`.
+
+2023-09-01  Lulu Cheng  <chenglulu@loongson.cn>
+	    Guo Jie  <guojie@loongson.cn>
+
+	PR target/110484
+	* config/loongarch/loongarch.cc (loongarch_emit_stack_tie): Use the
+	frame_pointer_needed to determine whether to use the $fp register.
+
+2023-08-31  Andrew Pinski  <apinski@marvell.com>
+
+	PR tree-optimization/110915
+	* match.pd (min_value, max_value): Extend to vector constants.
+
+2023-08-31  Francois-Xavier Coudert  <fxcoudert@gcc.gnu.org>
+
+	* config.in: Regenerate.
+	* config/darwin-c.cc: Change spelling to macOS.
+	* config/darwin-driver.cc: Likewise.
+	* config/darwin.h: Likewise.
+	* configure.ac: Likewise.
+	* doc/contrib.texi: Likewise.
+	* doc/extend.texi: Likewise.
+	* doc/invoke.texi: Likewise.
+	* doc/plugins.texi: Likewise.
+	* doc/tm.texi: Regenerate.
+	* doc/tm.texi.in: Change spelling to macOS.
+	* plugin.cc: Likewise.
+
+2023-08-31  Pan Li  <pan2.li@intel.com>
+
+	* config/riscv/autovec-opt.md: Add FRM_REGNUM to vfnmadd/vfnmacc.
+	* config/riscv/autovec.md: Ditto.
+
+2023-08-31  Pan Li  <pan2.li@intel.com>
+
+	* config/riscv/autovec-opt.md: Add FRM_REGNUM to vfnmsac/vfnmsub
+	* config/riscv/autovec.md: Ditto.
+
+2023-08-31  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64.md (untyped_call): Emit a call_value
+	rather than a call.  List each possible destination register
+	in the call pattern.
+
+2023-08-31  Pan Li  <pan2.li@intel.com>
+
+	* config/riscv/autovec-opt.md: Add FRM_REGNUM to vfmsac/vfmsub
+	* config/riscv/autovec.md: Ditto.
+
+2023-08-31  Pan Li  <pan2.li@intel.com>
+	    Ju-Zhe Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/autovec-opt.md: Add FRM_REGNUM to vfmadd/vfmacc.
+	* config/riscv/autovec.md: Ditto.
+	* config/riscv/vector-iterators.md: Add UNSPEC_VFFMA.
+
+2023-08-31  Palmer Dabbelt  <palmer@rivosinc.com>
+
+	* config/riscv/autovec.md (shifts): Use
+	vector_scalar_shift_operand.
+	* config/riscv/predicates.md (vector_scalar_shift_operand): New
+	predicate.
+
+2023-08-31  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config.gcc: Add vector cost model framework for RVV.
+	* config/riscv/riscv.cc (riscv_vectorize_create_costs): Ditto.
+	(TARGET_VECTORIZE_CREATE_COSTS): Ditto.
+	* config/riscv/t-riscv: Ditto.
+	* config/riscv/riscv-vector-costs.cc: New file.
+	* config/riscv/riscv-vector-costs.h: New file.
+
+2023-08-31  Jeevitha Palanisamy  <jeevitha@linux.ibm.com>
+
+	PR target/110411
+	* config/rs6000/mma.md (define_insn_and_split movoo): Disallow
+	AltiVec address operands.
+	(define_insn_and_split movxo): Likewise.
+	* config/rs6000/predicates.md (vsx_quad_dform_memory_operand): Remove
+	redundant mode size check.
+
+2023-08-31  Lehua Ding  <lehua.ding@rivai.ai>
+
+	* config/riscv/riscv-protos.h (IS_AGNOSTIC): Move to here.
+	* config/riscv/riscv-v.cc (gen_no_side_effects_vsetvl_rtx):
+	Change to default policy.
+	* config/riscv/riscv-vector-builtins-bases.cc: Change to default policy.
+	* config/riscv/riscv-vsetvl.h (IS_AGNOSTIC): Delete.
+	* config/riscv/riscv.cc (riscv_print_operand): Use IS_AGNOSTIC to test.
+
+2023-08-31  Lehua Ding  <lehua.ding@rivai.ai>
+
+	* config/riscv/autovec-opt.md: Adjust.
+	* config/riscv/autovec-vls.md: Ditto.
+	* config/riscv/autovec.md: Ditto.
+	* config/riscv/riscv-protos.h (enum insn_type): Add insn_type.
+	(enum insn_flags): Add insn flags.
+	(emit_vlmax_insn): Adjust.
+	(emit_vlmax_fp_insn): Delete.
+	(emit_vlmax_ternary_insn): Delete.
+	(emit_vlmax_fp_ternary_insn): Delete.
+	(emit_nonvlmax_insn): Adjust.
+	(emit_vlmax_slide_insn): Delete.
+	(emit_nonvlmax_slide_tu_insn): Delete.
+	(emit_vlmax_merge_insn): Delete.
+	(emit_vlmax_cmp_insn): Delete.
+	(emit_vlmax_cmp_mu_insn): Delete.
+	(emit_vlmax_masked_mu_insn): Delete.
+	(emit_scalar_move_insn): Delete.
+	(emit_nonvlmax_integer_move_insn): Delete.
+	(emit_vlmax_insn_lra): Add.
+	* config/riscv/riscv-v.cc (get_mask_mode_from_insn_flags): New.
+	(emit_vlmax_insn): Adjust.
+	(emit_nonvlmax_insn): Adjust.
+	(emit_vlmax_insn_lra): Add.
+	(emit_vlmax_fp_insn): Delete.
+	(emit_vlmax_ternary_insn): Delete.
+	(emit_vlmax_fp_ternary_insn): Delete.
+	(emit_vlmax_slide_insn): Delete.
+	(emit_nonvlmax_slide_tu_insn): Delete.
+	(emit_nonvlmax_slide_insn): Delete.
+	(emit_vlmax_merge_insn): Delete.
+	(emit_vlmax_cmp_insn): Delete.
+	(emit_vlmax_cmp_mu_insn): Delete.
+	(emit_vlmax_masked_insn): Delete.
+	(emit_nonvlmax_masked_insn): Delete.
+	(emit_vlmax_masked_store_insn): Delete.
+	(emit_nonvlmax_masked_store_insn): Delete.
+	(emit_vlmax_masked_mu_insn): Delete.
+	(emit_vlmax_masked_fp_mu_insn): Delete.
+	(emit_nonvlmax_tu_insn): Delete.
+	(emit_nonvlmax_fp_tu_insn): Delete.
+	(emit_nonvlmax_tumu_insn): Delete.
+	(emit_nonvlmax_fp_tumu_insn): Delete.
+	(emit_scalar_move_insn): Delete.
+	(emit_cpop_insn): Delete.
+	(emit_vlmax_integer_move_insn): Delete.
+	(emit_nonvlmax_integer_move_insn): Delete.
+	(emit_vlmax_gather_insn): Delete.
+	(emit_vlmax_masked_gather_mu_insn): Delete.
+	(emit_vlmax_compress_insn): Delete.
+	(emit_nonvlmax_compress_insn): Delete.
+	(emit_vlmax_reduction_insn): Delete.
+	(emit_vlmax_fp_reduction_insn): Delete.
+	(emit_nonvlmax_fp_reduction_insn): Delete.
+	(expand_vec_series): Adjust.
+	(expand_const_vector): Adjust.
+	(legitimize_move): Adjust.
+	(sew64_scalar_helper): Adjust.
+	(expand_tuple_move): Adjust.
+	(expand_vector_init_insert_elems): Adjust.
+	(expand_vector_init_merge_repeating_sequence): Adjust.
+	(expand_vec_cmp): Adjust.
+	(expand_vec_cmp_float): Adjust.
+	(expand_vec_perm): Adjust.
+	(shuffle_merge_patterns): Adjust.
+	(shuffle_compress_patterns): Adjust.
+	(shuffle_decompress_patterns): Adjust.
+	(expand_load_store): Adjust.
+	(expand_cond_len_op): Adjust.
+	(expand_cond_len_unop): Adjust.
+	(expand_cond_len_binop): Adjust.
+	(expand_gather_scatter): Adjust.
+	(expand_cond_len_ternop): Adjust.
+	(expand_reduction): Adjust.
+	(expand_lanes_load_store): Adjust.
+	(expand_fold_extract_last): Adjust.
+	* config/riscv/riscv.cc (vector_zero_call_used_regs): Adjust.
+	* config/riscv/vector.md: Adjust.
+
+2023-08-31  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	PR target/96762
+	* config/rs6000/rs6000-string.cc (expand_block_move): Call vector
+	load/store with length only on 64-bit Power10.
+
+2023-08-31  Claudiu Zissulescu  <claziss@gmail.com>
+
+	* config/arc/arc.cc (arc_split_mov_const): Use LSL16 only when
+	SWAP option is enabled.
+	* config/arc/arc.md (ashlsi2_cnt16): Likewise.
+
+2023-08-31  Stamatis Markianos-Wright  <stam.markianos-wright@arm.com>
+
+	* config/arm/arm-mve-builtins-base.cc (vcaddq_rot90, vcaddq_rot270):
+	Use common insn for signed and unsigned front-end definitions.
+	* config/arm/arm_mve_builtins.def
+	(vcaddq_rot90_m_u, vcaddq_rot270_m_u): Make common.
+	(vcaddq_rot90_m_s, vcaddq_rot270_m_s): Remove.
+	* config/arm/iterators.md (mve_insn): Merge signed and unsigned defs.
+	(isu): Likewise.
+	(rot): Likewise.
+	(mve_rot): Likewise.
+	(supf): Likewise.
+	(VxCADDQ_M): Likewise.
+	* config/arm/unspecs.md (unspec): Likewise.
+	* config/arm/mve.md: Fix minor typo.
+
+2023-08-31  liuhongt  <hongtao.liu@intel.com>
+
+	* config/i386/sse.md (<avx512>_blendm<mode>): Merge
+	VF_AVX512HFBFVL into VI12HFBF_AVX512VL.
+	(VF_AVX512HFBF16): Renamed to VHFBF.
+	(VF_AVX512FP16VL): Renamed to VHF_AVX512VL.
+	(VF_AVX512FP16): Removed.
+	(div<mode>3): Adjust VF_AVX512FP16VL to VHF_AVX512VL.
+	(avx512fp16_rcp<mode>2<mask_name>): Ditto.
+	(rsqrt<mode>2): Ditto.
+	(<sse>_rsqrt<mode>2<mask_name>): Ditto.
+	(vcond<mode><code>): Ditto.
+	(vcond<sseintvecmodelower><mode>): Ditto.
+	(<avx512>_fmaddc_<mode>_mask1<round_expand_name>): Ditto.
+	(<avx512>_fmaddc_<mode>_maskz<round_expand_name>): Ditto.
+	(<avx512>_fcmaddc_<mode>_mask1<round_expand_name>): Ditto.
+	(<avx512>_fcmaddc_<mode>_maskz<round_expand_name>): Ditto.
+	(cmla<conj_op><mode>4): Ditto.
+	(fma_<mode>_fadd_fmul): Ditto.
+	(fma_<mode>_fadd_fcmul): Ditto.
+	(fma_<complexopname>_<mode>_fma_zero): Ditto.
+	(fma_<mode>_fmaddc_bcst): Ditto.
+	(fma_<mode>_fcmaddc_bcst): Ditto.
+	(<avx512>_<complexopname>_<mode>_mask<round_name>): Ditto.
+	(cmul<conj_op><mode>3): Ditto.
+	(<avx512>_<complexopname>_<mode><maskc_name><round_name>):
+	Ditto.
+	(vec_unpacks_lo_<mode>): Ditto.
+	(vec_unpacks_hi_<mode>): Ditto.
+	(vec_unpack_<fixprefix>fix_trunc_lo_<mode>): Ditto.
+	(vec_unpack_<fixprefix>fix_trunc_lo_<mode>): Ditto.
+	(*vec_extract<mode>_0): Ditto.
+	(*<avx512>_cmp<mode>3): Extend to V48H_AVX512VL.
+
+2023-08-31  Lehua Ding  <lehua.ding@rivai.ai>
+
+	PR target/111234
+	* config/riscv/riscv-vsetvl.cc (gen_vsetvl_pat): Remove condition.
+
+2023-08-31  Jiufu Guo  <guojiufu@linux.ibm.com>
+
+	* range-op-mixed.h (operator_plus::overflow_free_p): New declare.
+	(operator_minus::overflow_free_p): New declare.
+	(operator_mult::overflow_free_p): New declare.
+	* range-op.cc (range_op_handler::overflow_free_p): New function.
+	(range_operator::overflow_free_p): New default function.
+	(operator_plus::overflow_free_p): New function.
+	(operator_minus::overflow_free_p): New function.
+	(operator_mult::overflow_free_p): New function.
+	* range-op.h (range_op_handler::overflow_free_p): New declare.
+	(range_operator::overflow_free_p): New declare.
+	* value-range.cc (irange::nonnegative_p): New function.
+	(irange::nonpositive_p): New function.
+	* value-range.h (irange::nonnegative_p): New declare.
+	(irange::nonpositive_p): New declare.
+
+2023-08-30  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	PR target/106562
+	* config/pru/predicates.md (const_0_operand): New predicate.
+	(pru_cstore_comparison_operator): Ditto.
+	* config/pru/pru.md (cstore<mode>4): New pattern.
+	(cstoredi4): Ditto.
+
+2023-08-30  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/111228
+	* match.pd ((vec_perm (vec_perm ..) @5 ..) -> (vec_perm @x @5 ..)):
+	New simplifications.
+
+2023-08-30  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/autovec.md (movmisalign<mode>): Delete.
+
+2023-08-30  Die Li  <lidie@eswincomputing.com>
+	    Fei Gao  <gaofei@eswincomputing.com>
+
+	* config/riscv/peephole.md: New pattern.
+	* config/riscv/predicates.md (a0a1_reg_operand): New predicate.
+	(zcmp_mv_sreg_operand): New predicate.
+	* config/riscv/riscv.md: New predicate.
+	* config/riscv/zc.md (*mva01s<X:mode>): New pattern.
+	(*mvsa01<X:mode>): New pattern.
+
+2023-08-30  Fei Gao  <gaofei@eswincomputing.com>
+
+	* config/riscv/riscv.cc
+	(riscv_zcmp_can_use_popretz): true if popretz can be used
+	(riscv_gen_multi_pop_insn): interface to generate cm.pop[ret][z]
+	(riscv_expand_epilogue): expand cm.pop[ret][z] in epilogue
+	* config/riscv/riscv.md: define A0_REGNUM
+	* config/riscv/zc.md
+	(@gpr_multi_popretz_up_to_ra_<mode>): md for popretz ra
+	(@gpr_multi_popretz_up_to_s0_<mode>): md for popretz ra, s0
+	(@gpr_multi_popretz_up_to_s1_<mode>): likewise
+	(@gpr_multi_popretz_up_to_s2_<mode>): likewise
+	(@gpr_multi_popretz_up_to_s3_<mode>): likewise
+	(@gpr_multi_popretz_up_to_s4_<mode>): likewise
+	(@gpr_multi_popretz_up_to_s5_<mode>): likewise
+	(@gpr_multi_popretz_up_to_s6_<mode>): likewise
+	(@gpr_multi_popretz_up_to_s7_<mode>): likewise
+	(@gpr_multi_popretz_up_to_s8_<mode>): likewise
+	(@gpr_multi_popretz_up_to_s9_<mode>): likewise
+	(@gpr_multi_popretz_up_to_s11_<mode>): likewise
+
+2023-08-30  Fei Gao  <gaofei@eswincomputing.com>
+
+	* config/riscv/iterators.md
+	(slot0_offset): slot 0 offset in stack GPRs area in bytes
+	(slot1_offset): slot 1 offset in stack GPRs area in bytes
+	(slot2_offset): likewise
+	(slot3_offset): likewise
+	(slot4_offset): likewise
+	(slot5_offset): likewise
+	(slot6_offset): likewise
+	(slot7_offset): likewise
+	(slot8_offset): likewise
+	(slot9_offset): likewise
+	(slot10_offset): likewise
+	(slot11_offset): likewise
+	(slot12_offset): likewise
+	* config/riscv/predicates.md
+	(stack_push_up_to_ra_operand): predicates of stack adjust pushing ra
+	(stack_push_up_to_s0_operand): predicates of stack adjust pushing ra, s0
+	(stack_push_up_to_s1_operand): likewise
+	(stack_push_up_to_s2_operand): likewise
+	(stack_push_up_to_s3_operand): likewise
+	(stack_push_up_to_s4_operand): likewise
+	(stack_push_up_to_s5_operand): likewise
+	(stack_push_up_to_s6_operand): likewise
+	(stack_push_up_to_s7_operand): likewise
+	(stack_push_up_to_s8_operand): likewise
+	(stack_push_up_to_s9_operand): likewise
+	(stack_push_up_to_s11_operand): likewise
+	(stack_pop_up_to_ra_operand): predicates of stack adjust poping ra
+	(stack_pop_up_to_s0_operand): predicates of stack adjust poping ra, s0
+	(stack_pop_up_to_s1_operand): likewise
+	(stack_pop_up_to_s2_operand): likewise
+	(stack_pop_up_to_s3_operand): likewise
+	(stack_pop_up_to_s4_operand): likewise
+	(stack_pop_up_to_s5_operand): likewise
+	(stack_pop_up_to_s6_operand): likewise
+	(stack_pop_up_to_s7_operand): likewise
+	(stack_pop_up_to_s8_operand): likewise
+	(stack_pop_up_to_s9_operand): likewise
+	(stack_pop_up_to_s11_operand): likewise
+	* config/riscv/riscv-protos.h
+	(riscv_zcmp_valid_stack_adj_bytes_p):declaration
+	* config/riscv/riscv.cc (struct riscv_frame_info): comment change
+	(riscv_avoid_multi_push): helper function of riscv_use_multi_push
+	(riscv_use_multi_push): true if multi push is used
+	(riscv_multi_push_sregs_count): num of sregs in multi-push
+	(riscv_multi_push_regs_count): num of regs in multi-push
+	(riscv_16bytes_align): align to 16 bytes
+	(riscv_stack_align): moved to a better place
+	(riscv_save_libcall_count): no functional change
+	(riscv_compute_frame_info): add zcmp frame info
+	(riscv_for_each_saved_reg): save or restore fprs in specified slot for zcmp
+	(riscv_adjust_multi_push_cfi_prologue): adjust cfi for cm.push
+	(riscv_gen_multi_push_pop_insn): gen function for multi push and pop
+	(get_multi_push_fpr_mask): get mask for the fprs pushed by cm.push
+	(riscv_expand_prologue): allocate stack by cm.push
+	(riscv_adjust_multi_pop_cfi_epilogue): adjust cfi for cm.pop[ret]
+	(riscv_expand_epilogue): allocate stack by cm.pop[ret]
+	(zcmp_base_adj): calculate stack adjustment base size
+	(zcmp_additional_adj): calculate stack adjustment additional size
+	(riscv_zcmp_valid_stack_adj_bytes_p): check if stack adjustment valid
+	* config/riscv/riscv.h (RETURN_ADDR_MASK): mask of ra
+	(S0_MASK): likewise
+	(S1_MASK): likewise
+	(S2_MASK): likewise
+	(S3_MASK): likewise
+	(S4_MASK): likewise
+	(S5_MASK): likewise
+	(S6_MASK): likewise
+	(S7_MASK): likewise
+	(S8_MASK): likewise
+	(S9_MASK): likewise
+	(S10_MASK): likewise
+	(S11_MASK): likewise
+	(MULTI_PUSH_GPR_MASK): GPR_MASK that cm.push can cover at most
+	(ZCMP_MAX_SPIMM): max spimm value
+	(ZCMP_SP_INC_STEP): zcmp sp increment step
+	(ZCMP_INVALID_S0S10_SREGS_COUNTS): num of s0-s10
+	(ZCMP_S0S11_SREGS_COUNTS): num of s0-s11
+	(ZCMP_MAX_GRP_SLOTS): max slots of pushing and poping in zcmp
+	(CALLEE_SAVED_FREG_NUMBER): get x of fsx(fs0 ~ fs11)
+	* config/riscv/riscv.md: include zc.md
+	* config/riscv/zc.md: New file. machine description for zcmp
+
+2023-08-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/110914
+	* tree-ssa-strlen.cc (strlen_pass::handle_builtin_memcpy): Don't call
+	adjust_last_stmt unless len is known constant.
+
+2023-08-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/111015
+	* gimple-ssa-store-merging.cc
+	(imm_store_chain_info::output_merged_store): Use wi::mask and
+	wide_int_to_tree instead of unsigned HOST_WIDE_INT shift and
+	build_int_cst to build BIT_AND_EXPR mask.
+
+2023-08-30  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* tree-ssa-alias.cc (ref_maybe_used_by_call_p_1): Add MASK_LEN_ variant.
+	(call_may_clobber_ref_p_1): Ditto.
+	* tree-ssa-loop-ivopts.cc (get_mem_type_for_internal_fn): Ditto.
+	(get_alias_ptr_type_for_ptr_address): Ditto.
+
+2023-08-30  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-vsetvl.cc
+	(vector_insn_info::get_avl_or_vl_reg): Fix bug.
+
+2023-08-30  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/autovec-vls.md (movmisalign<mode>): New pattern.
+	* config/riscv/riscv.cc (riscv_support_vector_misalignment): Support
+	VLS misalign.
+
+2023-08-29  Philipp Tomsich  <philipp.tomsich@vrull.eu>
+
+	* config/riscv/zicond.md: New splitters to rewrite single bit
+	sign extension as the condition to a czero in the desired form.
+
+2023-08-29  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/99860
+	* doc/invoke.texi: Add -Wanalyzer-overlapping-buffers.
+
+2023-08-29  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/99860
+	* Makefile.in (ANALYZER_OBJS): Add analyzer/ranges.o.
+
+2023-08-29  Jin Ma  <jinma@linux.alibaba.com>
+
+	* config/riscv/riscv.cc (riscv_float_const_rtx_index_for_fli):
+	zvfh can generate zfa extended instruction fli.h, just like zfh.
+
+2023-08-29  Edwin Lu  <ewlu@rivosinc.com>
+	    Vineet Gupta  <vineetg@rivosinc.com>
+
+	* config/riscv/riscv-c.cc (riscv_cpu_cpp_builtins): Generate
+	__riscv_unaligned_avoid with value 1 or
+	__riscv_unaligned_slow with value 1 or
+	__riscv_unaligned_fast with value 1
+	* config/riscv/riscv.cc (riscv_option_override): Define
+	riscv_user_wants_strict_align. Set
+	riscv_user_wants_strict_align to TARGET_STRICT_ALIGN
+	* config/riscv/riscv.h: Declare riscv_user_wants_strict_align
+
+2023-08-29  Edwin Lu  <ewlu@rivosinc.com>
+
+	* config/riscv/autovec-vls.md: Update types
+	* config/riscv/riscv.md: Add vector placeholder type
+	* config/riscv/vector.md: Update types
+
+2023-08-29  Carl Love  <cel@us.ibm.com>
+
+	* config/rs6000/dfp.md (UNSPEC_DQUAN): New unspec.
+	(dfp_dqua_<mode>, dfp_dquai_<mode>): New define_insn.
+	* config/rs6000/rs6000-builtins.def (__builtin_dfp_dqua,
+	__builtin_dfp_dquai, __builtin_dfp_dquaq, __builtin_dfp_dquaqi):
+	New buit-in definitions.
+	* config/rs6000/rs6000-overload.def (__builtin_dfp_quantize): New
+	overloaded definition.
+	* doc/extend.texi: Add documentation for __builtin_dfp_quantize.
+
+2023-08-29  Pan Li  <pan2.li@intel.com>
+	    Ju-Zhe Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv.cc (riscv_legitimize_poly_move): New declaration.
+	(riscv_legitimize_const_move): Handle ref plus const poly.
+
+2023-08-29  Tsukasa OI  <research_trasio@irq.a4lg.com>
+
+	* common/config/riscv/riscv-common.cc
+	(riscv_implied_info): Add implications from unprivileged extensions.
+	(riscv_ext_version_table): Add stub support for all unprivileged
+	extensions supported by Binutils as well as 'Zce', 'Zcmp', 'Zcmt'.
+
+2023-08-29  Tsukasa OI  <research_trasio@irq.a4lg.com>
+
+	* common/config/riscv/riscv-common.cc (riscv_ext_version_table):
+	Add stub support for all vendor extensions supported by Binutils.
+
+2023-08-29  Tsukasa OI  <research_trasio@irq.a4lg.com>
+
+	* common/config/riscv/riscv-common.cc
+	(riscv_implied_info): Add implications from privileged extensions.
+	(riscv_ext_version_table): Add stub support for all privileged
+	extensions supported by Binutils.
+
+2023-08-29  Lehua Ding  <lehua.ding@rivai.ai>
+
+	* config/riscv/autovec.md: Adjust
+	* config/riscv/riscv-protos.h (RVV_VUNDEF): Clean.
+	(get_vlmax_rtx): Exported.
+	* config/riscv/riscv-v.cc (emit_nonvlmax_fp_ternary_tu_insn): Deleted.
+	(emit_vlmax_masked_gather_mu_insn): Adjust.
+	(get_vlmax_rtx): New func.
+	(expand_load_store): Adjust.
+	(expand_cond_len_unop): Call expand_cond_len_op.
+	(expand_cond_len_op): New subroutine.
+	(expand_cond_len_binop): Call expand_cond_len_op.
+	(expand_cond_len_ternop): Call expand_cond_len_op.
+	(expand_lanes_load_store): Adjust.
+
+2023-08-29  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/79173
+	PR middle-end/111209
+	* tree-ssa-math-opts.cc (match_uaddc_usubc): Match also
+	just 2 limb uaddc/usubc with 0 carry-in on lower limb and ignored
+	carry-out on higher limb.  Don't match it though if it could be
+	matched later on 4 argument addition/subtraction.
+
+2023-08-29  Andrew Pinski  <apinski@marvell.com>
+
+	PR tree-optimization/111147
+	* match.pd (`(x | y) & (~x ^ y)`) Use bitwise_inverted_equal_p
+	instead of matching bit_not.
+
+2023-08-29  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins.cc (type_suffixes): Add missing
+	initializer.
+
+2023-08-29  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-vsetvl.cc (vector_insn_info::get_avl_or_vl_reg): New function.
+	(pass_vsetvl::compute_local_properties): Fix bug.
+	(pass_vsetvl::commit_vsetvls): Ditto.
+	* config/riscv/riscv-vsetvl.h: New function.
+
+2023-08-29  Lehua Ding  <lehua.ding@rivai.ai>
+
+	PR target/110943
+	* config/riscv/predicates.md (vector_const_int_or_double_0_operand):
+	New predicate.
+	* config/riscv/riscv-vector-builtins.cc (function_expander::function_expander):
+	force_reg mem target operand.
+	* config/riscv/vector.md (@pred_mov<mode>): Wrapper.
+	(*pred_mov<mode>): Remove imm -> reg pattern.
+	(*pred_broadcast<mode>_imm): Add imm -> reg pattern.
+
+2023-08-29  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* common/config/loongarch/loongarch-common.cc:
+	Enable '-free' on O2 and above.
+	* doc/invoke.texi: Modify the description information
+	of the '-free' compilation option and add the LoongArch
+	description.
+
+2023-08-28  Tsukasa OI  <research_trasio@irq.a4lg.com>
+
+	* doc/extend.texi: Fix the description of __builtin_riscv_pause.
+
+2023-08-28  Tsukasa OI  <research_trasio@irq.a4lg.com>
+
+	* common/config/riscv/riscv-common.cc (riscv_ext_version_table):
+	Implement the 'Zihintpause' extension, version 2.0.
+	(riscv_ext_flag_table) Add 'Zihintpause' handling.
+	* config/riscv/riscv-builtins.cc: Remove availability predicate
+	"always" and add "hint_pause".
+	(riscv_builtins) : Add "pause" extension.
+	* config/riscv/riscv-opts.h (MASK_ZIHINTPAUSE, TARGET_ZIHINTPAUSE): New.
+	* config/riscv/riscv.md (riscv_pause): Adjust output based on
+	TARGET_ZIHINTPAUSE.
+
+2023-08-28  Andrew Pinski  <apinski@marvell.com>
+
+	* match.pd (`(X & ~Y) | (~X & Y)`): Use bitwise_inverted_equal_p
+	instead of specifically checking for ~X.
+
+2023-08-28  Andrew Pinski  <apinski@marvell.com>
+
+	PR tree-optimization/111146
+	* match.pd (`(x | y) & ~x`, `(x & y) | ~x`): Remove
+	redundant pattern.
+
+2023-08-28  Andrew Pinski  <apinski@marvell.com>
+
+	* tree-ssa-phiopt.cc (gimple_simplify_phiopt): Add dump information
+	when resimplify returns true.
+	(match_simplify_replacement): Print only if accepted the match-and-simplify
+	result rather than the full sequence.
+
+2023-08-28  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-vsetvl.cc (pass_vsetvl::earliest_fusion): Skip
+	never probability.
+	(pass_vsetvl::compute_probabilities): Fix unitialized probability.
+
+2023-08-28  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-vsetvl.cc (pass_vsetvl::earliest_fusion): Fix bug.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-base.cc (vmullbq_poly)
+	(vmulltq_poly): New.
+	* config/arm/arm-mve-builtins-base.def (vmullbq_poly)
+	(vmulltq_poly): New.
+	* config/arm/arm-mve-builtins-base.h (vmullbq_poly)
+	(vmulltq_poly): New.
+	* config/arm/arm_mve.h (vmulltq_poly): Remove.
+	(vmullbq_poly): Remove.
+	(vmullbq_poly_m): Remove.
+	(vmulltq_poly_m): Remove.
+	(vmullbq_poly_x): Remove.
+	(vmulltq_poly_x): Remove.
+	(vmulltq_poly_p8): Remove.
+	(vmullbq_poly_p8): Remove.
+	(vmulltq_poly_p16): Remove.
+	(vmullbq_poly_p16): Remove.
+	(vmullbq_poly_m_p8): Remove.
+	(vmullbq_poly_m_p16): Remove.
+	(vmulltq_poly_m_p8): Remove.
+	(vmulltq_poly_m_p16): Remove.
+	(vmullbq_poly_x_p8): Remove.
+	(vmullbq_poly_x_p16): Remove.
+	(vmulltq_poly_x_p8): Remove.
+	(vmulltq_poly_x_p16): Remove.
+	(__arm_vmulltq_poly_p8): Remove.
+	(__arm_vmullbq_poly_p8): Remove.
+	(__arm_vmulltq_poly_p16): Remove.
+	(__arm_vmullbq_poly_p16): Remove.
+	(__arm_vmullbq_poly_m_p8): Remove.
+	(__arm_vmullbq_poly_m_p16): Remove.
+	(__arm_vmulltq_poly_m_p8): Remove.
+	(__arm_vmulltq_poly_m_p16): Remove.
+	(__arm_vmullbq_poly_x_p8): Remove.
+	(__arm_vmullbq_poly_x_p16): Remove.
+	(__arm_vmulltq_poly_x_p8): Remove.
+	(__arm_vmulltq_poly_x_p16): Remove.
+	(__arm_vmulltq_poly): Remove.
+	(__arm_vmullbq_poly): Remove.
+	(__arm_vmullbq_poly_m): Remove.
+	(__arm_vmulltq_poly_m): Remove.
+	(__arm_vmullbq_poly_x): Remove.
+	(__arm_vmulltq_poly_x): Remove.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-functions.h (class
+	unspec_mve_function_exact_insn_vmull_poly): New.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-shapes.cc (binary_widen_poly): New.
+	* config/arm/arm-mve-builtins-shapes.h (binary_widen_poly): New.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-shapes.cc (parse_element_type): Add
+	support for 'U' and 'p' format specifiers.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins.cc (type_suffixes): Handle poly_p
+	field..
+	(TYPES_poly_8_16): New.
+	(poly_8_16): New.
+	* config/arm/arm-mve-builtins.def (p8): New type suffix.
+	(p16): Likewise.
+	* config/arm/arm-mve-builtins.h (enum type_class_index): Add
+	TYPE_poly.
+	(struct type_suffix_info): Add poly_p field.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-base.cc (vmullbq_int, vmulltq_int):
+	New.
+	* config/arm/arm-mve-builtins-base.def (vmullbq_int, vmulltq_int):
+	New.
+	* config/arm/arm-mve-builtins-base.h (vmullbq_int, vmulltq_int):
+	New.
+	* config/arm/arm_mve.h (vmulltq_int): Remove.
+	(vmullbq_int): Remove.
+	(vmullbq_int_m): Remove.
+	(vmulltq_int_m): Remove.
+	(vmullbq_int_x): Remove.
+	(vmulltq_int_x): Remove.
+	(vmulltq_int_u8): Remove.
+	(vmullbq_int_u8): Remove.
+	(vmulltq_int_s8): Remove.
+	(vmullbq_int_s8): Remove.
+	(vmulltq_int_u16): Remove.
+	(vmullbq_int_u16): Remove.
+	(vmulltq_int_s16): Remove.
+	(vmullbq_int_s16): Remove.
+	(vmulltq_int_u32): Remove.
+	(vmullbq_int_u32): Remove.
+	(vmulltq_int_s32): Remove.
+	(vmullbq_int_s32): Remove.
+	(vmullbq_int_m_s8): Remove.
+	(vmullbq_int_m_s32): Remove.
+	(vmullbq_int_m_s16): Remove.
+	(vmullbq_int_m_u8): Remove.
+	(vmullbq_int_m_u32): Remove.
+	(vmullbq_int_m_u16): Remove.
+	(vmulltq_int_m_s8): Remove.
+	(vmulltq_int_m_s32): Remove.
+	(vmulltq_int_m_s16): Remove.
+	(vmulltq_int_m_u8): Remove.
+	(vmulltq_int_m_u32): Remove.
+	(vmulltq_int_m_u16): Remove.
+	(vmullbq_int_x_s8): Remove.
+	(vmullbq_int_x_s16): Remove.
+	(vmullbq_int_x_s32): Remove.
+	(vmullbq_int_x_u8): Remove.
+	(vmullbq_int_x_u16): Remove.
+	(vmullbq_int_x_u32): Remove.
+	(vmulltq_int_x_s8): Remove.
+	(vmulltq_int_x_s16): Remove.
+	(vmulltq_int_x_s32): Remove.
+	(vmulltq_int_x_u8): Remove.
+	(vmulltq_int_x_u16): Remove.
+	(vmulltq_int_x_u32): Remove.
+	(__arm_vmulltq_int_u8): Remove.
+	(__arm_vmullbq_int_u8): Remove.
+	(__arm_vmulltq_int_s8): Remove.
+	(__arm_vmullbq_int_s8): Remove.
+	(__arm_vmulltq_int_u16): Remove.
+	(__arm_vmullbq_int_u16): Remove.
+	(__arm_vmulltq_int_s16): Remove.
+	(__arm_vmullbq_int_s16): Remove.
+	(__arm_vmulltq_int_u32): Remove.
+	(__arm_vmullbq_int_u32): Remove.
+	(__arm_vmulltq_int_s32): Remove.
+	(__arm_vmullbq_int_s32): Remove.
+	(__arm_vmullbq_int_m_s8): Remove.
+	(__arm_vmullbq_int_m_s32): Remove.
+	(__arm_vmullbq_int_m_s16): Remove.
+	(__arm_vmullbq_int_m_u8): Remove.
+	(__arm_vmullbq_int_m_u32): Remove.
+	(__arm_vmullbq_int_m_u16): Remove.
+	(__arm_vmulltq_int_m_s8): Remove.
+	(__arm_vmulltq_int_m_s32): Remove.
+	(__arm_vmulltq_int_m_s16): Remove.
+	(__arm_vmulltq_int_m_u8): Remove.
+	(__arm_vmulltq_int_m_u32): Remove.
+	(__arm_vmulltq_int_m_u16): Remove.
+	(__arm_vmullbq_int_x_s8): Remove.
+	(__arm_vmullbq_int_x_s16): Remove.
+	(__arm_vmullbq_int_x_s32): Remove.
+	(__arm_vmullbq_int_x_u8): Remove.
+	(__arm_vmullbq_int_x_u16): Remove.
+	(__arm_vmullbq_int_x_u32): Remove.
+	(__arm_vmulltq_int_x_s8): Remove.
+	(__arm_vmulltq_int_x_s16): Remove.
+	(__arm_vmulltq_int_x_s32): Remove.
+	(__arm_vmulltq_int_x_u8): Remove.
+	(__arm_vmulltq_int_x_u16): Remove.
+	(__arm_vmulltq_int_x_u32): Remove.
+	(__arm_vmulltq_int): Remove.
+	(__arm_vmullbq_int): Remove.
+	(__arm_vmullbq_int_m): Remove.
+	(__arm_vmulltq_int_m): Remove.
+	(__arm_vmullbq_int_x): Remove.
+	(__arm_vmulltq_int_x): Remove.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-shapes.cc (binary_widen): New.
+	* config/arm/arm-mve-builtins-shapes.h (binary_widen): New.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-functions.h (class
+	unspec_mve_function_exact_insn_vmull): New.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/iterators.md (mve_insn): Add vmullb, vmullt.
+	(isu): Add VMULLBQ_INT_S, VMULLBQ_INT_U, VMULLTQ_INT_S,
+	VMULLTQ_INT_U.
+	(supf): Add VMULLBQ_POLY_P, VMULLTQ_POLY_P, VMULLBQ_POLY_M_P,
+	VMULLTQ_POLY_M_P.
+	(VMULLBQ_INT, VMULLTQ_INT, VMULLBQ_INT_M, VMULLTQ_INT_M): Delete.
+	(VMULLxQ_INT, VMULLxQ_POLY, VMULLxQ_INT_M, VMULLxQ_POLY_M): New.
+	* config/arm/mve.md (mve_vmullbq_int_<supf><mode>)
+	(mve_vmulltq_int_<supf><mode>): Merge into ...
+	(@mve_<mve_insn>q_int_<supf><mode>) ... this.
+	(mve_vmulltq_poly_p<mode>, mve_vmullbq_poly_p<mode>): Merge into ...
+	(@mve_<mve_insn>q_poly_<supf><mode>): ... this.
+	(mve_vmullbq_int_m_<supf><mode>, mve_vmulltq_int_m_<supf><mode>): Merge into ...
+	(@mve_<mve_insn>q_int_m_<supf><mode>): ... this.
+	(mve_vmullbq_poly_m_p<mode>, mve_vmulltq_poly_m_p<mode>): Merge into ...
+	(@mve_<mve_insn>q_poly_m_<supf><mode>): ... this.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-shapes.cc (parse_element_type):
+	Remove dead check.
+
+2023-08-28  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-shapes.cc (binary_acca_int32): Fix loop bound.
+	(binary_acca_int64): Likewise.
+
+2023-08-28  Aldy Hernandez  <aldyh@redhat.com>
+
+	* range-op-float.cc (fold_range): Handle relations.
+
+2023-08-28  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/loongarch.cc (loongarch_expand_conditional_move):
+	Optimize the function implementation.
+
+2023-08-28  liuhongt  <hongtao.liu@intel.com>
+
+	PR target/111119
+	* config/i386/sse.md (V48_AVX2): Rename to ..
+	(V48_128_256): .. this.
+	(ssefltmodesuffix): Extend to V4SF/V8SF/V2DF/V4DF.
+	(<avx_avx2>_maskload<ssemodesuffix><avxsizesuffix>): Change
+	V48_AVX2 to V48_128_256, also generate vmaskmov{ps,pd} for
+	integral modes when TARGET_AVX2 is not available.
+	(<avx_avx2>_maskstore<ssemodesuffix><avxsizesuffix>): Ditto.
+	(maskload<mode><sseintvecmodelower>): Change V48_AVX2 to
+	V48_128_256.
+	(maskstore<mode><sseintvecmodelower>): Ditto.
+
+2023-08-28  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-vsetvl.cc (vsetvl_vtype_change_only_p):
+	New function.
+	(after_or_same_p): Ditto.
+	(find_reg_killed_by): Delete.
+	(has_vsetvl_killed_avl_p): Ditto.
+	(anticipatable_occurrence_p): Refactor.
+	(any_set_in_bb_p): Delete.
+	(count_regno_occurrences): Ditto.
+	(backward_propagate_worthwhile_p): Ditto.
+	(demands_can_be_fused_p): Ditto.
+	(earliest_pred_can_be_fused_p): New function.
+	(vsetvl_dominated_by_p): Ditto.
+	(vector_insn_info::parse_insn): Refactor.
+	(vector_insn_info::merge): Refactor.
+	(vector_insn_info::dump): Refactor.
+	(vector_infos_manager::vector_infos_manager): Refactor.
+	(vector_infos_manager::all_empty_predecessor_p): Delete.
+	(vector_infos_manager::all_same_avl_p): Ditto.
+	(vector_infos_manager::create_bitmap_vectors): Refactor.
+	(vector_infos_manager::free_bitmap_vectors): Refactor.
+	(vector_infos_manager::dump): Refactor.
+	(pass_vsetvl::update_block_info): New function.
+	(enum fusion_type): Ditto.
+	(pass_vsetvl::get_backward_fusion_type): Delete.
+	(pass_vsetvl::hard_empty_block_p): Ditto.
+	(pass_vsetvl::backward_demand_fusion): Ditto.
+	(pass_vsetvl::forward_demand_fusion): Ditto.
+	(pass_vsetvl::demand_fusion): Ditto.
+	(pass_vsetvl::cleanup_illegal_dirty_blocks): Ditto.
+	(pass_vsetvl::compute_local_properties): Ditto.
+	(pass_vsetvl::earliest_fusion): New function.
+	(pass_vsetvl::vsetvl_fusion): Ditto.
+	(pass_vsetvl::commit_vsetvls): Refactor.
+	(get_first_vsetvl_before_rvv_insns): Ditto.
+	(pass_vsetvl::global_eliminate_vsetvl_insn): Ditto.
+	(pass_vsetvl::cleanup_earliest_vsetvls): New function.
+	(pass_vsetvl::df_post_optimization): Refactor.
+	(pass_vsetvl::lazy_vsetvl): Ditto.
+	* config/riscv/riscv-vsetvl.h: Ditto.
+
 2023-08-26  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
 
 	* config/riscv/autovec.md (len_fold_extract_last_<mode>): New pattern.

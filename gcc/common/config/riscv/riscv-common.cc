@@ -142,6 +142,15 @@ static const riscv_implied_info_t riscv_implied_info[] =
   {"zcb",  "zca"},
   {"zcmp", "zca"},
   {"zcmt", "zca"},
+  {"zcmt", "zicsr"},
+
+  {"smaia", "ssaia"},
+  {"smstateen", "ssstateen"},
+  {"smepmp", "zicsr"},
+  {"ssaia", "zicsr"},
+  {"sscofpmf", "zicsr"},
+  {"ssstateen", "zicsr"},
+  {"sstc", "zicsr"},
 
   {NULL, NULL}
 };
@@ -224,6 +233,7 @@ static const struct riscv_ext_version riscv_ext_version_table[] =
   {"zkt",   ISA_SPEC_CLASS_NONE, 1, 0},
 
   {"zihintntl", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"zihintpause", ISA_SPEC_CLASS_NONE, 2, 0},
 
   {"zicboz",ISA_SPEC_CLASS_NONE, 1, 0},
   {"zicbom",ISA_SPEC_CLASS_NONE, 1, 0},
@@ -287,8 +297,18 @@ static const struct riscv_ext_version riscv_ext_version_table[] =
   {"zcmp", ISA_SPEC_CLASS_NONE, 1, 0},
   {"zcmt", ISA_SPEC_CLASS_NONE, 1, 0},
 
+  {"smaia",     ISA_SPEC_CLASS_NONE, 1, 0},
+  {"smepmp",    ISA_SPEC_CLASS_NONE, 1, 0},
+  {"smstateen", ISA_SPEC_CLASS_NONE, 1, 0},
+
+  {"ssaia",     ISA_SPEC_CLASS_NONE, 1, 0},
+  {"sscofpmf",  ISA_SPEC_CLASS_NONE, 1, 0},
+  {"ssstateen", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"sstc",      ISA_SPEC_CLASS_NONE, 1, 0},
+
   {"svinval", ISA_SPEC_CLASS_NONE, 1, 0},
   {"svnapot", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"svpbmt",  ISA_SPEC_CLASS_NONE, 1, 0},
 
   {"xtheadba", ISA_SPEC_CLASS_NONE, 1, 0},
   {"xtheadbb", ISA_SPEC_CLASS_NONE, 1, 0},
@@ -302,6 +322,8 @@ static const struct riscv_ext_version riscv_ext_version_table[] =
   {"xtheadmemidx", ISA_SPEC_CLASS_NONE, 1, 0},
   {"xtheadmempair", ISA_SPEC_CLASS_NONE, 1, 0},
   {"xtheadsync", ISA_SPEC_CLASS_NONE, 1, 0},
+
+  {"xventanacondops", ISA_SPEC_CLASS_NONE, 1, 0},
 
   /* Terminate the list.  */
   {NULL, ISA_SPEC_CLASS_NONE, 0, 0}
@@ -1381,6 +1403,7 @@ static const riscv_ext_flag_table_t riscv_ext_flag_table[] =
   {"zkt",    &gcc_options::x_riscv_zk_subext, MASK_ZKT},
 
   {"zihintntl", &gcc_options::x_riscv_zi_subext, MASK_ZIHINTNTL},
+  {"zihintpause", &gcc_options::x_riscv_zi_subext, MASK_ZIHINTPAUSE},
 
   {"zicboz", &gcc_options::x_riscv_zicmo_subext, MASK_ZICBOZ},
   {"zicbom", &gcc_options::x_riscv_zicmo_subext, MASK_ZICBOM},

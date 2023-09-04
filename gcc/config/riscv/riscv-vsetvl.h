@@ -21,8 +21,6 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_RISCV_VSETVL_H
 #define GCC_RISCV_VSETVL_H
 
-#define IS_AGNOSTIC(VALUE) (bool) (VALUE & 0x1 || (VALUE >> 1 & 0x1))
-
 namespace riscv_vector {
 
 /* Classification of vsetvl instruction.  */
@@ -335,6 +333,7 @@ public:
 
   rtl_ssa::insn_info *get_insn () const { return m_insn; }
   const bool *get_demands (void) const { return m_demands; }
+  rtx get_avl_or_vl_reg (void) const;
   rtx get_avl_reg_rtx (void) const
   {
     return gen_rtx_REG (Pmode, get_avl_source ()->regno ());

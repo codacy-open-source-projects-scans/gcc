@@ -655,7 +655,7 @@ gen_vsetvl_pat (rtx_insn *rinsn, const vector_insn_info &info,
     new_pat = gen_vsetvl_pat (VSETVL_NORMAL, new_info, vl);
   else
     {
-      if (vsetvl_insn_p (rinsn) || vlmax_avl_p (info.get_avl ()))
+      if (vsetvl_insn_p (rinsn))
 	new_pat = gen_vsetvl_pat (VSETVL_NORMAL, new_info, get_vl (rinsn));
       else if (INSN_CODE (rinsn) == CODE_FOR_vsetvl_vtype_change_only)
 	new_pat = gen_vsetvl_pat (VSETVL_VTYPE_CHANGE_ONLY, new_info, NULL_RTX);
@@ -2290,6 +2290,40 @@ vector_insn_info::global_merge (const vector_insn_info &merge_info,
   return new_info;
 }
 
+/* Wrapper helps to return the AVL or VL operand for the
+   vector_insn_info. Return AVL if the AVL is not VLMAX.
+   Otherwise, return the VL operand.  */
+rtx
+vector_insn_info::get_avl_or_vl_reg (void) const
+{
+  gcc_assert (has_avl_reg ());
+  if (!vlmax_avl_p (get_avl ()))
+    return get_avl ();
+
+  if (get_avl_source ())
+    return get_avl_reg_rtx ();
+
+  rtx_insn *rinsn = get_insn ()->rtl ();
+  if (has_vl_op (rinsn) || vsetvl_insn_p (rinsn))
+    {
+      rtx vl = ::get_vl (rinsn);
+      /* For VLMAX, we should make sure we get the
+	 REG to emit 'vsetvl VL,zero' since the 'VL'
+	 should be the REG according to RVV ISA.  */
+      if (REG_P (vl))
+	return vl;
+    }
+
+  /* A DIRTY (polluted EMPTY) block if:
+       - get_insn is scalar move (no AVL or VL operand).
+       - get_avl_source is null (no def in the current DIRTY block).
+     Then we trace the previous insn which must be the insn
+     already inserted in Phase 2 to get the VL operand for VLMAX.  */
+  rtx_insn *prev_rinsn = PREV_INSN (rinsn);
+  gcc_assert (prev_rinsn && vsetvl_insn_p (prev_rinsn));
+  return ::get_vl (prev_rinsn);
+}
+
 bool
 vector_insn_info::update_fault_first_load_avl (insn_info *insn)
 {
@@ -3166,19 +3200,17 @@ pass_vsetvl::compute_local_properties (void)
 	    bitmap_clear_bit (m_vector_manager->vector_transp[curr_bb_idx], i);
 	  else if (expr->has_avl_reg ())
 	    {
-	      rtx avl = vlmax_avl_p (expr->get_avl ())
-			  ? get_vl (expr->get_insn ()->rtl ())
-			  : expr->get_avl ();
+	      rtx reg = expr->get_avl_or_vl_reg ();
 	      for (const insn_info *insn : bb->real_nondebug_insns ())
 		{
-		  if (find_access (insn->defs (), REGNO (avl)))
+		  if (find_access (insn->defs (), REGNO (reg)))
 		    {
 		      bitmap_clear_bit (
 			m_vector_manager->vector_transp[curr_bb_idx], i);
 		      break;
 		    }
 		  else if (vlmax_avl_p (expr->get_avl ())
-			   && find_access (insn->uses (), REGNO (avl)))
+			   && find_access (insn->uses (), REGNO (reg)))
 		    {
 		      bitmap_clear_bit (
 			m_vector_manager->vector_transp[curr_bb_idx], i);
@@ -3272,6 +3304,10 @@ pass_vsetvl::earliest_fusion (void)
 	  if (expr.empty_p ())
 	    continue;
 	  edge eg = INDEX_EDGE (m_vector_manager->vector_edge_list, ed);
+	  /* If it is the edge that we never reach, skip its possible PRE
+	     fusion conservatively.  */
+	  if (eg->probability == profile_probability::never ())
+	    break;
 	  if (eg->src == ENTRY_BLOCK_PTR_FOR_FN (cfun)
 	      || eg->dest == EXIT_BLOCK_PTR_FOR_FN (cfun))
 	    break;
@@ -3285,12 +3321,46 @@ pass_vsetvl::earliest_fusion (void)
 	      gcc_assert (!(eg->flags & EDGE_ABNORMAL));
 	      vector_insn_info new_info = vector_insn_info ();
 	      profile_probability prob = src_block_info.probability;
+	      /* We don't fuse user vsetvl into EMPTY or
+		 DIRTY (EMPTY but polluted) block for these
+		 following reasons:
+
+		- The user vsetvl instruction is configured as
+		  no side effects that the previous passes
+		  (GSCE, Loop-invariant, ..., etc)
+		  should be able to do a good job on optimization
+		  of user explicit vsetvls so we don't need to
+		  PRE optimization (The user vsetvls should be
+		  on the optimal local already before this pass)
+		  again for user vsetvls in VSETVL PASS here
+		  (Phase 3 && Phase 4).
+
+		- Allowing user vsetvls be optimized in PRE
+		  optimization here (Phase 3 && Phase 4) will
+		  complicate the codes so much so we prefer user
+		  vsetvls be optimized in post-optimization
+		  (Phase 5 && Phase 6).  */
+	      if (vsetvl_insn_p (expr.get_insn ()->rtl ()))
+		{
+		  if (src_block_info.reaching_out.empty_p ())
+		    continue;
+		  else if (src_block_info.reaching_out.dirty_p ()
+			   && !src_block_info.reaching_out.compatible_p (expr))
+		    {
+		      new_info.set_empty ();
+		      /* Update probability as uninitialized status so that
+			 we won't try to fuse any demand info into such EMPTY
+			 block any more.  */
+		      prob = profile_probability::uninitialized ();
+		      update_block_info (eg->src->index, prob, new_info);
+		      continue;
+		    }
+		}
 
 	      if (src_block_info.reaching_out.empty_p ())
 		{
 		  if (src_block_info.probability
-			== profile_probability::uninitialized ()
-		      || vsetvl_insn_p (expr.get_insn ()->rtl ()))
+		      == profile_probability::uninitialized ())
 		    continue;
 		  new_info = expr.global_merge (expr, eg->src->index);
 		  new_info.set_dirty ();
@@ -3611,17 +3681,7 @@ pass_vsetvl::commit_vsetvls (void)
 	  = gen_vsetvl_pat (VSETVL_VTYPE_CHANGE_ONLY, reaching_out, NULL_RTX);
       else if (vlmax_avl_p (reaching_out.get_avl ()))
 	{
-	  rtx vl = NULL_RTX;
-	  /* For user VSETVL VL, AVL. We need to use VL operand here, so we
-	     don't directly use get_avl_reg_rtx (). Instead, we use the VL
-	     of the INSN->RTL ().  */
-	  if (!reaching_out.get_avl_source ())
-	    {
-	      gcc_assert (vsetvl_insn_p (reaching_out.get_insn ()->rtl ()));
-	      vl = get_vl (reaching_out.get_insn ()->rtl ());
-	    }
-	  else
-	    vl = reaching_out.get_avl_reg_rtx ();
+	  rtx vl = reaching_out.get_avl_or_vl_reg ();
 	  new_pat = gen_vsetvl_pat (VSETVL_NORMAL, reaching_out, vl);
 	}
       else
@@ -4325,7 +4385,14 @@ pass_vsetvl::compute_probabilities (void)
       FOR_EACH_EDGE (e, ei, cfg_bb->succs)
 	{
 	  auto &new_prob = get_block_info (e->dest).probability;
-	  if (!new_prob.initialized_p ())
+	  /* Normally, the edge probability should be initialized.
+	     However, some special testing code which is written in
+	     GIMPLE IR style force the edge probility uninitialized,
+	     we conservatively set it as never so that it will not
+	     affect PRE (Phase 3 && Phse 4).  */
+	  if (!e->probability.initialized_p ())
+	    new_prob = profile_probability::never ();
+	  else if (!new_prob.initialized_p ())
 	    new_prob = curr_prob * e->probability;
 	  else if (new_prob == profile_probability::always ())
 	    continue;

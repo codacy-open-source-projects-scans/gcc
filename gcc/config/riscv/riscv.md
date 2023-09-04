@@ -124,12 +124,15 @@
 
 (define_constants
   [(RETURN_ADDR_REGNUM		1)
+   (SP_REGNUM 			2)
    (GP_REGNUM 			3)
    (TP_REGNUM			4)
    (T0_REGNUM			5)
    (T1_REGNUM			6)
    (S0_REGNUM			8)
    (S1_REGNUM			9)
+   (A0_REGNUM			10)
+   (A1_REGNUM			11)
    (S2_REGNUM			18)
    (S3_REGNUM			19)
    (S4_REGNUM			20)
@@ -410,6 +413,7 @@
 ;; vgather      vector register gather instructions
 ;; vcompress    vector compress instruction
 ;; vmov         whole vector register move
+;; vector       unknown vector instruction
 (define_attr "type"
   "unknown,branch,jump,call,load,fpload,store,fpstore,
    mtc,mfc,const,arith,logical,shift,slt,imul,idiv,move,fmove,fadd,fmul,
@@ -429,7 +433,7 @@
    vired,viwred,vfredu,vfredo,vfwredu,vfwredo,
    vmalu,vmpop,vmffs,vmsfs,vmiota,vmidx,vimovvx,vimovxv,vfmovvf,vfmovfv,
    vslideup,vslidedown,vislide1up,vislide1down,vfslide1up,vfslide1down,
-   vgather,vcompress,vmov"
+   vgather,vcompress,vmov,vector"
   (cond [(eq_attr "got" "load") (const_string "load")
 
 	 ;; If a doubleword move uses these expensive instructions,
@@ -2275,7 +2279,7 @@
 (define_insn "riscv_pause"
   [(unspec_volatile [(const_int 0)] UNSPECV_PAUSE)]
   ""
-  "pause")
+  "* return TARGET_ZIHINTPAUSE ? \"pause\" : \".insn\t0x0100000f\";")
 
 ;;
 ;;  ....................
@@ -3431,3 +3435,4 @@
 (include "thead.md")
 (include "vector.md")
 (include "zicond.md")
+(include "zc.md")

@@ -20,6 +20,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "config.h"
 #define INCLUDE_MEMORY
+#define INCLUDE_ALGORITHM
 #include "system.h"
 #include "coretypes.h"
 #include "make-unique.h"
@@ -81,6 +82,8 @@ along with GCC; see the file COPYING3.  If not see
 #if ENABLE_ANALYZER
 
 namespace ana {
+
+auto_vec<pop_frame_callback> region_model::pop_frame_callbacks;
 
 /* Dump T to PP in language-independent form, for debugging/logging/dumping
    purposes.  */
@@ -499,6 +502,7 @@ public:
       case POISON_KIND_UNINIT:
 	return OPT_Wanalyzer_use_of_uninitialized_value;
       case POISON_KIND_FREED:
+      case POISON_KIND_DELETED:
 	return OPT_Wanalyzer_use_after_free;
       case POISON_KIND_POPPED_STACK:
 	return OPT_Wanalyzer_use_of_pointer_in_stale_stack_frame;
@@ -531,6 +535,15 @@ public:
 			       m_expr);
 	}
 	break;
+      case POISON_KIND_DELETED:
+	{
+	  diagnostic_metadata m;
+	  m.add_cwe (416); /* "CWE-416: Use After Free".  */
+	  return warning_meta (rich_loc, m, get_controlling_option (),
+			       "use after %<delete%> of %qE",
+			       m_expr);
+	}
+	break;
       case POISON_KIND_POPPED_STACK:
 	{
 	  /* TODO: which CWE?  */
@@ -554,6 +567,9 @@ public:
 				   m_expr);
       case POISON_KIND_FREED:
 	return ev.formatted_print ("use after %<free%> of %qE here",
+				   m_expr);
+      case POISON_KIND_DELETED:
+	return ev.formatted_print ("use after %<delete%> of %qE here",
 				   m_expr);
       case POISON_KIND_POPPED_STACK:
 	return ev.formatted_print
@@ -4191,6 +4207,29 @@ region_model::eval_condition (const svalue *lhs,
 	}
     }
 
+  /* Attempt to unwrap cast if there is one, and the types match.  */
+  tree lhs_type = lhs->get_type ();
+  tree rhs_type = rhs->get_type ();
+  if (lhs_type && rhs_type)
+  {
+    const unaryop_svalue *lhs_un_op = dyn_cast <const unaryop_svalue *> (lhs);
+    const unaryop_svalue *rhs_un_op = dyn_cast <const unaryop_svalue *> (rhs);
+    if (lhs_un_op && CONVERT_EXPR_CODE_P (lhs_un_op->get_op ())
+	&& rhs_un_op && CONVERT_EXPR_CODE_P (rhs_un_op->get_op ())
+	&& lhs_type == rhs_type)
+      return eval_condition (lhs_un_op->get_arg (),
+			     op,
+			     rhs_un_op->get_arg ());
+
+    else if (lhs_un_op && CONVERT_EXPR_CODE_P (lhs_un_op->get_op ())
+	     && lhs_type == rhs_type)
+      return eval_condition (lhs_un_op->get_arg (), op, rhs);
+
+    else if (rhs_un_op && CONVERT_EXPR_CODE_P (rhs_un_op->get_op ())
+	     && lhs_type == rhs_type)
+      return eval_condition (lhs, op, rhs_un_op->get_arg ());
+  }
+
   /* Otherwise, try constraints.
      Cast to const to ensure we don't change the constraint_manager as we
      do this (e.g. by creating equivalence classes).  */
@@ -5389,6 +5428,7 @@ region_model::pop_frame (tree result_lvalue,
 {
   gcc_assert (m_current_frame);
 
+  const region_model pre_popped_model = *this;
   const frame_region *frame_reg = m_current_frame;
 
   /* Notify state machines.  */
@@ -5422,6 +5462,7 @@ region_model::pop_frame (tree result_lvalue,
     }
 
   unbind_region_and_descendents (frame_reg,POISON_KIND_POPPED_STACK);
+  notify_on_pop_frame (this, &pre_popped_model, retval, ctxt);
 }
 
 /* Get the number of frames in this region_model's stack.  */

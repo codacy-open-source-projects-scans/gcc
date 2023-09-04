@@ -74,6 +74,7 @@ along with GCC; see the file COPYING3.  If not see
 
 /* This file should be included last.  */
 #include "target-def.h"
+#include "riscv-vector-costs.h"
 
 /* True if X is an UNSPEC wrapper around a SYMBOL_REF or LABEL_REF.  */
 #define UNSPEC_ADDRESS_P(X)					\
@@ -111,6 +112,14 @@ struct GTY(())  riscv_frame_info {
 
   /* How much the GPR save/restore routines adjust sp (or 0 if unused).  */
   unsigned save_libcall_adjustment;
+
+  /* the minimum number of bytes, in multiples of 16-byte address increments,
+     required to cover the registers in a multi push & pop.  */
+  unsigned multi_push_adj_base;
+
+  /* the number of additional 16-byte address increments allocated for the stack
+     frame in a multi push & pop.  */
+  unsigned multi_push_adj_addi;
 
   /* Offsets of fixed-point and floating-point save areas from frame bottom */
   poly_int64 gp_sp_offset;
@@ -248,6 +257,9 @@ struct riscv_tune_info {
 /* Whether unaligned accesses execute very slowly.  */
 bool riscv_slow_unaligned_access_p;
 
+/* Whether user explicitly passed -mstrict-align.  */
+bool riscv_user_wants_strict_align;
+
 /* Stack alignment to assume/maintain.  */
 unsigned riscv_stack_boundary;
 
@@ -366,6 +378,7 @@ static const struct riscv_tune_param optimize_size_tune_info = {
 
 static tree riscv_handle_fndecl_attribute (tree *, tree, tree, int, bool *);
 static tree riscv_handle_type_attribute (tree *, tree, tree, int, bool *);
+static void riscv_legitimize_poly_move (machine_mode, rtx, rtx, rtx);
 
 /* Defining target-specific uses of __attribute__.  */
 static const struct attribute_spec riscv_attribute_table[] =
@@ -408,6 +421,17 @@ static const struct riscv_tune_info riscv_tune_info_table[] = {
 /* Global variable to distinguish whether we should save and restore s0/fp for
    function.  */
 static bool riscv_save_frame_pointer;
+
+typedef enum
+{
+  PUSH_IDX = 0,
+  POP_IDX,
+  POPRET_IDX,
+  POPRETZ_IDX,
+  ZCMP_OP_NUM
+} riscv_zcmp_op_t;
+
+typedef insn_code (*code_for_push_pop_t) (machine_mode);
 
 void riscv_frame_info::reset(void)
 {
@@ -865,7 +889,7 @@ riscv_float_const_rtx_index_for_fli (rtx x)
   if (!TARGET_ZFA
       || !CONST_DOUBLE_P(x)
       || mode == VOIDmode
-      || (mode == HFmode && !TARGET_ZFH)
+      || (mode == HFmode && !(TARGET_ZFH || TARGET_ZVFH))
       || (mode == SFmode && !TARGET_HARD_FLOAT)
       || (mode == DFmode && !TARGET_DOUBLE_FLOAT))
     return -1;
@@ -2115,6 +2139,28 @@ riscv_legitimize_const_move (machine_mode mode, rtx dest, rtx src)
     {
       base = riscv_force_temporary (dest, base);
       riscv_emit_move (dest, riscv_add_offset (NULL, base, INTVAL (offset)));
+      return;
+    }
+
+  /* Handle below format.
+     (const:DI
+       (plus:DI
+	 (symbol_ref:DI ("ic") [flags 0x2] <var_decl 0x7fe57740be10 ic>) <- op_0
+	 (const_poly_int:DI [16, 16]) // <- op_1
+     ))
+   */
+  rtx src_op_0 = XEXP (src, 0);
+
+  if (GET_CODE (src) == CONST && GET_CODE (src_op_0) == PLUS
+    && CONST_POLY_INT_P (XEXP (src_op_0, 1)))
+    {
+      rtx dest_tmp = gen_reg_rtx (mode);
+      rtx tmp = gen_reg_rtx (mode);
+
+      riscv_emit_move (dest, XEXP (src_op_0, 0));
+      riscv_legitimize_poly_move (mode, dest_tmp, tmp, XEXP (src_op_0, 1));
+
+      emit_insn (gen_rtx_SET (dest, gen_rtx_PLUS (mode, dest, dest_tmp)));
       return;
     }
 
@@ -5201,8 +5247,7 @@ riscv_print_operand (FILE *file, rtx op, int letter)
 	else if (code == CONST_INT)
 	  {
 	    /* Tail && Mask policy.  */
-	    bool agnostic_p = UINTVAL (op) & 0x1;
-	    asm_fprintf (file, "%s", agnostic_p ? "a" : "u");
+	    asm_fprintf (file, "%s", IS_AGNOSTIC (UINTVAL (op)) ? "a" : "u");
 	  }
 	else
 	  output_operand_lossage ("invalid vector constant");
@@ -5539,6 +5584,34 @@ riscv_save_reg_p (unsigned int regno)
   return false;
 }
 
+/* Return TRUE if Zcmp push and pop insns should be
+   avoided. FALSE otherwise.
+   Only use multi push & pop if all GPRs masked can be covered,
+   and stack access is SP based,
+   and GPRs are at top of the stack frame,
+   and no conflicts in stack allocation with other features  */
+static bool
+riscv_avoid_multi_push (const struct riscv_frame_info *frame)
+{
+  if (!TARGET_ZCMP || crtl->calls_eh_return || frame_pointer_needed
+      || cfun->machine->interrupt_handler_p || cfun->machine->varargs_size != 0
+      || crtl->args.pretend_args_size != 0 || flag_shrink_wrap_separate
+      || (frame->mask & ~MULTI_PUSH_GPR_MASK))
+    return true;
+
+  return false;
+}
+
+/* Determine whether to use multi push insn.  */
+static bool
+riscv_use_multi_push (const struct riscv_frame_info *frame)
+{
+  if (riscv_avoid_multi_push (frame))
+    return false;
+
+  return (frame->multi_push_adj_base != 0);
+}
+
 /* Return TRUE if a libcall to save/restore GPRs should be
    avoided.  FALSE otherwise.  */
 static bool
@@ -5576,6 +5649,50 @@ riscv_save_libcall_count (unsigned mask)
   abort ();
 }
 
+/* calculate number of s regs in multi push and pop.
+   Note that {s0-s10} is not valid in Zcmp, use {s0-s11} instead.  */
+static unsigned
+riscv_multi_push_sregs_count (unsigned mask)
+{
+  unsigned num = riscv_save_libcall_count (mask);
+  return (num == ZCMP_INVALID_S0S10_SREGS_COUNTS) ? ZCMP_S0S11_SREGS_COUNTS
+						  : num;
+}
+
+/* calculate number of regs(ra, s0-sx) in multi push and pop.  */
+static unsigned
+riscv_multi_push_regs_count (unsigned mask)
+{
+  /* 1 is for ra  */
+  return riscv_multi_push_sregs_count (mask) + 1;
+}
+
+/* Handle 16 bytes align for poly_int.  */
+static poly_int64
+riscv_16bytes_align (poly_int64 value)
+{
+  return aligned_upper_bound (value, 16);
+}
+
+static HOST_WIDE_INT
+riscv_16bytes_align (HOST_WIDE_INT value)
+{
+  return ROUND_UP (value, 16);
+}
+
+/* Handle stack align for poly_int.  */
+static poly_int64
+riscv_stack_align (poly_int64 value)
+{
+  return aligned_upper_bound (value, PREFERRED_STACK_BOUNDARY / 8);
+}
+
+static HOST_WIDE_INT
+riscv_stack_align (HOST_WIDE_INT value)
+{
+  return RISCV_STACK_ALIGN (value);
+}
+
 /* Populate the current function's riscv_frame_info structure.
 
    RISC-V stack frames grown downward.  High addresses are at the top.
@@ -5601,7 +5718,7 @@ riscv_save_libcall_count (unsigned mask)
 	|  GPR save area                |       + UNITS_PER_WORD
 	|                               |
 	+-------------------------------+ <-- stack_pointer_rtx + fp_sp_offset
-	|                               |       + UNITS_PER_HWVALUE
+	|                               |       + UNITS_PER_FP_REG
 	|  FPR save area                |
 	|                               |
 	+-------------------------------+ <-- frame_pointer_rtx (virtual)
@@ -5619,19 +5736,6 @@ riscv_save_libcall_count (unsigned mask)
    hard_frame_pointer_rtx unchanged.  */
 
 static HOST_WIDE_INT riscv_first_stack_step (struct riscv_frame_info *frame, poly_int64 remaining_size);
-
-/* Handle stack align for poly_int.  */
-static poly_int64
-riscv_stack_align (poly_int64 value)
-{
-  return aligned_upper_bound (value, PREFERRED_STACK_BOUNDARY / 8);
-}
-
-static HOST_WIDE_INT
-riscv_stack_align (HOST_WIDE_INT value)
-{
-  return RISCV_STACK_ALIGN (value);
-}
 
 static void
 riscv_compute_frame_info (void)
@@ -5683,8 +5787,9 @@ riscv_compute_frame_info (void)
   if (frame->mask)
     {
       x_save_size = riscv_stack_align (num_x_saved * UNITS_PER_WORD);
-      unsigned num_save_restore = 1 + riscv_save_libcall_count (frame->mask);
 
+      /* 1 is for ra  */
+      unsigned num_save_restore = 1 + riscv_save_libcall_count (frame->mask);
       /* Only use save/restore routines if they don't alter the stack size.  */
       if (riscv_stack_align (num_save_restore * UNITS_PER_WORD) == x_save_size
           && !riscv_avoid_save_libcall ())
@@ -5695,6 +5800,14 @@ riscv_compute_frame_info (void)
 	    x_save_size = 3 * UNITS_PER_WORD;
 
 	  frame->save_libcall_adjustment = x_save_size;
+	}
+
+      if (!riscv_avoid_multi_push (frame))
+	{
+	  /* num(ra, s0-sx)  */
+	  unsigned num_multi_push = riscv_multi_push_regs_count (frame->mask);
+	  x_save_size = riscv_stack_align (num_multi_push * UNITS_PER_WORD);
+	  frame->multi_push_adj_base = riscv_16bytes_align (x_save_size);
 	}
     }
 
@@ -5721,7 +5834,15 @@ riscv_compute_frame_info (void)
   frame->fp_sp_offset = offset - UNITS_PER_FP_REG;
   /* Next are the callee-saved GPRs. */
   if (frame->mask)
-    offset += x_save_size;
+    {
+      offset += x_save_size;
+      /* align to 16 bytes and add paddings to GPR part to honor
+	 both stack alignment and zcmp pus/pop size alignment. */
+      if (riscv_use_multi_push (frame)
+	  && known_lt (offset, frame->multi_push_adj_base
+				 + ZCMP_SP_INC_STEP * ZCMP_MAX_SPIMM))
+	offset = riscv_16bytes_align (offset);
+    }
   frame->gp_sp_offset = offset - UNITS_PER_WORD;
   /* The hard frame pointer points above the callee-saved GPRs. */
   frame->hard_frame_pointer_offset = offset;
@@ -5900,8 +6021,8 @@ static void
 riscv_for_each_saved_reg (poly_int64 sp_offset, riscv_save_restore_fn fn,
 			  bool epilogue, bool maybe_eh_return)
 {
-  HOST_WIDE_INT offset;
-  unsigned int regno;
+  HOST_WIDE_INT offset, first_fp_offset;
+  unsigned int regno, num_masked_fp = 0;
   unsigned int start = GP_REG_FIRST;
   unsigned int limit = GP_REG_LAST;
 
@@ -5987,16 +6108,20 @@ riscv_for_each_saved_reg (poly_int64 sp_offset, riscv_save_restore_fn fn,
 
   /* This loop must iterate over the same space as its companion in
      riscv_compute_frame_info.  */
-  offset = (cfun->machine->frame.fp_sp_offset - sp_offset).to_constant ();
+  first_fp_offset
+    = (cfun->machine->frame.fp_sp_offset - sp_offset).to_constant ();
   for (unsigned int regno = FP_REG_FIRST; regno <= FP_REG_LAST; regno++)
     if (BITSET_P (cfun->machine->frame.fmask, regno - FP_REG_FIRST))
       {
 	bool handle_reg = !cfun->machine->reg_is_wrapped_separately[regno];
 	machine_mode mode = TARGET_DOUBLE_FLOAT ? DFmode : SFmode;
-
+	unsigned int slot = (riscv_use_multi_push (&cfun->machine->frame))
+			      ? CALLEE_SAVED_FREG_NUMBER (regno)
+			      : num_masked_fp;
+	offset = first_fp_offset - slot * GET_MODE_SIZE (mode).to_constant ();
 	if (handle_reg)
 	  riscv_save_restore_reg (mode, regno, offset, fn);
-	offset -= GET_MODE_SIZE (mode).to_constant ();
+	num_masked_fp++;
       }
 }
 
@@ -6093,6 +6218,41 @@ riscv_adjust_libcall_cfi_prologue ()
   return dwarf;
 }
 
+static rtx
+riscv_adjust_multi_push_cfi_prologue (int saved_size)
+{
+  rtx dwarf = NULL_RTX;
+  rtx adjust_sp_rtx, reg, mem, insn;
+  unsigned int mask = cfun->machine->frame.mask;
+  int offset;
+  int saved_cnt = 0;
+
+  if (mask & S10_MASK)
+    mask |= S11_MASK;
+
+  for (int regno = GP_REG_LAST; regno >= GP_REG_FIRST; regno--)
+    if (BITSET_P (mask & MULTI_PUSH_GPR_MASK, regno - GP_REG_FIRST))
+      {
+	/* The save order is s11-s0, ra
+	   from high to low addr.  */
+	offset = saved_size - UNITS_PER_WORD * (++saved_cnt);
+
+	reg = gen_rtx_REG (Pmode, regno);
+	mem = gen_frame_mem (Pmode,
+			     plus_constant (Pmode, stack_pointer_rtx, offset));
+
+	insn = gen_rtx_SET (mem, reg);
+	dwarf = alloc_reg_note (REG_CFA_OFFSET, insn, dwarf);
+      }
+
+  /* Debug info for adjust sp.  */
+  adjust_sp_rtx
+    = gen_rtx_SET (stack_pointer_rtx,
+		   plus_constant (Pmode, stack_pointer_rtx, -saved_size));
+  dwarf = alloc_reg_note (REG_CFA_ADJUST_CFA, adjust_sp_rtx, dwarf);
+  return dwarf;
+}
+
 static void
 riscv_emit_stack_tie (void)
 {
@@ -6100,6 +6260,57 @@ riscv_emit_stack_tie (void)
     emit_insn (gen_stack_tiesi (stack_pointer_rtx, hard_frame_pointer_rtx));
   else
     emit_insn (gen_stack_tiedi (stack_pointer_rtx, hard_frame_pointer_rtx));
+}
+
+/*zcmp multi push and pop code_for_push_pop function ptr array  */
+static const code_for_push_pop_t code_for_push_pop[ZCMP_MAX_GRP_SLOTS][ZCMP_OP_NUM]
+  = {{code_for_gpr_multi_push_up_to_ra, code_for_gpr_multi_pop_up_to_ra,
+      code_for_gpr_multi_popret_up_to_ra, code_for_gpr_multi_popretz_up_to_ra},
+     {code_for_gpr_multi_push_up_to_s0, code_for_gpr_multi_pop_up_to_s0,
+      code_for_gpr_multi_popret_up_to_s0, code_for_gpr_multi_popretz_up_to_s0},
+     {code_for_gpr_multi_push_up_to_s1, code_for_gpr_multi_pop_up_to_s1,
+      code_for_gpr_multi_popret_up_to_s1, code_for_gpr_multi_popretz_up_to_s1},
+     {code_for_gpr_multi_push_up_to_s2, code_for_gpr_multi_pop_up_to_s2,
+      code_for_gpr_multi_popret_up_to_s2, code_for_gpr_multi_popretz_up_to_s2},
+     {code_for_gpr_multi_push_up_to_s3, code_for_gpr_multi_pop_up_to_s3,
+      code_for_gpr_multi_popret_up_to_s3, code_for_gpr_multi_popretz_up_to_s3},
+     {code_for_gpr_multi_push_up_to_s4, code_for_gpr_multi_pop_up_to_s4,
+      code_for_gpr_multi_popret_up_to_s4, code_for_gpr_multi_popretz_up_to_s4},
+     {code_for_gpr_multi_push_up_to_s5, code_for_gpr_multi_pop_up_to_s5,
+      code_for_gpr_multi_popret_up_to_s5, code_for_gpr_multi_popretz_up_to_s5},
+     {code_for_gpr_multi_push_up_to_s6, code_for_gpr_multi_pop_up_to_s6,
+      code_for_gpr_multi_popret_up_to_s6, code_for_gpr_multi_popretz_up_to_s6},
+     {code_for_gpr_multi_push_up_to_s7, code_for_gpr_multi_pop_up_to_s7,
+      code_for_gpr_multi_popret_up_to_s7, code_for_gpr_multi_popretz_up_to_s7},
+     {code_for_gpr_multi_push_up_to_s8, code_for_gpr_multi_pop_up_to_s8,
+      code_for_gpr_multi_popret_up_to_s8, code_for_gpr_multi_popretz_up_to_s8},
+     {code_for_gpr_multi_push_up_to_s9, code_for_gpr_multi_pop_up_to_s9,
+      code_for_gpr_multi_popret_up_to_s9, code_for_gpr_multi_popretz_up_to_s9},
+     {nullptr, nullptr, nullptr, nullptr},
+     {code_for_gpr_multi_push_up_to_s11, code_for_gpr_multi_pop_up_to_s11,
+      code_for_gpr_multi_popret_up_to_s11,
+      code_for_gpr_multi_popretz_up_to_s11}};
+
+static rtx
+riscv_gen_multi_push_pop_insn (riscv_zcmp_op_t op, HOST_WIDE_INT adj_size,
+			       unsigned int regs_num)
+{
+  gcc_assert (op < ZCMP_OP_NUM);
+  gcc_assert (regs_num <= ZCMP_MAX_GRP_SLOTS
+	      && regs_num != ZCMP_INVALID_S0S10_SREGS_COUNTS + 1); /* 1 for ra*/
+  rtx stack_adj = GEN_INT (adj_size);
+  return GEN_FCN (code_for_push_pop[regs_num - 1][op](Pmode)) (stack_adj);
+}
+
+static unsigned
+get_multi_push_fpr_mask (unsigned max_fprs_push)
+{
+  unsigned mask_fprs_push = 0, num_f_pushed = 0;
+  for (unsigned regno = FP_REG_FIRST;
+       regno <= FP_REG_LAST && num_f_pushed < max_fprs_push; regno++)
+    if (riscv_save_reg_p (regno))
+      mask_fprs_push |= 1 << (regno - FP_REG_FIRST), num_f_pushed++;
+  return mask_fprs_push;
 }
 
 /* Expand the "prologue" pattern.  */
@@ -6110,7 +6321,9 @@ riscv_expand_prologue (void)
   struct riscv_frame_info *frame = &cfun->machine->frame;
   poly_int64 remaining_size = frame->total_size;
   unsigned mask = frame->mask;
-  rtx insn;
+  unsigned fmask = frame->fmask;
+  int spimm, multi_push_additional, stack_adj;
+  rtx insn, dwarf = NULL_RTX;
 
   if (flag_stack_usage_info)
     current_function_static_stack_size = constant_lower_bound (remaining_size);
@@ -6118,8 +6331,46 @@ riscv_expand_prologue (void)
   if (cfun->machine->naked_p)
     return;
 
+  /* prefer muti-push to save-restore libcall.  */
+  if (riscv_use_multi_push (frame))
+    {
+      remaining_size -= frame->multi_push_adj_base;
+      if (known_gt (remaining_size, 2 * ZCMP_SP_INC_STEP))
+	spimm = 3;
+      else if (known_gt (remaining_size, ZCMP_SP_INC_STEP))
+	spimm = 2;
+      else if (known_gt (remaining_size, 0))
+	spimm = 1;
+      else
+	spimm = 0;
+      multi_push_additional = spimm * ZCMP_SP_INC_STEP;
+      frame->multi_push_adj_addi = multi_push_additional;
+      remaining_size -= multi_push_additional;
+
+      /* emit multi push insn & dwarf along with it.  */
+      stack_adj = frame->multi_push_adj_base + multi_push_additional;
+      insn = emit_insn (riscv_gen_multi_push_pop_insn (
+	PUSH_IDX, -stack_adj, riscv_multi_push_regs_count (frame->mask)));
+      dwarf = riscv_adjust_multi_push_cfi_prologue (stack_adj);
+      RTX_FRAME_RELATED_P (insn) = 1;
+      REG_NOTES (insn) = dwarf;
+
+      /* Temporarily fib that we need not save GPRs.  */
+      frame->mask = 0;
+
+      /* push FPRs into the addtional reserved space by cm.push. */
+      if (fmask)
+	{
+	  unsigned mask_fprs_push
+	    = get_multi_push_fpr_mask (multi_push_additional / UNITS_PER_WORD);
+	  frame->fmask &= mask_fprs_push;
+	  riscv_for_each_saved_reg (remaining_size, riscv_save_reg, false,
+				    false);
+	  frame->fmask = fmask & ~mask_fprs_push; /* mask for the rest FPRs.  */
+	}
+    }
   /* When optimizing for size, call a subroutine to save the registers.  */
-  if (riscv_use_save_libcall (frame))
+  else if (riscv_use_save_libcall (frame))
     {
       rtx dwarf = NULL_RTX;
       dwarf = riscv_adjust_libcall_cfi_prologue ();
@@ -6135,17 +6386,20 @@ riscv_expand_prologue (void)
   /* Save the registers.  */
   if ((frame->mask | frame->fmask) != 0)
     {
-      HOST_WIDE_INT step1 = riscv_first_stack_step (frame, remaining_size);
-
-      insn = gen_add3_insn (stack_pointer_rtx,
-			    stack_pointer_rtx,
-			    GEN_INT (-step1));
-      RTX_FRAME_RELATED_P (emit_insn (insn)) = 1;
-      remaining_size -= step1;
+      if (known_gt (remaining_size, frame->frame_pointer_offset))
+	{
+	  HOST_WIDE_INT step1 = riscv_first_stack_step (frame, remaining_size);
+	  remaining_size -= step1;
+	  insn = gen_add3_insn (stack_pointer_rtx, stack_pointer_rtx,
+				GEN_INT (-step1));
+	  RTX_FRAME_RELATED_P (emit_insn (insn)) = 1;
+	}
       riscv_for_each_saved_reg (remaining_size, riscv_save_reg, false, false);
     }
 
-  frame->mask = mask; /* Undo the above fib.  */
+  /* Undo the above fib.  */
+  frame->mask = mask;
+  frame->fmask = fmask;
 
   /* Set up the frame pointer, if we're using one.  */
   if (frame_pointer_needed)
@@ -6199,6 +6453,32 @@ riscv_expand_prologue (void)
 }
 
 static rtx
+riscv_adjust_multi_pop_cfi_epilogue (int saved_size)
+{
+  rtx dwarf = NULL_RTX;
+  rtx adjust_sp_rtx, reg;
+  unsigned int mask = cfun->machine->frame.mask;
+
+  if (mask & S10_MASK)
+    mask |= S11_MASK;
+
+  /* Debug info for adjust sp.  */
+  adjust_sp_rtx
+    = gen_rtx_SET (stack_pointer_rtx,
+		   plus_constant (Pmode, stack_pointer_rtx, saved_size));
+  dwarf = alloc_reg_note (REG_CFA_ADJUST_CFA, adjust_sp_rtx, dwarf);
+
+  for (int regno = GP_REG_FIRST; regno <= GP_REG_LAST; regno++)
+    if (BITSET_P (mask, regno - GP_REG_FIRST))
+      {
+	reg = gen_rtx_REG (Pmode, regno);
+	dwarf = alloc_reg_note (REG_CFA_RESTORE, reg, dwarf);
+      }
+
+  return dwarf;
+}
+
+static rtx
 riscv_adjust_libcall_cfi_epilogue ()
 {
   rtx dwarf = NULL_RTX;
@@ -6208,7 +6488,7 @@ riscv_adjust_libcall_cfi_epilogue ()
   /* Debug info for adjust sp.  */
   adjust_sp_rtx =
     gen_rtx_SET (stack_pointer_rtx,
-		 gen_rtx_PLUS (GET_MODE(stack_pointer_rtx), stack_pointer_rtx, GEN_INT (saved_size)));
+		 gen_rtx_PLUS (Pmode, stack_pointer_rtx, GEN_INT (saved_size)));
   dwarf = alloc_reg_note (REG_CFA_ADJUST_CFA, adjust_sp_rtx,
 			  dwarf);
 
@@ -6220,6 +6500,78 @@ riscv_adjust_libcall_cfi_epilogue ()
       }
 
   return dwarf;
+}
+
+/* return true if popretz pattern can be matched.
+   set (reg 10 a0) (const_int 0)
+   use (reg 10 a0)
+   NOTE_INSN_EPILOGUE_BEG  */
+static rtx_insn *
+riscv_zcmp_can_use_popretz (void)
+{
+  rtx_insn *insn = NULL, *use = NULL, *clear = NULL;
+
+  /* sequence stack for NOTE_INSN_EPILOGUE_BEG*/
+  struct sequence_stack *outer_seq = get_current_sequence ()->next;
+  if (!outer_seq)
+    return NULL;
+  insn = outer_seq->first;
+  if (!insn || !NOTE_P (insn) || NOTE_KIND (insn) != NOTE_INSN_EPILOGUE_BEG)
+    return NULL;
+
+  /* sequence stack for the insn before NOTE_INSN_EPILOGUE_BEG*/
+  outer_seq = outer_seq->next;
+  if (outer_seq)
+    insn = outer_seq->last;
+
+  /* skip notes  */
+  while (insn && NOTE_P (insn))
+    {
+      insn = PREV_INSN (insn);
+    }
+  use = insn;
+
+  /* match use (reg 10 a0)  */
+  if (use == NULL || !INSN_P (use) || GET_CODE (PATTERN (use)) != USE
+      || !REG_P (XEXP (PATTERN (use), 0))
+      || REGNO (XEXP (PATTERN (use), 0)) != A0_REGNUM)
+    return NULL;
+
+  /* match set (reg 10 a0) (const_int 0 [0])  */
+  clear = PREV_INSN (use);
+  if (clear != NULL && INSN_P (clear) && GET_CODE (PATTERN (clear)) == SET
+      && REG_P (SET_DEST (PATTERN (clear)))
+      && REGNO (SET_DEST (PATTERN (clear))) == A0_REGNUM
+      && SET_SRC (PATTERN (clear)) == const0_rtx)
+    return clear;
+
+  return NULL;
+}
+
+static void
+riscv_gen_multi_pop_insn (bool use_multi_pop_normal, unsigned mask,
+			  unsigned multipop_size)
+{
+  rtx insn;
+  unsigned regs_count = riscv_multi_push_regs_count (mask);
+
+  if (!use_multi_pop_normal)
+    insn = emit_insn (
+      riscv_gen_multi_push_pop_insn (POP_IDX, multipop_size, regs_count));
+  else if (rtx_insn *clear_a0_insn = riscv_zcmp_can_use_popretz ())
+    {
+      delete_insn (NEXT_INSN (clear_a0_insn));
+      delete_insn (clear_a0_insn);
+      insn = emit_jump_insn (
+	riscv_gen_multi_push_pop_insn (POPRETZ_IDX, multipop_size, regs_count));
+    }
+  else
+    insn = emit_jump_insn (
+      riscv_gen_multi_push_pop_insn (POPRET_IDX, multipop_size, regs_count));
+
+  rtx dwarf = riscv_adjust_multi_pop_cfi_epilogue (multipop_size);
+  RTX_FRAME_RELATED_P (insn) = 1;
+  REG_NOTES (insn) = dwarf;
 }
 
 /* Expand an "epilogue", "sibcall_epilogue", or "eh_return_internal" pattern;
@@ -6236,11 +6588,24 @@ riscv_expand_epilogue (int style)
      Start off by assuming that no registers need to be restored.  */
   struct riscv_frame_info *frame = &cfun->machine->frame;
   unsigned mask = frame->mask;
+  unsigned fmask = frame->fmask;
+  unsigned mask_fprs_push = 0;
   HOST_WIDE_INT step2 = 0;
-  bool use_restore_libcall = ((style == NORMAL_RETURN)
-			      && riscv_use_save_libcall (frame));
-  unsigned libcall_size = (use_restore_libcall
-			   ? frame->save_libcall_adjustment : 0);
+  bool use_multi_pop_normal
+    = ((style == NORMAL_RETURN) && riscv_use_multi_push (frame));
+  bool use_multi_pop_sibcall
+    = ((style == SIBCALL_RETURN) && riscv_use_multi_push (frame));
+  bool use_multi_pop = use_multi_pop_normal || use_multi_pop_sibcall;
+
+  bool use_restore_libcall
+    = !use_multi_pop
+      && ((style == NORMAL_RETURN) && riscv_use_save_libcall (frame));
+  unsigned libcall_size = use_restore_libcall && !use_multi_pop
+			    ? frame->save_libcall_adjustment
+			    : 0;
+  unsigned multipop_size
+    = use_multi_pop ? frame->multi_push_adj_base + frame->multi_push_adj_addi
+		    : 0;
   rtx ra = gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM);
   rtx insn;
 
@@ -6311,18 +6676,26 @@ riscv_expand_epilogue (int style)
       REG_NOTES (insn) = dwarf;
     }
 
-  if (use_restore_libcall)
-    frame->mask = 0; /* Temporarily fib for GPRs.  */
+  if (use_restore_libcall || use_multi_pop)
+    frame->mask = 0; /* Temporarily fib that we need not restore GPRs.  */
 
   /* If we need to restore registers, deallocate as much stack as
      possible in the second step without going out of range.  */
-  if ((frame->mask | frame->fmask) != 0)
+  if (use_multi_pop)
+    {
+      if (frame->fmask
+	  && known_gt (frame->total_size - multipop_size,
+		       frame->frame_pointer_offset))
+	step2
+	  = riscv_first_stack_step (frame, frame->total_size - multipop_size);
+    }
+  else if ((frame->mask | frame->fmask) != 0)
     step2 = riscv_first_stack_step (frame, frame->total_size - libcall_size);
 
-  if (use_restore_libcall)
+  if (use_restore_libcall || use_multi_pop)
     frame->mask = mask; /* Undo the above fib.  */
 
-  poly_int64 step1 = frame->total_size - step2 - libcall_size;
+  poly_int64 step1 = frame->total_size - step2 - libcall_size - multipop_size;
 
   /* Set TARGET to BASE + STEP1.  */
   if (known_gt (step1, 0))
@@ -6356,8 +6729,9 @@ riscv_expand_epilogue (int style)
 					   stack_pointer_rtx,
 					   adjust));
 	  rtx dwarf = NULL_RTX;
-	  rtx cfa_adjust_rtx = gen_rtx_PLUS (Pmode, stack_pointer_rtx,
-					     GEN_INT (step2 + libcall_size));
+	  rtx cfa_adjust_rtx
+	    = gen_rtx_PLUS (Pmode, stack_pointer_rtx,
+			    GEN_INT (step2 + libcall_size + multipop_size));
 
 	  dwarf = alloc_reg_note (REG_CFA_DEF_CFA, cfa_adjust_rtx, dwarf);
 	  RTX_FRAME_RELATED_P (insn) = 1;
@@ -6372,16 +6746,26 @@ riscv_expand_epilogue (int style)
       epilogue_cfa_sp_offset = step2;
     }
 
-  if (use_restore_libcall)
-    frame->mask = 0; /* Temporarily fib that we need not save GPRs.  */
+  if (use_multi_pop)
+    {
+      frame->mask = 0; /* Temporarily fib that we need not restore GPRs.  */
+      if (fmask)
+	{
+	  mask_fprs_push = get_multi_push_fpr_mask (frame->multi_push_adj_addi
+						    / UNITS_PER_WORD);
+	  frame->fmask &= ~mask_fprs_push; /* FPRs not saved by cm.push  */
+	}
+    }
+  else if (use_restore_libcall)
+    frame->mask = 0; /* Temporarily fib that we need not restore GPRs.  */
 
   /* Restore the registers.  */
-  riscv_for_each_saved_reg (frame->total_size - step2 - libcall_size,
-			    riscv_restore_reg,
-			    true, style == EXCEPTION_RETURN);
+  riscv_for_each_saved_reg (frame->total_size - step2 - libcall_size
+			      - multipop_size,
+			    riscv_restore_reg, true, style == EXCEPTION_RETURN);
 
   if (use_restore_libcall)
-      frame->mask = mask; /* Undo the above fib.  */
+    frame->mask = mask; /* Undo the above fib.  */
 
   if (need_barrier_p)
     riscv_emit_stack_tie ();
@@ -6393,15 +6777,33 @@ riscv_expand_epilogue (int style)
 				       GEN_INT (step2)));
 
       rtx dwarf = NULL_RTX;
-      rtx cfa_adjust_rtx = gen_rtx_PLUS (Pmode, stack_pointer_rtx,
-					 GEN_INT (libcall_size));
+      rtx cfa_adjust_rtx
+	= gen_rtx_PLUS (Pmode, stack_pointer_rtx,
+			GEN_INT (libcall_size + multipop_size));
       dwarf = alloc_reg_note (REG_CFA_DEF_CFA, cfa_adjust_rtx, dwarf);
       RTX_FRAME_RELATED_P (insn) = 1;
 
       REG_NOTES (insn) = dwarf;
     }
 
-  if (use_restore_libcall)
+  if (use_multi_pop)
+    {
+      /* restore FPRs pushed by cm.push. */
+      frame->fmask = fmask & mask_fprs_push;
+      if (frame->fmask)
+	riscv_for_each_saved_reg (frame->total_size - libcall_size
+				    - multipop_size,
+				  riscv_restore_reg, true,
+				  style == EXCEPTION_RETURN);
+      /* Undo the above fib.  */
+      frame->mask = mask;
+      frame->fmask = fmask;
+      riscv_gen_multi_pop_insn (use_multi_pop_normal, frame->mask,
+				multipop_size);
+      if (use_multi_pop_normal)
+	return;
+    }
+  else if (use_restore_libcall)
     {
       rtx dwarf = riscv_adjust_libcall_cfi_epilogue ();
       insn = emit_insn (gen_gpr_restore (GEN_INT (riscv_save_libcall_count (mask))));
@@ -7157,6 +7559,12 @@ riscv_option_override (void)
      -m[no-]strict-align is left unspecified, heed -mtune's advice.  */
   riscv_slow_unaligned_access_p = (cpu->tune_param->slow_unaligned_access
 				   || TARGET_STRICT_ALIGN);
+
+  /* Make a note if user explicity passed -mstrict-align for later
+     builtin macro generation.  Can't use target_flags_explicitly since
+     it is set even for -mno-strict-align.  */
+  riscv_user_wants_strict_align = TARGET_STRICT_ALIGN;
+
   if ((target_flags_explicit & MASK_STRICT_ALIGN) == 0
       && cpu->tune_param->slow_unaligned_access)
     target_flags |= MASK_STRICT_ALIGN;
@@ -7744,6 +8152,27 @@ riscv_gen_gpr_save_insn (struct riscv_frame_info *frame)
   return gen_rtx_PARALLEL (VOIDmode, vec);
 }
 
+static HOST_WIDE_INT
+zcmp_base_adj (int regs_num)
+{
+  return riscv_16bytes_align ((regs_num) *GET_MODE_SIZE (word_mode));
+}
+
+static HOST_WIDE_INT
+zcmp_additional_adj (HOST_WIDE_INT total, int regs_num)
+{
+  return total - zcmp_base_adj (regs_num);
+}
+
+bool
+riscv_zcmp_valid_stack_adj_bytes_p (HOST_WIDE_INT total, int regs_num)
+{
+  HOST_WIDE_INT additioanl_bytes = zcmp_additional_adj (total, regs_num);
+  return additioanl_bytes == 0 || additioanl_bytes == 1 * ZCMP_SP_INC_STEP
+	 || additioanl_bytes == 2 * ZCMP_SP_INC_STEP
+	 || additioanl_bytes == ZCMP_MAX_SPIMM * ZCMP_SP_INC_STEP;
+}
+
 /* Return true if it's valid gpr_save pattern.  */
 
 bool
@@ -8063,12 +8492,18 @@ riscv_support_vector_misalignment (machine_mode mode,
 				   int misalignment,
 				   bool is_packed ATTRIBUTE_UNUSED)
 {
-  /* TODO: For RVV scalable vector auto-vectorization, we should allow
-     movmisalign<mode> pattern to handle misalign data movement to unblock
-     possible auto-vectorization.
+  /* Only enable misalign data movements for VLS modes.  */
+  if (TARGET_VECTOR_VLS && STRICT_ALIGNMENT)
+    {
+      /* Return if movmisalign pattern is not supported for this mode.  */
+      if (optab_handler (movmisalign_optab, mode) == CODE_FOR_nothing)
+	return false;
 
-     RVV VLS auto-vectorization or SIMD auto-vectorization can be supported here
-     in the future.  */
+      /* Misalignment factor is unknown at compile time.  */
+      if (misalignment == -1)
+	return false;
+    }
+  /* Disable movmisalign for VLA auto-vectorization.  */
   return default_builtin_support_vector_misalignment (mode, type, misalignment,
 						      is_packed);
 }
@@ -8146,8 +8581,8 @@ vector_zero_call_used_regs (HARD_REG_SET need_zeroed_hardregs)
 	    }
 
 	  rtx ops[] = {target, CONST0_RTX (mode)};
-	  riscv_vector::emit_vlmax_insn (code_for_pred_mov (mode),
-					 riscv_vector::RVV_UNOP, ops, vl);
+	  riscv_vector::emit_vlmax_insn_lra (code_for_pred_mov (mode),
+					      riscv_vector::UNARY_OP, ops, vl);
 
 	  SET_HARD_REG_BIT (zeroed_hardregs, regno);
 	}
@@ -8624,6 +9059,17 @@ riscv_frame_pointer_required (void)
   return riscv_save_frame_pointer && !crtl->is_leaf;
 }
 
+/* Implement targetm.vectorize.create_costs.  */
+
+static vector_costs *
+riscv_vectorize_create_costs (vec_info *vinfo, bool costing_for_scalar)
+{
+  if (TARGET_VECTOR)
+    return new riscv_vector::costs (vinfo, costing_for_scalar);
+  /* Default vector costs.  */
+  return new vector_costs (vinfo, costing_for_scalar);
+}
+
 /* Initialize the GCC target structure.  */
 #undef TARGET_ASM_ALIGNED_HI_OP
 #define TARGET_ASM_ALIGNED_HI_OP "\t.half\t"
@@ -8930,6 +9376,9 @@ riscv_frame_pointer_required (void)
 
 #undef TARGET_FRAME_POINTER_REQUIRED
 #define TARGET_FRAME_POINTER_REQUIRED riscv_frame_pointer_required
+
+#undef TARGET_VECTORIZE_CREATE_COSTS
+#define TARGET_VECTORIZE_CREATE_COSTS riscv_vectorize_create_costs
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

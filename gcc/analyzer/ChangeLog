@@ -1,3 +1,74 @@
+2023-09-01  benjamin priour  <priour.be@gmail.com>
+
+	PR analyzer/105948
+	PR analyzer/94355
+	* analyzer.h (is_placement_new_p): New declaration.
+	* call-details.cc
+	(call_details::deref_ptr_arg): New function.
+	Dereference the argument at given index if possible.
+	* call-details.h: Declaration of the above function.
+	* kf-lang-cp.cc (is_placement_new_p): Returns true if the gcall
+	is recognized as a placement new.
+	(kf_operator_delete::impl_call_post): Unbinding a region and its
+	descendents now poisons with POISON_KIND_DELETED.
+	(register_known_functions_lang_cp): Known function "operator
+	delete" is now registered only once independently of its number of
+	arguments.
+	* region-model.cc (region_model::eval_condition): Now
+	recursively calls itself if any of the operand is wrapped in a
+	cast.
+	* sm-malloc.cc (malloc_state_machine::on_stmt):
+	Add placement new recognition.
+	* svalue.cc (poison_kind_to_str): Wording for the new PK.
+	* svalue.h (enum poison_kind): Add value POISON_KIND_DELETED.
+
+2023-08-31  Francois-Xavier Coudert  <fxcoudert@gcc.gnu.org>
+
+	* kf.cc: Change spelling to macOS.
+
+2023-08-30  Eric Feng  <ef2648@columbia.edu>
+
+	PR analyzer/107646
+	* engine.cc (impl_region_model_context::warn): New optional
+	parameter.
+	* exploded-graph.h (class impl_region_model_context): Likewise.
+	* region-model.cc (region_model::pop_frame): New callback
+	feature for region_model::pop_frame.
+	* region-model.h (struct append_regions_cb_data): Likewise.
+	(class region_model): Likewise.
+	(class region_model_context): New optional parameter.
+	(class region_model_context_decorator): Likewise.
+
+2023-08-30  Francois-Xavier Coudert  <fxcoudert@gcc.gnu.org>
+
+	* region-model.cc: Define INCLUDE_ALGORITHM.
+
+2023-08-29  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/99860
+	* analyzer-selftests.cc (selftest::run_analyzer_selftests): Call
+	selftest::analyzer_ranges_cc_tests.
+	* analyzer-selftests.h (selftest::run_analyzer_selftests): New
+	decl.
+	* analyzer.opt (Wanalyzer-overlapping-buffers): New option.
+	* call-details.cc: Include "analyzer/ranges.h" and "make-unique.h".
+	(class overlapping_buffers): New.
+	(call_details::complain_about_overlap): New.
+	* call-details.h (call_details::complain_about_overlap): New decl.
+	* kf.cc (kf_memcpy_memmove::impl_call_pre): Call
+	cd.complain_about_overlap for memcpy and memcpy_chk.
+	(kf_strcat::impl_call_pre): Call cd.complain_about_overlap.
+	(kf_strcpy::impl_call_pre): Likewise.
+	* ranges.cc: New file.
+	* ranges.h: New file.
+
+2023-08-29  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/105899
+	* kf.cc (kf_strdup::impl_call_pre): Set size of
+	dynamically-allocated buffer.  Simulate copying the string from
+	the source region to the new buffer.
+
 2023-08-27  benjamin priour  <vultkayn@gcc.gnu.org>
 
 	PR analyzer/96395
