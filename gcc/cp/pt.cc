@@ -151,7 +151,7 @@ static tree get_partial_spec_bindings (tree, tree, tree);
 static void tsubst_enum	(tree, tree, tree);
 static bool check_instantiated_args (tree, tree, tsubst_flags_t);
 static int check_non_deducible_conversion (tree, tree, unification_kind_t, int,
-					   struct conversion **, bool);
+					   struct conversion **, bool, bool);
 static int maybe_adjust_types_for_deduction (tree, unification_kind_t,
 					     tree*, tree*, tree);
 static int type_unification_real (tree, tree, tree, const tree *,
@@ -1506,21 +1506,6 @@ register_specialization (tree spec, tree tmpl, tree args, bool is_friend,
   gcc_assert ((TREE_CODE (tmpl) == TEMPLATE_DECL && DECL_P (spec))
 	      || (TREE_CODE (tmpl) == FIELD_DECL
 		  && TREE_CODE (spec) == NONTYPE_ARGUMENT_PACK));
-
-  if (TREE_CODE (spec) == FUNCTION_DECL
-      && uses_template_parms (DECL_TI_ARGS (spec)))
-    /* This is the FUNCTION_DECL for a partial instantiation.  Don't
-       register it; we want the corresponding TEMPLATE_DECL instead.
-       We use `uses_template_parms (DECL_TI_ARGS (spec))' rather than
-       the more obvious `uses_template_parms (spec)' to avoid problems
-       with default function arguments.  In particular, given
-       something like this:
-
-	  template <class T> void f(T t1, T t = T())
-
-       the default argument expression is not substituted for in an
-       instantiation unless and until it is actually needed.  */
-    return spec;
 
   spec_entry elt;
   elt.tmpl = tmpl;
@@ -3793,6 +3778,8 @@ expand_integer_pack (tree call, tree args, tsubst_flags_t complain,
     }
   else
     {
+      hi = perform_implicit_conversion_flags (integer_type_node, hi, complain,
+					      LOOKUP_IMPLICIT);
       hi = instantiate_non_dependent_expr (hi, complain);
       hi = cxx_constant_value (hi, complain);
       int len = valid_constant_size_p (hi) ? tree_to_shwi (hi) : -1;
@@ -14663,7 +14650,7 @@ tsubst_template_decl (tree t, tree args, tsubst_flags_t complain,
   tree in_decl = t;
   tree spec;
   tree tmpl_args;
-  tree full_args;
+  tree full_args = NULL_TREE;
   tree r;
   hashval_t hash = 0;
 
@@ -14754,7 +14741,8 @@ tsubst_template_decl (tree t, tree args, tsubst_flags_t complain,
   tree inner = decl;
   ++processing_template_decl;
   if (TREE_CODE (inner) == FUNCTION_DECL)
-    inner = tsubst_function_decl (inner, args, complain, lambda_fntype);
+    inner = tsubst_function_decl (inner, args, complain, lambda_fntype,
+				  /*use_spec_table=*/false);
   else
     {
       if (TREE_CODE (inner) == TYPE_DECL && !TYPE_DECL_ALIAS_P (inner))
@@ -14792,6 +14780,11 @@ tsubst_template_decl (tree t, tree args, tsubst_flags_t complain,
     }
   else
     {
+      if (TREE_CODE (inner) == FUNCTION_DECL)
+	/* Set DECL_TI_ARGS to the full set of template arguments, which
+	   tsubst_function_decl didn't do due to use_spec_table=false.  */
+	DECL_TI_ARGS (inner) = full_args;
+
       DECL_TI_TEMPLATE (inner) = r;
       DECL_TI_ARGS (r) = DECL_TI_ARGS (inner);
     }
@@ -14822,9 +14815,7 @@ tsubst_template_decl (tree t, tree args, tsubst_flags_t complain,
 
   if (TREE_CODE (decl) == FUNCTION_DECL && !lambda_fntype)
     /* Record this non-type partial instantiation.  */
-    register_specialization (r, t,
-			     DECL_TI_ARGS (DECL_TEMPLATE_RESULT (r)),
-			     false, hash);
+    register_specialization (r, t, full_args, false, hash);
 
   return r;
 }
@@ -22321,7 +22312,8 @@ pack_deducible_p (tree parm, tree fn)
 static int
 check_non_deducible_conversions (tree parms, const tree *args, unsigned nargs,
 				 tree fn, unification_kind_t strict, int flags,
-				 struct conversion **convs, bool explain_p)
+				 struct conversion **convs, bool explain_p,
+				 bool noninst_only_p)
 {
   /* Non-constructor methods need to leave a conversion for 'this', which
      isn't included in nargs here.  */
@@ -22357,7 +22349,7 @@ check_non_deducible_conversions (tree parms, const tree *args, unsigned nargs,
 	  int lflags = conv_flags (ia, nargs, fn, arg, flags);
 
 	  if (check_non_deducible_conversion (parm, arg, strict, lflags,
-					      conv_p, explain_p))
+					      conv_p, explain_p, noninst_only_p))
 	    return 1;
 	}
 
@@ -22657,6 +22649,16 @@ fn_type_unification (tree fn,
 
  deduced:
 
+  /* As a refinement of CWG2369, check first and foremost non-dependent
+     conversions that we know are not going to induce template instantiation
+     (PR99599).  */
+  if (strict == DEDUCE_CALL
+      && incomplete
+      && check_non_deducible_conversions (parms, args, nargs, fn, strict, flags,
+					  convs, explain_p,
+					  /*noninst_only_p=*/true))
+    goto fail;
+
   /* CWG2369: Check satisfaction before non-deducible conversions.  */
   if (!constraints_satisfied_p (fn, targs))
     {
@@ -22670,7 +22672,8 @@ fn_type_unification (tree fn,
      as the standard says that we substitute explicit args immediately.  */
   if (incomplete
       && check_non_deducible_conversions (parms, args, nargs, fn, strict, flags,
-					  convs, explain_p))
+					  convs, explain_p,
+					  /*noninst_only_p=*/false))
     goto fail;
 
   /* All is well so far.  Now, check:
@@ -22897,6 +22900,59 @@ maybe_adjust_types_for_deduction (tree tparms,
   return result;
 }
 
+/* Return true if computing a conversion from FROM to TO might induce template
+   instantiation.  Conversely, if this predicate returns false then computing
+   the conversion definitely won't induce template instantiation.  */
+
+static bool
+conversion_may_instantiate_p (tree to, tree from)
+{
+  to = non_reference (to);
+  from = non_reference (from);
+
+  bool ptr_conv_p = false;
+  if (TYPE_PTR_P (to)
+      && TYPE_PTR_P (from))
+    {
+      to = TREE_TYPE (to);
+      from = TREE_TYPE (from);
+      ptr_conv_p = true;
+    }
+
+  /* If one of the types is a not-yet-instantiated class template
+     specialization, then computing the conversion might instantiate
+     it in order to inspect bases, conversion functions and/or
+     converting constructors.  */
+  if ((CLASS_TYPE_P (to)
+       && !COMPLETE_TYPE_P (to)
+       && CLASSTYPE_TEMPLATE_INSTANTIATION (to))
+      || (CLASS_TYPE_P (from)
+	  && !COMPLETE_TYPE_P (from)
+	  && CLASSTYPE_TEMPLATE_INSTANTIATION (from)))
+    return true;
+
+  /* Converting from one pointer type to another, or between
+     reference-related types, always yields a standard conversion.  */
+  if (ptr_conv_p || reference_related_p (to, from))
+    return false;
+
+  /* Converting to a non-aggregate class type will consider its
+     user-declared constructors, which might induce instantiation.  */
+  if (CLASS_TYPE_P (to)
+      && CLASSTYPE_NON_AGGREGATE (to))
+    return true;
+
+  /* Similarly, converting from a class type will consider its conversion
+     functions.  */
+  if (CLASS_TYPE_P (from)
+      && TYPE_HAS_CONVERSION (from))
+    return true;
+
+  /* Otherwise, computing this conversion definitely won't induce
+     template instantiation.  */
+  return false;
+}
+
 /* Subroutine of fn_type_unification.  PARM is a function parameter of a
    template which doesn't contain any deducible template parameters; check if
    ARG is a suitable match for it.  STRICT, FLAGS and EXPLAIN_P are as in
@@ -22905,7 +22961,7 @@ maybe_adjust_types_for_deduction (tree tparms,
 static int
 check_non_deducible_conversion (tree parm, tree arg, unification_kind_t strict,
 				int flags, struct conversion **conv_p,
-				bool explain_p)
+				bool explain_p, bool noninst_only_p)
 {
   tree type;
 
@@ -22925,6 +22981,18 @@ check_non_deducible_conversion (tree parm, tree arg, unification_kind_t strict,
     }
   else if (strict == DEDUCE_CALL)
     {
+      if (conv_p && *conv_p)
+	{
+	  /* This conversion was already computed earlier (when
+	     computing only non-instantiating conversions).  */
+	  gcc_checking_assert (!noninst_only_p);
+	  return unify_success (explain_p);
+	}
+
+      if (noninst_only_p
+	  && conversion_may_instantiate_p (parm, type))
+	return unify_success (explain_p);
+
       bool ok = false;
       tree conv_arg = TYPE_P (arg) ? NULL_TREE : arg;
       if (conv_p)
@@ -23922,8 +23990,7 @@ try_class_unification (tree tparms, tree targs, tree parm, tree arg,
     return NULL_TREE;
   else if (TREE_CODE (parm) == BOUND_TEMPLATE_TEMPLATE_PARM)
     /* Matches anything.  */;
-  else if (most_general_template (CLASSTYPE_TI_TEMPLATE (arg))
-	   != most_general_template (CLASSTYPE_TI_TEMPLATE (parm)))
+  else if (CLASSTYPE_TI_TEMPLATE (arg) != CLASSTYPE_TI_TEMPLATE (parm))
     return NULL_TREE;
 
   /* We need to make a new template argument vector for the call to
@@ -23964,8 +24031,10 @@ try_class_unification (tree tparms, tree targs, tree parm, tree arg,
   if (TREE_CODE (parm) == BOUND_TEMPLATE_TEMPLATE_PARM)
     err = unify_bound_ttp_args (tparms, targs, parm, arg, explain_p);
   else
-    err = unify (tparms, targs, CLASSTYPE_TI_ARGS (parm),
-		 CLASSTYPE_TI_ARGS (arg), UNIFY_ALLOW_NONE, explain_p);
+    err = unify (tparms, targs,
+		 INNERMOST_TEMPLATE_ARGS (CLASSTYPE_TI_ARGS (parm)),
+		 INNERMOST_TEMPLATE_ARGS (CLASSTYPE_TI_ARGS (arg)),
+		 UNIFY_ALLOW_NONE, explain_p);
 
   return err ? NULL_TREE : arg;
 }
@@ -24491,7 +24560,8 @@ unify (tree tparms, tree targs, tree parm, tree arg, int strict,
      even if ARG == PARM, since we won't record unifications for the
      template parameters.  We might need them if we're trying to
      figure out which of two things is more specialized.  */
-  if (arg == parm && !uses_template_parms (parm))
+  if (arg == parm
+      && (DECL_P (parm) || !uses_template_parms (parm)))
     return unify_success (explain_p);
 
   /* Handle init lists early, so the rest of the function can assume
@@ -25090,8 +25160,13 @@ unify (tree tparms, tree targs, tree parm, tree arg, int strict,
 	    /* There's no chance of unification succeeding.  */
 	    return unify_type_mismatch (explain_p, parm, arg);
 
-	  return unify (tparms, targs, CLASSTYPE_TI_ARGS (parm),
-			CLASSTYPE_TI_ARGS (t), UNIFY_ALLOW_NONE, explain_p);
+	  if (PRIMARY_TEMPLATE_P (CLASSTYPE_TI_TEMPLATE (t)))
+	    return unify (tparms, targs,
+			  INNERMOST_TEMPLATE_ARGS (CLASSTYPE_TI_ARGS (parm)),
+			  INNERMOST_TEMPLATE_ARGS (CLASSTYPE_TI_ARGS (t)),
+			  UNIFY_ALLOW_NONE, explain_p);
+	  else
+	    return unify_success (explain_p);
 	}
       else if (!same_type_ignoring_top_level_qualifiers_p (parm, arg))
 	return unify_type_mismatch (explain_p, parm, arg);
@@ -25210,11 +25285,8 @@ unify (tree tparms, tree targs, tree parm, tree arg, int strict,
 		    strict, explain_p);
 
     case CONST_DECL:
-      if (DECL_TEMPLATE_PARM_P (parm))
-	return unify (tparms, targs, DECL_INITIAL (parm), arg, strict, explain_p);
-      if (arg != scalar_constant_value (parm))
-	return unify_template_argument_mismatch (explain_p, parm, arg);
-      return unify_success (explain_p);
+      /* CONST_DECL should already have been folded to its DECL_INITIAL.  */
+      gcc_unreachable ();
 
     case FIELD_DECL:
     case TEMPLATE_DECL:

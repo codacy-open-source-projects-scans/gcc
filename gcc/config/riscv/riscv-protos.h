@@ -102,6 +102,9 @@ extern bool riscv_split_64bit_move_p (rtx, rtx);
 extern void riscv_split_doubleword_move (rtx, rtx);
 extern const char *riscv_output_move (rtx, rtx);
 extern const char *riscv_output_return ();
+extern void riscv_declare_function_name (FILE *, const char *, tree);
+extern void riscv_asm_output_alias (FILE *, const tree, const tree);
+extern void riscv_asm_output_external (FILE *, const tree, const char *);
 extern bool
 riscv_zcmp_valid_stack_adj_bytes_p (HOST_WIDE_INT, int);
 
@@ -241,8 +244,8 @@ enum insn_flags : unsigned int
   /* Means INSN need two operands to do the operation.  */
   TERNARY_OP_P = 1 << 13,
 
-  /* flags for get mask mode from the index number. default from dest operand.  */
-  MASK_MODE_FROM_OP1_P = 1 << 14,
+  /* flags for get vtype mode from the index number. default from dest operand.  */
+  VTYPE_MODE_FROM_OP1_P = 1 << 14,
 
   /* flags for the floating-point rounding mode.  */
   /* Means INSN has FRM operand and the value is FRM_DYN.  */
@@ -318,7 +321,7 @@ enum insn_type : unsigned int
 
   /* For vcpop.m, no merge operand, no tail and mask policy operands.  */
   CPOP_OP = HAS_DEST_P | HAS_MASK_P | USE_ALL_TRUES_MASK_P | UNARY_OP_P
-	    | MASK_MODE_FROM_OP1_P,
+	    | VTYPE_MODE_FROM_OP1_P,
 
   /* For mask instrunctions, no tail and mask policy operands.  */
   UNARY_MASK_OP = HAS_DEST_P | HAS_MASK_P | USE_ALL_TRUES_MASK_P | HAS_MERGE_P
@@ -333,15 +336,19 @@ enum insn_type : unsigned int
   = HAS_DEST_P | HAS_MERGE_P | TDEFAULT_POLICY_P | BINARY_OP_P,
 
   /* For vreduce, no mask policy operand. */
-  REDUCE_OP = __NORMAL_OP_TA | BINARY_OP_P | MASK_MODE_FROM_OP1_P,
-  REDUCE_OP_FRM_DYN = REDUCE_OP | FRM_DYN_P | MASK_MODE_FROM_OP1_P,
+  REDUCE_OP = __NORMAL_OP_TA | BINARY_OP_P | VTYPE_MODE_FROM_OP1_P,
+  REDUCE_OP_FRM_DYN = REDUCE_OP | FRM_DYN_P | VTYPE_MODE_FROM_OP1_P,
   REDUCE_OP_M_FRM_DYN
-  = __MASK_OP_TA | BINARY_OP_P | FRM_DYN_P | MASK_MODE_FROM_OP1_P,
+  = __MASK_OP_TA | BINARY_OP_P | FRM_DYN_P | VTYPE_MODE_FROM_OP1_P,
 
   /* For vmv.s.x/vfmv.s.f.  */
   SCALAR_MOVE_OP = HAS_DEST_P | HAS_MASK_P | USE_ONE_TRUE_MASK_P | HAS_MERGE_P
 		   | USE_VUNDEF_MERGE_P | TDEFAULT_POLICY_P | MDEFAULT_POLICY_P
 		   | UNARY_OP_P,
+
+  SCALAR_MOVE_MERGED_OP = HAS_DEST_P | HAS_MASK_P | USE_ONE_TRUE_MASK_P
+			  | HAS_MERGE_P | TDEFAULT_POLICY_P | MDEFAULT_POLICY_P
+			  | UNARY_OP_P,
 };
 
 enum vlmul_type
@@ -365,6 +372,8 @@ enum avl_type
 /* Routines implemented in riscv-vector-builtins.cc.  */
 void init_builtins (void);
 const char *mangle_builtin_type (const_tree);
+tree lookup_vector_type_attribute (const_tree);
+bool builtin_type_p (const_tree);
 #ifdef GCC_TARGET_H
 bool verify_type_context (location_t, type_context_kind, const_tree, bool);
 bool expand_vec_perm_const (machine_mode, machine_mode, rtx, rtx, rtx,
@@ -409,12 +418,6 @@ enum mask_policy
 /* Return true if VALUE is agnostic or any policy.  */
 #define IS_AGNOSTIC(VALUE) (bool) (VALUE & 0x1 || (VALUE >> 1 & 0x1))
 
-enum class reduction_type
-{
-  UNORDERED,
-  FOLD_LEFT,
-  MASK_LEN_FOLD_LEFT,
-};
 enum tail_policy get_prefer_tail_policy ();
 enum mask_policy get_prefer_mask_policy ();
 rtx get_avl_type_rtx (enum avl_type);
@@ -428,8 +431,7 @@ void expand_vec_cmp (rtx, rtx_code, rtx, rtx);
 bool expand_vec_cmp_float (rtx, rtx_code, rtx, rtx, bool);
 void expand_cond_len_unop (unsigned, rtx *);
 void expand_cond_len_binop (unsigned, rtx *);
-void expand_reduction (rtx_code, rtx *, rtx,
-		       reduction_type = reduction_type::UNORDERED);
+void expand_reduction (unsigned, unsigned, rtx *, rtx);
 #endif
 bool sew64_scalar_helper (rtx *, rtx *, rtx, machine_mode,
 			  bool, void (*)(rtx *, rtx));
@@ -457,7 +459,7 @@ void expand_select_vl (rtx *);
 void expand_load_store (rtx *, bool);
 void expand_gather_scatter (rtx *, bool);
 void expand_cond_len_ternop (unsigned, rtx *);
-void prepare_ternary_operands (rtx *, bool = false);
+void prepare_ternary_operands (rtx *);
 void expand_lanes_load_store (rtx *, bool);
 void expand_fold_extract_last (rtx *);
 
@@ -493,6 +495,8 @@ enum floating_point_rounding_mode get_frm_mode (rtx);
 opt_machine_mode vectorize_related_mode (machine_mode, scalar_mode,
 					 poly_uint64);
 unsigned int autovectorize_vector_modes (vec<machine_mode> *, bool);
+bool cmp_lmul_le_one (machine_mode);
+bool cmp_lmul_gt_one (machine_mode);
 }
 
 /* We classify builtin types into two classes:
@@ -509,6 +513,10 @@ const unsigned int RISCV_BUILTIN_SHIFT = 1;
 
 /* Mask that selects the riscv_builtin_class part of a function code.  */
 const unsigned int RISCV_BUILTIN_CLASS = (1 << RISCV_BUILTIN_SHIFT) - 1;
+
+/* Routines implemented in riscv-string.cc.  */
+extern bool riscv_expand_strcmp (rtx, rtx, rtx, rtx, rtx);
+extern bool riscv_expand_strlen (rtx, rtx, rtx, rtx);
 
 /* Routines implemented in thead.cc.  */
 extern bool th_mempair_operands_p (rtx[4], bool, machine_mode);

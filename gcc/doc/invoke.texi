@@ -1030,7 +1030,8 @@ Objective-C and Objective-C++ Dialects}.
 
 @emph{LoongArch Options}
 @gccoptlist{-march=@var{cpu-type}  -mtune=@var{cpu-type} -mabi=@var{base-abi-type}
--mfpu=@var{fpu-type} -msoft-float -msingle-float -mdouble-float
+-mfpu=@var{fpu-type} -msimd=@var{simd-type}
+-msoft-float -msingle-float -mdouble-float -mlsx -mno-lsx -mlasx -mno-lasx
 -mbranch-cost=@var{n}  -mcheck-zero-division -mno-check-zero-division
 -mcond-move-int  -mno-cond-move-int
 -mcond-move-float  -mno-cond-move-float
@@ -1235,7 +1236,10 @@ See RS/6000 and PowerPC Options.
 -mstack-protector-guard=@var{guard}  -mstack-protector-guard-reg=@var{reg}
 -mstack-protector-guard-offset=@var{offset}
 -mcsr-check -mno-csr-check
--minline-atomics  -mno-inline-atomics}
+-minline-atomics  -mno-inline-atomics
+-minline-strlen  -mno-inline-strlen
+-minline-strcmp  -mno-inline-strcmp
+-minline-strncmp  -mno-inline-strncmp}
 
 @emph{RL78 Options}
 @gccoptlist{-msim  -mmul=none  -mmul=g13  -mmul=g14  -mallregs
@@ -2825,6 +2829,33 @@ The default when in a standards compliant mode (@option{-std=c11} or similar)
 is @option{-fpermitted-flt-eval-methods=c11}.  The default when in a GNU
 dialect (@option{-std=gnu11} or similar) is
 @option{-fpermitted-flt-eval-methods=ts-18661-3}.
+
+@opindex fdeps-
+The @samp{-fdeps-*} options are used to extract structured dependency
+information for a source.  This involves determining what resources provided by
+other source files will be required to compile the source as well as what
+resources are provided by the source.  This information can be used to add
+required dependencies between compilation rules of dependent sources based on
+their contents rather than requiring such information be reflected within the
+build tools as well.
+
+@opindex fdeps-file
+@item -fdeps-file=@var{file}
+Where to write structured dependency information.
+
+@opindex fdeps-format
+@item -fdeps-format=@var{format}
+The format to use for structured dependency information. @samp{p1689r5} is the
+only supported format right now.  Note that when this argument is specified, the
+output of @samp{-MF} is stripped of some information (namely C++ modules) so
+that it does not use extended makefile syntax not understood by most tools.
+
+@opindex fdeps-target
+@item -fdeps-target=@var{file}
+Analogous to @option{-MT} but for structured dependency information.  This
+indicates the target which will ultimately need any required resources and
+provide any resources extracted from the source that may be required by other
+sources.
 
 @opindex fplan9-extensions
 @item -fplan9-extensions
@@ -21602,7 +21633,7 @@ Enable the use of pre/post modify with register displacement.
 
 @opindex mbbit-peephole
 @item -mbbit-peephole
-Enable bbit peephole2.
+Does nothing.  Preserved for backward compatibility.
 
 @opindex mno-brcc
 @item -mno-brcc
@@ -25997,6 +26028,21 @@ operations.
 Prevent the use of hardware floating-point instructions.
 @end table
 
+@opindex msimd
+@item -msimd=@var{simd-type}
+Enable generation of LoongArch SIMD instructions for vectorization
+and via builtin functions.  The value can be one of:
+@table @samp
+@item lasx
+Enable generating instructions from the 256-bit LoongArch Advanced
+SIMD Extension (LASX) and the 128-bit LoongArch SIMD Extension (LSX).
+@item lsx
+Enable generating instructions from the 128-bit LoongArch SIMD
+Extension (LSX).
+@item none
+No LoongArch SIMD instruction may be generated.
+@end table
+
 @opindex msoft-float
 @item -msoft-float
 Force @option{-mfpu=none} and prevents the use of floating-point
@@ -26014,6 +26060,19 @@ ABI.
 Force @option{-mfpu=64} and allow the use of 32/64-bit floating-point
 registers for parameter passing.  This option may change the target
 ABI.
+
+@opindex ml[a]sx
+@item -mlasx
+@itemx -mno-lasx
+@item -mlsx
+@itemx -mno-lsx
+Incrementally adjust the scope of the SIMD extensions (none / LSX / LASX)
+that can be used by the compiler for code generation.  Enabling LASX with
+@option{mlasx} automatically enables LSX, and diabling LSX with @option{mno-lsx}
+automatically disables LASX.  These driver-only options act upon the final
+@option{msimd} configuration state and make incremental chagnes in the order
+they appear on the GCC driver's command line, deriving the final / canonicalized
+@option{msimd} option that is passed to the compiler proper.
 
 @opindex mbranch-cost
 @item -mbranch-cost=@var{n}
@@ -26114,6 +26173,7 @@ kernels, executables linked with @option{-static} or @option{-static-pie}.
 @option{-mdirect-extern-access} is not compatible with @option{-fPIC} or
 @option{-fpic}.
 @end table
+
 
 @node M32C Options
 @subsection M32C Options
@@ -29328,6 +29388,30 @@ epilogues.
 Do or don't use smaller but slower subword atomic emulation code that uses
 libatomic function calls.  The default is to use fast inline subword atomics
 that do not require libatomic.
+
+@opindex minline-strlen
+@item -minline-strlen
+@itemx -mno-inline-strlen
+Do or do not attempt to inline strlen calls if possible.
+Inlining will only be done if the string is properly aligned
+and instructions for accelerated processing are available.
+The default is to not inline strlen calls.
+
+@opindex minline-strcmp
+@item -minline-strcmp
+@itemx -mno-inline-strcmp
+Do or do not attempt to inline strcmp calls if possible.
+Inlining will only be done if the strings are properly aligned
+and instructions for accelerated processing are available.
+The default is to not inline strcmp calls.
+
+@opindex minline-strncmp
+@item -minline-strncmp
+@itemx -mno-inline-strncmp
+Do or do not attempt to inline strncmp calls if possible.
+Inlining will only be done if the strings are properly aligned
+and instructions for accelerated processing are available.
+The default is to not inline strncmp calls.
 
 @opindex mshorten-memrefs
 @item -mshorten-memrefs

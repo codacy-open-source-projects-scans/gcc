@@ -1,5 +1,4 @@
 // { dg-do run { target c++20 } }
-// { dg-options "-std=gnu++20" }
 
 #include <chrono>
 #include <sstream>

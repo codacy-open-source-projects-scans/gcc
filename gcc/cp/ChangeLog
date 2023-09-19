@@ -1,3 +1,145 @@
+2023-09-18  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/89231
+	* pt.cc (try_class_unification): Strengthen TI_TEMPLATE equality
+	test by not calling most_general_template.  Only unify the
+	innermost levels of template arguments.
+	(unify) <case CLASS_TYPE>: Only unify the innermost levels of
+	template arguments, and only if the template is primary.
+
+2023-09-18  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/63198
+	PR c++/18474
+	* semantics.cc (maybe_convert_cond): Look through implicit
+	INDIRECT_REF when deciding whether to issue a -Wparentheses
+	warning, and consider templated assignment expressions as well.
+	(finish_parenthesized_expr): Look through implicit INDIRECT_REF
+	when suppressing -Wparentheses warning.
+	* typeck.cc (build_x_modify_expr): Check simple assignments
+	ahead time too, not just compound assignments.  Give the second
+	operand of MODOP_EXPR a non-null type so that it's not considered
+	always instantiation-dependent.  Don't call suppress_warning.
+
+2023-09-18  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/108347
+	* pt.cc (unify): Return unify_success for identical dependent
+	DECL_P 'arg' and 'parm'.
+	<case CONST_DECL>: Remove handling.
+
+2023-09-18  Patrick Palka  <ppalka@redhat.com>
+
+	* call.cc (add_template_candidate_real): Check arity even
+	when there are no explicit template arguments.  Combine the
+	two adjacent '!obj' tests into one.
+
+2023-09-18  Patrick Palka  <ppalka@redhat.com>
+
+	* pt.cc (register_specialization): Remove now-unnecessary
+	early exit for FUNCTION_DECL partial instantiation.
+	(tsubst_template_decl): Pass use_spec_table=false to
+	tsubst_function_decl.  Set DECL_TI_ARGS of a non-lambda
+	FUNCTION_DECL specialization to the full set of arguments.
+	Simplify register_specialization call accordingly.
+
+2023-09-18  Jason Merrill  <jason@redhat.com>
+
+	* class.cc (check_subobject_offset): Use similar_type_p.
+
+2023-09-12  Jason Merrill  <jason@redhat.com>
+
+	PR c++/111357
+	* pt.cc (expand_integer_pack): Convert argument to int.
+
+2023-09-12  Jason Merrill  <jason@redhat.com>
+
+	PR c++/107198
+	* typeck2.cc (process_init_constructor_array): Use VEC_INIT_EXPR
+	regardless of seen_error.
+
+2023-09-08  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/99599
+	* pt.cc (check_non_deducible_conversions): Add bool parameter
+	passed down to check_non_deducible_conversion.
+	(fn_type_unification): Call check_non_deducible_conversions
+	an extra time before satisfaction with noninst_only_p=true.
+	(conversion_may_instantiate_p): Define.
+	(check_non_deducible_conversion): Add bool parameter controlling
+	whether to compute only conversions that are guaranteed to
+	not induce template instantiation.
+
+2023-09-07  Sandra Loosemore  <sandra@codesourcery.com>
+
+	PR c++/111274
+	* parser.cc (fixup_blocks_walker): Check for null BIND_EXPR_BLOCK.
+
+2023-09-06  Jason Merrill  <jason@redhat.com>
+
+	* class.cc (check_subobject_offset): Check
+	same_type_ignoring_top_level_qualifiers_p.
+
+2023-09-05  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/91483
+	* constexpr.cc (verify_constant_explain_r): New.
+	(verify_constant): Call it.
+
+2023-09-05  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/52953
+	* name-lookup.cc (check_local_shadow): Don't punt early for
+	DECL_EXTERNAL decls, instead just disable the shadowing of namespace
+	decls check for those and emit a pedwarn rather than error_at or
+	permerror for those.  Formatting fix.
+
+2023-09-05  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/52953
+	* name-lookup.h (struct cp_binding_level): Add artificial bit-field.
+	Formatting fixes.
+	* name-lookup.cc (check_local_shadow): Skip artificial bindings when
+	checking if parameter scope is parent scope.  Don't special case
+	FUNCTION_NEEDS_BODY_BLOCK.  Diagnose the in_function_try_handler
+	cases in the b->kind == sk_function_parms test and verify no
+	non-artificial intervening scopes.  Add missing auto_diagnostic_group.
+	* decl.cc (begin_function_body): Set
+	current_binding_level->artificial.
+	* semantics.cc (begin_function_try_block): Likewise.
+
+2023-09-05  Patrick Palka  <ppalka@redhat.com>
+
+	* parser.cc (cp_parser_parenthesized_expression_list_elt): Pass
+	nullptr as non_constant_p to cp_parser_braced_list if our
+	non_constant_p is null.
+	(cp_parser_initializer_list): Likewise to
+	cp_parser_initializer_clause.  Avoid inspecting
+	clause_non_constant_p if it's uninitialized.
+
+2023-09-05  Patrick Palka  <ppalka@redhat.com>
+
+	* call.cc (build_user_type_conversion): Free allocated
+	conversions.
+	(build_converted_constant_expr_internal): Use
+	conversion_obstack_sentinel instead.
+	(perform_dguide_overload_resolution): Likewise.
+	(build_new_function_call): Likewise.
+	(build_operator_new_call): Free allocated conversions.
+	(build_op_call): Use conversion_obstack_sentinel instead.
+	(build_conditional_expr): Use conversion_obstack_sentinel
+	instead, and hoist it out to the outermost scope.
+	(build_new_op): Use conversion_obstack_sentinel instead
+	and set it up before the first goto.  Remove second unneeded goto.
+	(build_op_subscript): Use conversion_obstack_sentinel instead.
+	(ref_conv_binds_to_temporary): Likewise.
+	(build_new_method_call): Likewise.
+	(can_convert_arg): Likewise.
+	(can_convert_arg_bad): Likewise.
+	(perform_implicit_conversion_flags): Likewise.
+	(perform_direct_initialization_if_possible): Likewise.
+	(initialize_reference): Likewise.
+
 2023-09-01  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/111069
