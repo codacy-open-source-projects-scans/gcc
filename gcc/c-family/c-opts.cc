@@ -238,7 +238,7 @@ c_common_init_options (unsigned int decoded_options_count,
     = new (ggc_alloc <string_concat_db> ()) string_concat_db ();
 
   parse_in = cpp_create_reader (c_dialect_cxx () ? CLK_GNUCXX: CLK_GNUC89,
-				ident_hash, line_table);
+				ident_hash, line_table, ident_hash_extra);
   cb = cpp_get_callbacks (parse_in);
   cb->diagnostic = c_cpp_diagnostic;
 
@@ -272,7 +272,7 @@ c_common_init_options (unsigned int decoded_options_count,
   if (c_dialect_cxx ())
     set_std_cxx17 (/*ISO*/false);
 
-  global_dc->colorize_source_p = true;
+  global_dc->m_source_printing.colorize_source_p = true;
 }
 
 /* Handle switch SCODE with argument ARG.  VALUE is true, unless no-

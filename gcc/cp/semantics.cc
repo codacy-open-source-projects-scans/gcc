@@ -916,8 +916,7 @@ finish_expr_stmt (tree expr)
 	  expr = convert_to_void (expr, ICV_STATEMENT, tf_warning_or_error);
 	}
       else if (!type_dependent_expression_p (expr))
-	convert_to_void (build_non_dependent_expr (expr), ICV_STATEMENT,
-                         tf_warning_or_error);
+	convert_to_void (expr, ICV_STATEMENT, tf_warning_or_error);
 
       if (check_for_bare_parameter_packs (expr))
         expr = error_mark_node;
@@ -1396,8 +1395,7 @@ finish_for_expr (tree expr, tree for_stmt)
                               tf_warning_or_error);
     }
   else if (!type_dependent_expression_p (expr))
-    convert_to_void (build_non_dependent_expr (expr), ICV_THIRD_IN_FOR,
-                     tf_warning_or_error);
+    convert_to_void (expr, ICV_THIRD_IN_FOR, tf_warning_or_error);
   expr = maybe_cleanup_point_expr_void (expr);
   if (check_for_bare_parameter_packs (expr))
     expr = error_mark_node;
@@ -2795,18 +2793,19 @@ finish_call_expr (tree fn, vec<tree, va_gc> **args, bool disallow_virtual,
 	     (c++/89780, c++/107363).  This also suppresses the
 	     -Wredundant-move warning.  */
 	  suppress_warning (result, OPT_Wpessimizing_move);
-	  if (is_overloaded_fn (fn))
-	    fn = get_fns (fn);
 
 	  if (cfun)
 	    {
 	      bool abnormal = true;
-	      for (lkp_iterator iter (fn); abnormal && iter; ++iter)
+	      for (lkp_iterator iter (maybe_get_fns (fn)); iter; ++iter)
 		{
 		  tree fndecl = STRIP_TEMPLATE (*iter);
 		  if (TREE_CODE (fndecl) != FUNCTION_DECL
 		      || !TREE_THIS_VOLATILE (fndecl))
-		    abnormal = false;
+		    {
+		      abnormal = false;
+		      break;
+		    }
 		}
 	      /* FIXME: Stop warning about falling off end of non-void
 		 function.   But this is wrong.  Even if we only see
@@ -2816,14 +2815,12 @@ finish_call_expr (tree fn, vec<tree, va_gc> **args, bool disallow_virtual,
 	      if (abnormal)
 		current_function_returns_abnormally = 1;
 	    }
+	  if (TREE_CODE (fn) == COMPONENT_REF)
+	    maybe_generic_this_capture (TREE_OPERAND (fn, 0),
+					TREE_OPERAND (fn, 1));
 	  return result;
 	}
       orig_args = make_tree_vector_copy (*args);
-      if (!BASELINK_P (fn)
-	  && TREE_CODE (fn) != PSEUDO_DTOR_EXPR
-	  && TREE_TYPE (fn) != unknown_type_node)
-	fn = build_non_dependent_expr (fn);
-      make_args_non_dependent (*args);
     }
 
   if (TREE_CODE (fn) == COMPONENT_REF)
@@ -7380,13 +7377,14 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	  goto handle_field_decl;
 
 	case OMP_CLAUSE_IF:
-	  t = OMP_CLAUSE_IF_EXPR (c);
+	case OMP_CLAUSE_SELF:
+	  t = OMP_CLAUSE_OPERAND (c, 0);
 	  t = maybe_convert_cond (t);
 	  if (t == error_mark_node)
 	    remove = true;
 	  else if (!processing_template_decl)
 	    t = fold_build_cleanup_point_expr (TREE_TYPE (t), t);
-	  OMP_CLAUSE_IF_EXPR (c) = t;
+	  OMP_CLAUSE_OPERAND (c, 0) = t;
 	  break;
 
 	case OMP_CLAUSE_FINAL:
@@ -11034,20 +11032,6 @@ finish_omp_atomic (location_t loc, enum tree_code code, enum tree_code opcode,
 	      || TREE_CODE (OMP_CLAUSE_HINT_EXPR (clauses)) != INTEGER_CST)
 	    dependent_p = true;
 	}
-      if (!dependent_p)
-	{
-	  lhs = build_non_dependent_expr (lhs);
-	  if (rhs)
-	    rhs = build_non_dependent_expr (rhs);
-	  if (v)
-	    v = build_non_dependent_expr (v);
-	  if (lhs1)
-	    lhs1 = build_non_dependent_expr (lhs1);
-	  if (rhs1)
-	    rhs1 = build_non_dependent_expr (rhs1);
-	  if (r && r != void_list_node)
-	    r = build_non_dependent_expr (r);
-	}
     }
   if (!dependent_p)
     {
@@ -12605,7 +12589,7 @@ capture_decltype (tree decl)
    this is a right unary fold. Otherwise it is a left unary fold. */
 
 static tree
-finish_unary_fold_expr (tree expr, int op, tree_code dir)
+finish_unary_fold_expr (location_t loc, tree expr, int op, tree_code dir)
 {
   /* Build a pack expansion (assuming expr has pack type).  */
   if (!uses_parameter_packs (expr))
@@ -12618,7 +12602,7 @@ finish_unary_fold_expr (tree expr, int op, tree_code dir)
 
   /* Build the fold expression.  */
   tree code = build_int_cstu (integer_type_node, abs (op));
-  tree fold = build_min_nt_loc (input_location, dir, code, pack);
+  tree fold = build_min_nt_loc (loc, dir, code, pack);
   FOLD_EXPR_MODIFY_P (fold) = (op < 0);
   TREE_TYPE (fold) = build_dependent_operator_type (NULL_TREE,
 						    FOLD_EXPR_OP (fold),
@@ -12627,27 +12611,28 @@ finish_unary_fold_expr (tree expr, int op, tree_code dir)
 }
 
 tree
-finish_left_unary_fold_expr (tree expr, int op)
+finish_left_unary_fold_expr (location_t loc, tree expr, int op)
 {
-  return finish_unary_fold_expr (expr, op, UNARY_LEFT_FOLD_EXPR);
+  return finish_unary_fold_expr (loc, expr, op, UNARY_LEFT_FOLD_EXPR);
 }
 
 tree
-finish_right_unary_fold_expr (tree expr, int op)
+finish_right_unary_fold_expr (location_t loc, tree expr, int op)
 {
-  return finish_unary_fold_expr (expr, op, UNARY_RIGHT_FOLD_EXPR);
+  return finish_unary_fold_expr (loc, expr, op, UNARY_RIGHT_FOLD_EXPR);
 }
 
 /* Build a binary fold expression over EXPR1 and EXPR2. The
    associativity of the fold is determined by EXPR1 and EXPR2 (whichever
    has an unexpanded parameter pack). */
 
-tree
-finish_binary_fold_expr (tree pack, tree init, int op, tree_code dir)
+static tree
+finish_binary_fold_expr (location_t loc, tree pack, tree init,
+			 int op, tree_code dir)
 {
   pack = make_pack_expansion (pack);
   tree code = build_int_cstu (integer_type_node, abs (op));
-  tree fold = build_min_nt_loc (input_location, dir, code, pack, init);
+  tree fold = build_min_nt_loc (loc, dir, code, pack, init);
   FOLD_EXPR_MODIFY_P (fold) = (op < 0);
   TREE_TYPE (fold) = build_dependent_operator_type (NULL_TREE,
 						    FOLD_EXPR_OP (fold),
@@ -12656,16 +12641,16 @@ finish_binary_fold_expr (tree pack, tree init, int op, tree_code dir)
 }
 
 tree
-finish_binary_fold_expr (tree expr1, tree expr2, int op)
+finish_binary_fold_expr (location_t loc, tree expr1, tree expr2, int op)
 {
   // Determine which expr has an unexpanded parameter pack and
   // set the pack and initial term.
   bool pack1 = uses_parameter_packs (expr1);
   bool pack2 = uses_parameter_packs (expr2);
   if (pack1 && !pack2)
-    return finish_binary_fold_expr (expr1, expr2, op, BINARY_RIGHT_FOLD_EXPR);
+    return finish_binary_fold_expr (loc, expr1, expr2, op, BINARY_RIGHT_FOLD_EXPR);
   else if (pack2 && !pack1)
-    return finish_binary_fold_expr (expr2, expr1, op, BINARY_LEFT_FOLD_EXPR);
+    return finish_binary_fold_expr (loc, expr2, expr1, op, BINARY_LEFT_FOLD_EXPR);
   else
     {
       if (pack1)

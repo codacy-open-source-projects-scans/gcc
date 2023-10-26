@@ -748,7 +748,7 @@ class TypeInfo
 
     /** Return info used by the garbage collector to do precise collection.
      */
-    @property immutable(void)* rtInfo() nothrow pure const @safe @nogc { return rtinfoHasPointers; } // better safe than sorry
+    @property immutable(void)* rtInfo() nothrow pure const @trusted @nogc { return rtinfoHasPointers; } // better safe than sorry
 }
 
 @system unittest
@@ -2903,6 +2903,14 @@ void* aaLiteral(Key, Value)(Key[] keys, Value[] values) @trusted pure
     return _d_assocarrayliteralTX(typeid(Value[Key]), *cast(void[]*)&keys, *cast(void[]*)&values);
 }
 
+// Lower an Associative Array to a newaa struct for static initialization.
+auto _aaAsStruct(K, V)(V[K] aa) @safe
+{
+    import core.internal.newaa : makeAA;
+    assert(__ctfe);
+    return makeAA!(K, V)(aa);
+}
+
 alias AssociativeArray(Key, Value) = Value[Key];
 
 /***********************************
@@ -2927,6 +2935,25 @@ void clear(Value, Key)(Value[Key]* aa)
     auto aa = ["k1": 2];
     aa.clear;
     assert("k1" !in aa);
+}
+
+// Issue 20559
+@system unittest
+{
+    static class Foo
+    {
+        int[string] aa;
+        alias aa this;
+    }
+
+    auto v = new Foo();
+    v["Hello World"] = 42;
+    v.clear;
+    assert("Hello World" !in v);
+
+    // Test for T*
+    static assert(!__traits(compiles, (&v).clear));
+    static assert( __traits(compiles, (*(&v)).clear));
 }
 
 /***********************************
@@ -4294,6 +4321,44 @@ void destroy(bool initialize = true, T)(T obj) if (is(T == interface))
 
 @system unittest
 {
+    // class with an `alias this`
+    class A
+    {
+        static int dtorCount;
+        ~this()
+        {
+            dtorCount++;
+        }
+    }
+
+    class B
+    {
+        A a;
+        alias a this;
+        this()
+        {
+            a = new A;
+        }
+        static int dtorCount;
+        ~this()
+        {
+            dtorCount++;
+        }
+    }
+    auto b = new B;
+    assert(A.dtorCount == 0);
+    assert(B.dtorCount == 0);
+    destroy(b);
+    assert(A.dtorCount == 0);
+    assert(B.dtorCount == 1);
+
+    auto a = new A;
+    destroy(a);
+    assert(A.dtorCount == 1);
+}
+
+@system unittest
+{
     interface I { }
     {
         class A: I { string s = "A"; this() {} }
@@ -4503,6 +4568,43 @@ if (__traits(isStaticArray, T))
         destroy(a2);
         assert(op == "D4D3D2D1", op);
     }
+}
+
+// https://issues.dlang.org/show_bug.cgi?id=19218
+@system unittest
+{
+    static struct S
+    {
+        static dtorCount = 0;
+        ~this() { ++dtorCount; }
+    }
+
+    static interface I
+    {
+        ref S[3] getArray();
+        alias getArray this;
+    }
+
+    static class C : I
+    {
+        static dtorCount = 0;
+        ~this() { ++dtorCount; }
+
+        S[3] a;
+        alias a this;
+
+        ref S[3] getArray() { return a; }
+    }
+
+    C c = new C();
+    destroy(c);
+    assert(S.dtorCount == 3);
+    assert(C.dtorCount == 1);
+
+    I i = new C();
+    destroy(i);
+    assert(S.dtorCount == 6);
+    assert(C.dtorCount == 2);
 }
 
 /// ditto

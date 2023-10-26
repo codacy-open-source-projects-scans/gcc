@@ -36,6 +36,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "cgraph.h"
 #include "tree-pretty-print.h"
 #include "diagnostic-core.h"
+#include "diagnostic.h"		/* For errorcount.  */
 #include "alias.h"
 #include "fold-const.h"
 #include "calls.h"
@@ -1372,6 +1373,7 @@ gimplify_bind_expr (tree *expr_p, gimple_seq *pre_p)
 	      && (attr = lookup_attribute ("omp allocate", DECL_ATTRIBUTES (t)))
 		 != NULL_TREE)
 	    {
+	      gcc_assert (!DECL_HAS_VALUE_EXPR_P (t));
 	      tree alloc = TREE_PURPOSE (TREE_VALUE (attr));
 	      tree align = TREE_VALUE (TREE_VALUE (attr));
 	      /* Allocate directives that appear in a target region must specify
@@ -1396,12 +1398,154 @@ gimplify_bind_expr (tree *expr_p, gimple_seq *pre_p)
 		error_at (DECL_SOURCE_LOCATION (t),
 			  "%<allocate%> directive for %qD inside a target "
 			  "region must specify an %<allocator%> clause", t);
-	      else if (align != NULL_TREE
-		       || alloc == NULL_TREE
-		       || !integer_onep (alloc))
-	        sorry_at (DECL_SOURCE_LOCATION (t),
-			  "OpenMP %<allocate%> directive, used for %qD, not "
-			  "yet supported", t);
+	      /* Skip for omp_default_mem_alloc (= 1),
+		 unless align is present. */
+	      else if (!errorcount
+		       && (align != NULL_TREE
+			   || alloc == NULL_TREE
+			   || !integer_onep (alloc)))
+		{
+		  /* Fortran might already use a pointer type internally;
+		     use that pointer except for type(C_ptr) and type(C_funptr);
+		     note that normal proc pointers are rejected.  */
+		  tree type = TREE_TYPE (t);
+		  tree tmp, v;
+		  if (lang_GNU_Fortran ()
+		      && POINTER_TYPE_P (type)
+		      && TREE_TYPE (type) != void_type_node
+		      && TREE_CODE (TREE_TYPE (type)) != FUNCTION_TYPE)
+		    {
+		      type = TREE_TYPE (type);
+		      v = t;
+		    }
+		  else
+		    {
+		      tmp = build_pointer_type (type);
+		      v = create_tmp_var (tmp, get_name (t));
+		      DECL_IGNORED_P (v) = 0;
+		      DECL_ATTRIBUTES (v)
+			= tree_cons (get_identifier ("omp allocate var"),
+				     build_tree_list (NULL_TREE, t),
+				     remove_attribute ("omp allocate",
+						       DECL_ATTRIBUTES (t)));
+		      tmp = build_fold_indirect_ref (v);
+		      TREE_THIS_NOTRAP (tmp) = 1;
+		      SET_DECL_VALUE_EXPR (t, tmp);
+		      DECL_HAS_VALUE_EXPR_P (t) = 1;
+		    }
+		  tree sz = TYPE_SIZE_UNIT (type);
+		  /* The size to use in Fortran might not match TYPE_SIZE_UNIT;
+		     hence, for some decls, a size variable is saved in the
+		     attributes; use it, if available.  */
+		  if (TREE_CHAIN (TREE_VALUE (attr))
+		      && TREE_CHAIN (TREE_CHAIN (TREE_VALUE (attr)))
+		      && TREE_PURPOSE (
+			   TREE_CHAIN (TREE_CHAIN (TREE_VALUE (attr)))))
+		    {
+		      sz = TREE_CHAIN (TREE_CHAIN (TREE_VALUE (attr)));
+		      sz = TREE_PURPOSE (sz);
+		    }
+		  if (alloc == NULL_TREE)
+		    alloc = build_zero_cst (ptr_type_node);
+		  if (align == NULL_TREE)
+		    align = build_int_cst (size_type_node, DECL_ALIGN_UNIT (t));
+		  else
+		    align = build_int_cst (size_type_node,
+					   MAX (tree_to_uhwi (align),
+						DECL_ALIGN_UNIT (t)));
+		  location_t loc = DECL_SOURCE_LOCATION (t);
+		  tmp = builtin_decl_explicit (BUILT_IN_GOMP_ALLOC);
+		  tmp = build_call_expr_loc (loc, tmp, 3, align, sz, alloc);
+		  tmp = fold_build2_loc (loc, MODIFY_EXPR, TREE_TYPE (v), v,
+					 fold_convert (TREE_TYPE (v), tmp));
+		  gcc_assert (BIND_EXPR_BODY (bind_expr) != NULL_TREE);
+		  /* Ensure that either TREE_CHAIN (TREE_VALUE (attr) is set
+		     and GOMP_FREE added here or that DECL_HAS_VALUE_EXPR_P (t)
+		     is set, using in a condition much further below.  */
+		  gcc_assert (DECL_HAS_VALUE_EXPR_P (t)
+			      || TREE_CHAIN (TREE_VALUE (attr)));
+		  if (TREE_CHAIN (TREE_VALUE (attr)))
+		    {
+		      /* Fortran is special as it does not have properly nest
+			 declarations in blocks.  And as there is no
+			 initializer, there is also no expression to look for.
+			 Hence, the FE makes the statement list of the
+			 try-finally block available. We can put the GOMP_alloc
+			 at the top, unless an allocator or size expression
+			 requires to put it afterward; note that the size is
+			 always later in generated code; for strings, no
+			 size expr but still an expr might be available.
+			 As LTO does not handle a statement list, 'sl' has
+			 to be removed; done so by removing the attribute.  */
+		      DECL_ATTRIBUTES (t)
+			= remove_attribute ("omp allocate",
+					    DECL_ATTRIBUTES (t));
+		      tree sl = TREE_PURPOSE (TREE_CHAIN (TREE_VALUE (attr)));
+		      tree_stmt_iterator e = tsi_start (sl);
+		      tree needle = NULL_TREE;
+		      if (TREE_CHAIN (TREE_CHAIN (TREE_VALUE (attr))))
+			{
+			  needle = TREE_CHAIN (TREE_CHAIN (TREE_VALUE (attr)));
+			  needle = (TREE_VALUE (needle) ? TREE_VALUE (needle)
+							: sz);
+			}
+		      else if (TREE_CHAIN (TREE_CHAIN (TREE_VALUE (attr))))
+			needle = sz;
+		      else if (DECL_P (alloc) && DECL_ARTIFICIAL (alloc))
+			needle = alloc;
+
+		      if (needle != NULL_TREE)
+			{
+			  while (!tsi_end_p (e))
+			    {
+			      if (*e == needle
+				  || (TREE_CODE (*e) == MODIFY_EXPR
+				      && TREE_OPERAND (*e, 0) == needle))
+				break;
+			      ++e;
+			    }
+			  gcc_assert (!tsi_end_p (e));
+			}
+		      tsi_link_after (&e, tmp, TSI_SAME_STMT);
+
+		      /* As the cleanup is in BIND_EXPR_BODY, GOMP_free is added
+			 here; for C/C++ it will be added in the 'cleanup'
+			 section after gimplification. But Fortran already has
+			 a try-finally block.  */
+		      sl = TREE_VALUE (TREE_CHAIN (TREE_VALUE (attr)));
+		      e = tsi_last (sl);
+		      tmp = builtin_decl_explicit (BUILT_IN_GOMP_FREE);
+		      tmp = build_call_expr_loc (EXPR_LOCATION (*e), tmp, 2, v,
+						 build_zero_cst (ptr_type_node));
+		      tsi_link_after (&e, tmp, TSI_SAME_STMT);
+		      tmp = build_clobber (TREE_TYPE (v), CLOBBER_EOL);
+		      tmp = fold_build2_loc (loc, MODIFY_EXPR, TREE_TYPE (v), v,
+					     fold_convert (TREE_TYPE (v), tmp));
+		      ++e;
+		      tsi_link_after (&e, tmp, TSI_SAME_STMT);
+		    }
+		  else
+		    {
+		      gcc_assert (TREE_CODE (BIND_EXPR_BODY (bind_expr))
+				  == STATEMENT_LIST);
+		      tree_stmt_iterator e;
+		      e = tsi_start (BIND_EXPR_BODY (bind_expr));
+		      while (!tsi_end_p (e))
+			{
+			  if ((TREE_CODE (*e) == DECL_EXPR
+			       && TREE_OPERAND (*e, 0) == t)
+			      || (TREE_CODE (*e) == CLEANUP_POINT_EXPR
+				  && (TREE_CODE (TREE_OPERAND (*e, 0))
+				      == DECL_EXPR)
+				  && (TREE_OPERAND (TREE_OPERAND (*e, 0), 0)
+				      == t)))
+			    break;
+			  ++e;
+			}
+		      gcc_assert (!tsi_end_p (e));
+		      tsi_link_before (&e, tmp, TSI_SAME_STMT);
+		   }
+		}
 	    }
 
 	  /* Mark variable as local.  */
@@ -1486,22 +1630,6 @@ gimplify_bind_expr (tree *expr_p, gimple_seq *pre_p)
   cleanup = NULL;
   stack_save = NULL;
 
-  /* If the code both contains VLAs and calls alloca, then we cannot reclaim
-     the stack space allocated to the VLAs.  */
-  if (gimplify_ctxp->save_stack && !gimplify_ctxp->keep_stack)
-    {
-      gcall *stack_restore;
-
-      /* Save stack on entry and restore it on exit.  Add a try_finally
-	 block to achieve this.  */
-      build_stack_save_restore (&stack_save, &stack_restore);
-
-      gimple_set_location (stack_save, start_locus);
-      gimple_set_location (stack_restore, end_locus);
-
-      gimplify_seq_add_stmt (&cleanup, stack_restore);
-    }
-
   /* Add clobbers for all variables that go out of scope.  */
   for (t = BIND_EXPR_VARS (bind_expr); t ; t = DECL_CHAIN (t))
     {
@@ -1509,6 +1637,25 @@ gimplify_bind_expr (tree *expr_p, gimple_seq *pre_p)
 	  && !is_global_var (t)
 	  && DECL_CONTEXT (t) == current_function_decl)
 	{
+	  if (flag_openmp
+	      && DECL_HAS_VALUE_EXPR_P (t)
+	      && TREE_USED (t)
+	      && lookup_attribute ("omp allocate", DECL_ATTRIBUTES (t)))
+	    {
+	      /* For Fortran, TREE_CHAIN (TREE_VALUE (attr)) is set, which
+		 causes that the GOMP_free call is already added above;
+		 and "omp allocate" is removed from DECL_ATTRIBUTES.  */
+	      tree v = TREE_OPERAND (DECL_VALUE_EXPR (t), 0);
+	      tree tmp = builtin_decl_explicit (BUILT_IN_GOMP_FREE);
+	      tmp = build_call_expr_loc (end_locus, tmp, 2, v,
+					 build_zero_cst (ptr_type_node));
+	      gimplify_and_add (tmp, &cleanup);
+	      gimple *clobber_stmt;
+	      tmp = build_clobber (TREE_TYPE (v), CLOBBER_EOL);
+	      clobber_stmt = gimple_build_assign (v, tmp);
+	      gimple_set_location (clobber_stmt, end_locus);
+	      gimplify_seq_add_stmt (&cleanup, clobber_stmt);
+	    }
 	  if (!DECL_HARD_REGISTER (t)
 	      && !TREE_THIS_VOLATILE (t)
 	      && !DECL_HAS_VALUE_EXPR_P (t)
@@ -1563,6 +1710,22 @@ gimplify_bind_expr (tree *expr_p, gimple_seq *pre_p)
       if (gimplify_ctxp->live_switch_vars != NULL
 	  && gimplify_ctxp->live_switch_vars->contains (t))
 	gimplify_ctxp->live_switch_vars->remove (t);
+    }
+
+  /* If the code both contains VLAs and calls alloca, then we cannot reclaim
+     the stack space allocated to the VLAs.  */
+  if (gimplify_ctxp->save_stack && !gimplify_ctxp->keep_stack)
+    {
+      gcall *stack_restore;
+
+      /* Save stack on entry and restore it on exit.  Add a try_finally
+	 block to achieve this.  */
+      build_stack_save_restore (&stack_save, &stack_restore);
+
+      gimple_set_location (stack_save, start_locus);
+      gimple_set_location (stack_restore, end_locus);
+
+      gimplify_seq_add_stmt (&cleanup, stack_restore);
     }
 
   if (ret_clauses)
@@ -7894,6 +8057,13 @@ omp_notice_variable (struct gimplify_omp_ctx *ctx, tree decl, bool in_code)
   if (error_operand_p (decl))
     return false;
 
+  if (DECL_ARTIFICIAL (decl))
+    {
+      tree attr = lookup_attribute ("omp allocate var", DECL_ATTRIBUTES (decl));
+      if (attr)
+	decl = TREE_VALUE (TREE_VALUE (attr));
+    }
+
   if (ctx->region_type == ORT_NONE)
     return lang_hooks.decls.omp_disregard_value_expr (decl, false);
 
@@ -11951,6 +12121,7 @@ gimplify_scan_omp_clauses (tree *list_p, gimple_seq *pre_p,
 	    }
 	  /* Fall through.  */
 
+	case OMP_CLAUSE_SELF:
 	case OMP_CLAUSE_FINAL:
 	  OMP_CLAUSE_OPERAND (c, 0)
 	    = gimple_boolify (OMP_CLAUSE_OPERAND (c, 0));
@@ -13172,6 +13343,7 @@ gimplify_adjust_omp_clauses (gimple_seq *pre_p, gimple_seq body, tree *list_p,
 	case OMP_CLAUSE_COPYIN:
 	case OMP_CLAUSE_COPYPRIVATE:
 	case OMP_CLAUSE_IF:
+	case OMP_CLAUSE_SELF:
 	case OMP_CLAUSE_NUM_THREADS:
 	case OMP_CLAUSE_NUM_TEAMS:
 	case OMP_CLAUSE_THREAD_LIMIT:

@@ -186,6 +186,9 @@
   UNSPEC_LASX_XVLDI
   UNSPEC_LASX_XVLDX
   UNSPEC_LASX_XVSTX
+  UNSPEC_LASX_VECINIT_MERGE
+  UNSPEC_LASX_VEC_SET_INTERNAL
+  UNSPEC_LASX_XVILVL_INTERNAL
 ])
 
 ;; All vector modes with 256 bits.
@@ -255,6 +258,15 @@
    [(V8SF "V4SF")
    (V4DF "V2DF")])
 
+;; The attribute gives half int/float modes for vector modes.
+(define_mode_attr VHMODE256_ALL
+  [(V32QI "V16QI")
+   (V16HI "V8HI")
+   (V8SI "V4SI")
+   (V4DI "V2DI")
+   (V8SF "V4SF")
+   (V4DF "V2DF")])
+
 ;; The attribute gives double modes for vector modes in LASX.
 (define_mode_attr VDMODE256
   [(V8SI "V4DI")
@@ -311,6 +323,11 @@
    (V8SF "v8sf")
    (V4DI "v4df")
    (V8SI "v8sf")])
+
+;; This attribute gives V32QI mode and V16HI mode with half size.
+(define_mode_attr mode256_i_half
+  [(V32QI "v16qi")
+   (V16HI "v8hi")])
 
  ;; This attribute gives suffix for LASX instructions.  HOW?
 (define_mode_attr lasxfmt
@@ -756,6 +773,20 @@
   [(set_attr "type" "simd_splat")
    (set_attr "mode" "<MODE>")])
 
+;; Only for loongarch_expand_vector_init in loongarch.cc.
+;; Support a LSX-mode input op2.
+(define_insn "lasx_vecinit_merge_<LASX:mode>"
+  [(set (match_operand:LASX 0 "register_operand" "=f")
+	(unspec:LASX
+	  [(match_operand:LASX 1 "register_operand" "0")
+	   (match_operand:<VHMODE256_ALL> 2 "register_operand" "f")
+	   (match_operand     3 "const_uimm8_operand")]
+	   UNSPEC_LASX_VECINIT_MERGE))]
+  "ISA_HAS_LASX"
+  "xvpermi.q\t%u0,%u2,%3"
+  [(set_attr "type" "simd_splat")
+   (set_attr "mode" "<MODE>")])
+
 (define_insn "lasx_xvpickve2gr_d<u>"
   [(set (match_operand:DI 0 "register_operand" "=r")
 	(any_extend:DI
@@ -778,6 +809,33 @@
                       operands[0], index));
   DONE;
 })
+
+;; Only for loongarch_expand_vector_init in loongarch.cc.
+;; Simulate missing instructions xvinsgr2vr.b and xvinsgr2vr.h.
+(define_expand "vec_set<mode>_internal"
+  [(match_operand:ILASX_HB 0 "register_operand")
+   (match_operand:<UNITMODE> 1 "reg_or_0_operand")
+   (match_operand 2 "const_<indeximm256>_operand")]
+  "ISA_HAS_LASX"
+{
+  rtx index = GEN_INT (1 << INTVAL (operands[2]));
+  emit_insn (gen_lasx_xvinsgr2vr_<mode256_i_half>_internal
+	     (operands[0], operands[1], operands[0], index));
+  DONE;
+})
+
+(define_insn "lasx_xvinsgr2vr_<mode256_i_half>_internal"
+  [(set (match_operand:ILASX_HB 0 "register_operand" "=f")
+	(unspec:ILASX_HB [(match_operand:<UNITMODE> 1 "reg_or_0_operand" "rJ")
+			  (match_operand:ILASX_HB 2 "register_operand" "0")
+			  (match_operand 3 "const_<bitmask256>_operand" "")]
+			 UNSPEC_LASX_VEC_SET_INTERNAL))]
+  "ISA_HAS_LASX"
+{
+  return "vinsgr2vr.<lasxfmt>\t%w0,%z1,%y3";
+}
+  [(set_attr "type" "simd_insert")
+   (set_attr "mode" "<MODE>")])
 
 (define_expand "vec_set<mode>"
   [(match_operand:FLASX 0 "register_operand")
@@ -848,15 +906,15 @@
 })
 
 ;; Same as vcond_
-(define_expand "vcond_mask_<ILASX:mode><ILASX:mode>"
-  [(match_operand:ILASX 0 "register_operand")
-   (match_operand:ILASX 1 "reg_or_m1_operand")
-   (match_operand:ILASX 2 "reg_or_0_operand")
-   (match_operand:ILASX 3 "register_operand")]
+(define_expand "vcond_mask_<mode><mode256_i>"
+  [(match_operand:LASX 0 "register_operand")
+   (match_operand:LASX 1 "reg_or_m1_operand")
+   (match_operand:LASX 2 "reg_or_0_operand")
+   (match_operand:<VIMODE256> 3 "register_operand")]
   "ISA_HAS_LASX"
 {
-  loongarch_expand_vec_cond_mask_expr (<ILASX:MODE>mode,
-				      <ILASX:VIMODE256>mode, operands);
+  loongarch_expand_vec_cond_mask_expr (<MODE>mode,
+				       <VIMODE256>mode, operands);
   DONE;
 })
 
@@ -1567,6 +1625,17 @@
   [(set_attr "type" "simd_flog2")
    (set_attr "mode" "<MODE>")])
 
+;; Only for loongarch_expand_vector_init in loongarch.cc.
+;; Merge two scalar floating-point op1 and op2 into a LASX op0.
+(define_insn "lasx_xvilvl_<lasxfmt_f>_internal"
+  [(set (match_operand:FLASX 0 "register_operand" "=f")
+	(unspec:FLASX [(match_operand:<UNITMODE> 1 "register_operand" "f")
+		       (match_operand:<UNITMODE> 2 "register_operand" "f")]
+		      UNSPEC_LASX_XVILVL_INTERNAL))]
+  "ISA_HAS_LASX"
+  "xvilvl.<lasxfmt>\t%u0,%u2,%u1"
+  [(set_attr "type" "simd_permute")
+   (set_attr "mode" "<MODE>")])
 
 (define_insn "smax<mode>3"
   [(set (match_operand:FLASX 0 "register_operand" "=f")
@@ -4979,23 +5048,71 @@
   [(set_attr "type" "simd_store")
    (set_attr "mode" "DI")])
 
-(define_insn "vec_widen_<su>mult_even_v8si"
-  [(set (match_operand:V4DI 0 "register_operand" "=f")
-    (mult:V4DI
-      (any_extend:V4DI
-        (vec_select:V4SI
-          (match_operand:V8SI 1 "register_operand" "%f")
-          (parallel [(const_int 0) (const_int 2)
-                         (const_int 4) (const_int 6)])))
-      (any_extend:V4DI
-        (vec_select:V4SI
-          (match_operand:V8SI 2 "register_operand" "f")
-          (parallel [(const_int 0) (const_int 2)
-             (const_int 4) (const_int 6)])))))]
+(define_expand "vec_widen_<su>add_hi_<mode>"
+  [(match_operand:<VDMODE256> 0 "register_operand")
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 1 "register_operand"))
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 2 "register_operand"))]
   "ISA_HAS_LASX"
-  "xvmulwev.d.w<u>\t%u0,%u1,%u2"
-  [(set_attr "type" "simd_int_arith")
-   (set_attr "mode" "V4DI")])
+{
+  loongarch_expand_vec_widen_hilo (operands[0], operands[1], operands[2],
+                        <u_bool>, true, "add");
+  DONE;
+})
+
+(define_expand "vec_widen_<su>add_lo_<mode>"
+  [(match_operand:<VDMODE256> 0 "register_operand")
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 1 "register_operand"))
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 2 "register_operand"))]
+  "ISA_HAS_LASX"
+{
+  loongarch_expand_vec_widen_hilo (operands[0], operands[1], operands[2],
+                        <u_bool>, false, "add");
+  DONE;
+})
+
+(define_expand "vec_widen_<su>sub_hi_<mode>"
+  [(match_operand:<VDMODE256> 0 "register_operand")
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 1 "register_operand"))
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 2 "register_operand"))]
+  "ISA_HAS_LASX"
+{
+  loongarch_expand_vec_widen_hilo (operands[0], operands[1], operands[2],
+                        <u_bool>, true, "sub");
+  DONE;
+})
+
+(define_expand "vec_widen_<su>sub_lo_<mode>"
+  [(match_operand:<VDMODE256> 0 "register_operand")
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 1 "register_operand"))
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 2 "register_operand"))]
+  "ISA_HAS_LASX"
+{
+  loongarch_expand_vec_widen_hilo (operands[0], operands[1], operands[2],
+                        <u_bool>, false, "sub");
+  DONE;
+})
+
+(define_expand "vec_widen_<su>mult_hi_<mode>"
+  [(match_operand:<VDMODE256> 0 "register_operand")
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 1 "register_operand"))
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 2 "register_operand"))]
+  "ISA_HAS_LASX"
+{
+  loongarch_expand_vec_widen_hilo (operands[0], operands[1], operands[2],
+                        <u_bool>, true, "mult");
+  DONE;
+})
+
+(define_expand "vec_widen_<su>mult_lo_<mode>"
+  [(match_operand:<VDMODE256> 0 "register_operand")
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 1 "register_operand"))
+   (any_extend:<VDMODE256> (match_operand:ILASX_HB 2 "register_operand"))]
+  "ISA_HAS_LASX"
+{
+  loongarch_expand_vec_widen_hilo (operands[0], operands[1], operands[2],
+                        <u_bool>, false, "mult");
+  DONE;
+})
 
 ;; Vector reduction operation
 (define_expand "reduc_plus_scal_v4di"
@@ -5100,5 +5217,83 @@
   loongarch_expand_vector_reduc (gen_umin<mode>3, tmp, operands[1]);
   emit_insn (gen_vec_extract<mode><unitmode> (operands[0], tmp,
 					      const0_rtx));
+  DONE;
+})
+
+(define_expand "avg<mode>3_ceil"
+  [(match_operand:ILASX_WHB 0 "register_operand")
+   (match_operand:ILASX_WHB 1 "register_operand")
+   (match_operand:ILASX_WHB 2 "register_operand")]
+  "ISA_HAS_LASX"
+{
+  emit_insn (gen_lasx_xvavgr_s_<lasxfmt> (operands[0],
+	operands[1], operands[2]));
+  DONE;
+})
+
+(define_expand "uavg<mode>3_ceil"
+  [(match_operand:ILASX_WHB 0 "register_operand")
+   (match_operand:ILASX_WHB 1 "register_operand")
+   (match_operand:ILASX_WHB 2 "register_operand")]
+  "ISA_HAS_LASX"
+{
+  emit_insn (gen_lasx_xvavgr_u_<lasxfmt_u> (operands[0],
+	operands[1], operands[2]));
+  DONE;
+})
+
+(define_expand "avg<mode>3_floor"
+  [(match_operand:ILASX_WHB 0 "register_operand")
+   (match_operand:ILASX_WHB 1 "register_operand")
+   (match_operand:ILASX_WHB 2 "register_operand")]
+  "ISA_HAS_LASX"
+{
+  emit_insn (gen_lasx_xvavg_s_<lasxfmt> (operands[0],
+	operands[1], operands[2]));
+  DONE;
+})
+
+(define_expand "uavg<mode>3_floor"
+  [(match_operand:ILASX_WHB 0 "register_operand")
+   (match_operand:ILASX_WHB 1 "register_operand")
+   (match_operand:ILASX_WHB 2 "register_operand")]
+  "ISA_HAS_LASX"
+{
+  emit_insn (gen_lasx_xvavg_u_<lasxfmt_u> (operands[0],
+	operands[1], operands[2]));
+  DONE;
+})
+
+(define_expand "usadv32qi"
+  [(match_operand:V8SI 0 "register_operand")
+   (match_operand:V32QI 1 "register_operand")
+   (match_operand:V32QI 2 "register_operand")
+   (match_operand:V8SI 3 "register_operand")]
+  "ISA_HAS_LASX"
+{
+  rtx t1 = gen_reg_rtx (V32QImode);
+  rtx t2 = gen_reg_rtx (V16HImode);
+  rtx t3 = gen_reg_rtx (V8SImode);
+  emit_insn (gen_lasx_xvabsd_u_bu (t1, operands[1], operands[2]));
+  emit_insn (gen_lasx_xvhaddw_h_b (t2, t1, t1));
+  emit_insn (gen_lasx_xvhaddw_w_h (t3, t2, t2));
+  emit_insn (gen_addv8si3 (operands[0], t3, operands[3]));
+  DONE;
+})
+
+(define_expand "ssadv32qi"
+  [(match_operand:V8SI 0 "register_operand")
+   (match_operand:V32QI 1 "register_operand")
+   (match_operand:V32QI 2 "register_operand")
+   (match_operand:V8SI 3 "register_operand")]
+  "ISA_HAS_LASX"
+{
+  rtx t1 = gen_reg_rtx (V32QImode);
+  rtx t2 = gen_reg_rtx (V16HImode);
+  rtx t3 = gen_reg_rtx (V8SImode);
+  emit_insn (gen_lasx_xvabsd_s_b (t1, operands[1], operands[2]));
+  emit_insn (gen_lasx_xvhaddw_h_b (t2, t1, t1));
+  emit_insn (gen_lasx_xvhaddw_w_h (t3, t2, t2));
+  emit_insn (gen_addv8si3 (operands[0], t3, operands[3]));
   DONE;
 })

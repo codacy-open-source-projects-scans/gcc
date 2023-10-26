@@ -147,29 +147,7 @@ diagnostic_set_caret_max_width (diagnostic_context *context, int value)
   if (value <= 0) 
     value = INT_MAX;
 
-  context->caret_max_width = value;
-}
-
-/* Default implementation of final_cb.  */
-
-static void
-default_diagnostic_final_cb (diagnostic_context *context)
-{
-  /* Some of the errors may actually have been warnings.  */
-  if (diagnostic_kind_count (context, DK_WERROR))
-    {
-      /* -Werror was given.  */
-      if (context->warning_as_error_requested)
-	pp_verbatim (context->printer,
-		     _("%s: all warnings being treated as errors"),
-		     progname);
-      /* At least one -Werror= was given.  */
-      else
-	pp_verbatim (context->printer,
-		     _("%s: some warnings being treated as errors"),
-		     progname);
-      pp_newline_and_flush (context->printer);
-    }
+  context->m_source_printing.max_width = value;
 }
 
 /* Initialize the diagnostic message outputting machinery.  */
@@ -189,10 +167,10 @@ diagnostic_initialize (diagnostic_context *context, int n_opts)
   context->classify_diagnostic = XNEWVEC (diagnostic_t, n_opts);
   for (i = 0; i < n_opts; i++)
     context->classify_diagnostic[i] = DK_UNSPECIFIED;
-  context->show_caret = false;
+  context->m_source_printing.enabled = false;
   diagnostic_set_caret_max_width (context, pp_line_cutoff (context->printer));
   for (i = 0; i < rich_location::STATICALLY_ALLOCATED_RANGES; i++)
-    context->caret_chars[i] = '^';
+    context->m_source_printing.caret_chars[i] = '^';
   context->show_cwe = false;
   context->show_rules = false;
   context->path_format = DPF_NONE;
@@ -209,7 +187,7 @@ diagnostic_initialize (diagnostic_context *context, int n_opts)
   context->max_errors = 0;
   context->internal_error = NULL;
   diagnostic_starter (context) = default_diagnostic_starter;
-  context->start_span = default_diagnostic_start_span_fn;
+  context->m_text_callbacks.start_span = default_diagnostic_start_span_fn;
   diagnostic_finalizer (context) = default_diagnostic_finalizer;
   context->option_enabled = NULL;
   context->option_state = NULL;
@@ -220,13 +198,13 @@ diagnostic_initialize (diagnostic_context *context, int n_opts)
   context->x_data = NULL;
   context->lock = 0;
   context->inhibit_notes_p = false;
-  context->colorize_source_p = false;
-  context->show_labels_p = false;
-  context->show_line_numbers_p = false;
-  context->min_margin_width = 0;
-  context->show_ruler_p = false;
+  context->m_source_printing.colorize_source_p = false;
+  context->m_source_printing.show_labels_p = false;
+  context->m_source_printing.show_line_numbers_p = false;
+  context->m_source_printing.min_margin_width = 0;
+  context->m_source_printing.show_ruler_p = false;
   context->report_bug = false;
-
+  context->extra_output_kind = EXTRA_DIAGNOSTIC_OUTPUT_none;
   if (const char *var = getenv ("GCC_EXTRA_DIAGNOSTIC_OUTPUT"))
     {
       if (!strcmp (var, "fixits-v1"))
@@ -242,16 +220,23 @@ diagnostic_initialize (diagnostic_context *context, int n_opts)
   context->edit_context_ptr = NULL;
   context->diagnostic_group_nesting_depth = 0;
   context->diagnostic_group_emission_count = 0;
-  context->begin_group_cb = NULL;
-  context->end_group_cb = NULL;
-  context->final_cb = default_diagnostic_final_cb;
+  context->m_output_format = new diagnostic_text_output_format (*context);
+  context->set_locations_cb = nullptr;
   context->ice_handler_cb = NULL;
   context->includes_seen = NULL;
   context->m_client_data_hooks = NULL;
   context->m_diagrams.m_theme = NULL;
-  context->m_diagrams.m_emission_cb = NULL;
-  diagnostics_text_art_charset_init (context,
-				     DIAGNOSTICS_TEXT_ART_CHARSET_DEFAULT);
+
+  enum diagnostic_text_art_charset text_art_charset
+    = DIAGNOSTICS_TEXT_ART_CHARSET_DEFAULT;
+  if (const char *lang = getenv ("LANG"))
+    {
+      /* For LANG=C, don't assume the terminal supports anything
+	 other than ASCII.  */
+      if (!strcmp (lang, "C"))
+	text_art_charset = DIAGNOSTICS_TEXT_ART_CHARSET_ASCII;
+    }
+  diagnostics_text_art_charset_init (context, text_art_charset);
 }
 
 /* Maybe initialize the color support. We require clients to do this
@@ -325,8 +310,8 @@ void diagnostic_initialize_input_context (diagnostic_context *context,
 void
 diagnostic_finish (diagnostic_context *context)
 {
-  if (context->final_cb)
-    context->final_cb (context);
+  delete context->m_output_format;
+  context->m_output_format= nullptr;
 
   if (context->m_diagrams.m_theme)
     {
@@ -372,9 +357,9 @@ diagnostic_set_info_translated (diagnostic_info *diagnostic, const char *msg,
 				diagnostic_t kind)
 {
   gcc_assert (richloc);
-  diagnostic->message.err_no = errno;
-  diagnostic->message.args_ptr = args;
-  diagnostic->message.format_spec = msg;
+  diagnostic->message.m_err_no = errno;
+  diagnostic->message.m_args_ptr = args;
+  diagnostic->message.m_format_spec = msg;
   diagnostic->message.m_richloc = richloc;
   diagnostic->richloc = richloc;
   diagnostic->metadata = NULL;
@@ -1256,14 +1241,6 @@ static diagnostic_t
 update_effective_level_from_pragmas (diagnostic_context *context,
 				     diagnostic_info *diagnostic)
 {
-  if (diagnostic->m_iinfo.m_allsyslocs && !context->dc_warn_system_headers)
-    {
-      /* Ignore the diagnostic if all the inlined locations are
-	 in system headers and -Wno-system-headers is in effect.  */
-      diagnostic->kind = DK_IGNORED;
-      return DK_IGNORED;
-    }
-
   if (context->n_classification_history <= 0)
     return DK_UNSPECIFIED;
 
@@ -1504,22 +1481,16 @@ bool
 diagnostic_report_diagnostic (diagnostic_context *context,
 			      diagnostic_info *diagnostic)
 {
-  location_t location = diagnostic_location (diagnostic);
   diagnostic_t orig_diag_kind = diagnostic->kind;
+
+  gcc_assert (context->m_output_format);
 
   /* Give preference to being able to inhibit warnings, before they
      get reclassified to something else.  */
-  bool report_warning_p = true;
-  if (diagnostic->kind == DK_WARNING || diagnostic->kind == DK_PEDWARN)
-    {
-      if (context->dc_inhibit_warnings)
-	return false;
-      /* Remember the result of the overall system header warning setting
-	 but proceed to also check the inlining context.  */
-      report_warning_p = diagnostic_report_warnings_p (context, location);
-      if (!report_warning_p && diagnostic->kind == DK_PEDWARN)
-	return false;
-    }
+  bool was_warning = (diagnostic->kind == DK_WARNING
+		      || diagnostic->kind == DK_PEDWARN);
+  if (was_warning && context->dc_inhibit_warnings)
+    return false;
 
   if (diagnostic->kind == DK_PEDWARN)
     {
@@ -1551,7 +1522,7 @@ diagnostic_report_diagnostic (diagnostic_context *context,
       && diagnostic->kind == DK_WARNING)
     diagnostic->kind = DK_ERROR;
 
-  diagnostic->message.x_data = &diagnostic->x_data;
+  diagnostic->message.m_data = &diagnostic->x_data;
 
   /* Check to see if the diagnostic is enabled at the location and
      not disabled by #pragma GCC diagnostic anywhere along the inlining
@@ -1559,9 +1530,12 @@ diagnostic_report_diagnostic (diagnostic_context *context,
   if (!diagnostic_enabled (context, diagnostic))
     return false;
 
-  if (!report_warning_p && diagnostic->m_iinfo.m_allsyslocs)
-    /* Bail if the warning is not to be reported because all locations
-       in the inlining stack (if there is one) are in system headers.  */
+  if ((was_warning || diagnostic->kind == DK_WARNING)
+      && ((!context->dc_warn_system_headers
+	   && diagnostic->m_iinfo.m_allsyslocs)
+	  || context->dc_inhibit_warnings))
+    /* Bail if the warning is not to be reported because all locations in the
+       inlining stack (if there is one) are in system headers.  */
     return false;
 
   if (diagnostic->kind != DK_NOTE && diagnostic->kind != DK_ICE)
@@ -1587,8 +1561,8 @@ diagnostic_report_diagnostic (diagnostic_context *context,
 	}
       if (context->internal_error)
 	(*context->internal_error) (context,
-				    diagnostic->message.format_spec,
-				    diagnostic->message.args_ptr);
+				    diagnostic->message.m_format_spec,
+				    diagnostic->message.m_args_ptr);
     }
   if (diagnostic->kind == DK_ERROR && orig_diag_kind == DK_WARNING)
     ++diagnostic_kind_count (context, DK_WERROR);
@@ -1597,14 +1571,11 @@ diagnostic_report_diagnostic (diagnostic_context *context,
 
   /* Is this the initial diagnostic within the stack of groups?  */
   if (context->diagnostic_group_emission_count == 0)
-    {
-      if (context->begin_group_cb)
-	context->begin_group_cb (context);
-    }
+    context->m_output_format->on_begin_group ();
   context->diagnostic_group_emission_count++;
 
   pp_format (context->printer, &diagnostic->message);
-  (*diagnostic_starter (context)) (context, diagnostic);
+  context->m_output_format->on_begin_diagnostic (diagnostic);
   pp_output_formatted_text (context->printer);
   if (context->show_cwe)
     print_any_cwe (context, diagnostic);
@@ -1612,7 +1583,7 @@ diagnostic_report_diagnostic (diagnostic_context *context,
     print_any_rules (context, diagnostic);
   if (context->show_option_requested)
     print_option_information (context, diagnostic, orig_diag_kind);
-  (*diagnostic_finalizer (context)) (context, diagnostic, orig_diag_kind);
+  context->m_output_format->on_end_diagnostic (diagnostic, orig_diag_kind);
   switch (context->extra_output_kind)
     {
     default:
@@ -1703,14 +1674,10 @@ trim_filename (const char *name)
 void
 verbatim (const char *gmsgid, ...)
 {
-  text_info text;
   va_list ap;
 
   va_start (ap, gmsgid);
-  text.err_no = errno;
-  text.args_ptr = &ap;
-  text.format_spec = _(gmsgid);
-  text.x_data = NULL;
+  text_info text (_(gmsgid), &ap, errno);
   pp_format_verbatim (global_dc->printer, &text);
   pp_newline_and_flush (global_dc->printer);
   va_end (ap);
@@ -1758,7 +1725,8 @@ diagnostic_impl (rich_location *richloc, const diagnostic_metadata *metadata,
     {
       diagnostic_set_info (&diagnostic, gmsgid, ap, richloc,
 			   permissive_error_kind (global_dc));
-      diagnostic.option_index = permissive_error_option (global_dc);
+      diagnostic.option_index = (opt != -1 ? opt
+				 : permissive_error_option (global_dc));
     }
   else
     {
@@ -2054,6 +2022,37 @@ permerror (rich_location *richloc, const char *gmsgid, ...)
   return ret;
 }
 
+/* Similar to the above, but controlled by a flag other than -fpermissive.
+   As above, an error by default or a warning with -fpermissive, but this
+   diagnostic can also be downgraded by -Wno-error=opt.  */
+
+bool
+permerror_opt (location_t location, int opt, const char *gmsgid, ...)
+{
+  auto_diagnostic_group d;
+  va_list ap;
+  va_start (ap, gmsgid);
+  rich_location richloc (line_table, location);
+  bool ret = diagnostic_impl (&richloc, NULL, opt, gmsgid, &ap, DK_PERMERROR);
+  va_end (ap);
+  return ret;
+}
+
+/* Same as "permerror" above, but at RICHLOC.  */
+
+bool
+permerror_opt (rich_location *richloc, int opt, const char *gmsgid, ...)
+{
+  gcc_assert (richloc);
+
+  auto_diagnostic_group d;
+  va_list ap;
+  va_start (ap, gmsgid);
+  bool ret = diagnostic_impl (richloc, NULL, opt, gmsgid, &ap, DK_PERMERROR);
+  va_end (ap);
+  return ret;
+}
+
 /* A hard error: the code is definitely ill-formed, and an object file
    will not be produced.  */
 void
@@ -2213,22 +2212,8 @@ diagnostic_emit_diagram (diagnostic_context *context,
   if (context->m_diagrams.m_theme == nullptr)
     return;
 
-  if (context->m_diagrams.m_emission_cb)
-    {
-      context->m_diagrams.m_emission_cb (context, diagram);
-      return;
-    }
-
-  /* Default implementation.  */
-  char *saved_prefix = pp_take_prefix (context->printer);
-  pp_set_prefix (context->printer, NULL);
-  /* Use a newline before and after and a two-space indent
-     to make the diagram stand out a little from the wall of text.  */
-  pp_newline (context->printer);
-  diagram.get_canvas ().print_to_pp (context->printer, "  ");
-  pp_newline (context->printer);
-  pp_set_prefix (context->printer, saved_prefix);
-  pp_flush (context->printer);
+  gcc_assert (context->m_output_format);
+  context->m_output_format->on_diagram (diagram);
 }
 
 /* Special case error functions.  Most are implemented in terms of the
@@ -2330,12 +2315,57 @@ auto_diagnostic_group::~auto_diagnostic_group ()
 	 If any diagnostics were emitted, give the context a chance
 	 to do something.  */
       if (global_dc->diagnostic_group_emission_count > 0)
-	{
-	  if (global_dc->end_group_cb)
-	    global_dc->end_group_cb (global_dc);
-	}
+	global_dc->m_output_format->on_end_group ();
       global_dc->diagnostic_group_emission_count = 0;
     }
+}
+
+/* class diagnostic_text_output_format : public diagnostic_output_format.  */
+
+diagnostic_text_output_format::~diagnostic_text_output_format ()
+{
+  /* Some of the errors may actually have been warnings.  */
+  if (diagnostic_kind_count (&m_context, DK_WERROR))
+    {
+      /* -Werror was given.  */
+      if (m_context.warning_as_error_requested)
+	pp_verbatim (m_context.printer,
+		     _("%s: all warnings being treated as errors"),
+		     progname);
+      /* At least one -Werror= was given.  */
+      else
+	pp_verbatim (m_context.printer,
+		     _("%s: some warnings being treated as errors"),
+		     progname);
+      pp_newline_and_flush (m_context.printer);
+    }
+}
+
+void
+diagnostic_text_output_format::on_begin_diagnostic (diagnostic_info *diagnostic)
+{
+  (*diagnostic_starter (&m_context)) (&m_context, diagnostic);
+}
+
+void
+diagnostic_text_output_format::on_end_diagnostic (diagnostic_info *diagnostic,
+						  diagnostic_t orig_diag_kind)
+{
+  (*diagnostic_finalizer (&m_context)) (&m_context, diagnostic, orig_diag_kind);
+}
+
+void
+diagnostic_text_output_format::on_diagram (const diagnostic_diagram &diagram)
+{
+  char *saved_prefix = pp_take_prefix (m_context.printer);
+  pp_set_prefix (m_context.printer, NULL);
+  /* Use a newline before and after and a two-space indent
+     to make the diagram stand out a little from the wall of text.  */
+  pp_newline (m_context.printer);
+  diagram.get_canvas ().print_to_pp (m_context.printer, "  ");
+  pp_newline (m_context.printer);
+  pp_set_prefix (m_context.printer, saved_prefix);
+  pp_flush (m_context.printer);
 }
 
 /* Set the output format for CONTEXT to FORMAT, using BASE_FILE_NAME for
@@ -2464,19 +2494,13 @@ simple_diagnostic_path::add_event (location_t loc, tree fndecl, int depth,
   pretty_printer *pp = m_event_pp;
   pp_clear_output_area (pp);
 
-  text_info ti;
   rich_location rich_loc (line_table, UNKNOWN_LOCATION);
 
   va_list ap;
 
   va_start (ap, fmt);
 
-  ti.format_spec = _(fmt);
-  ti.args_ptr = &ap;
-  ti.err_no = 0;
-  ti.x_data = NULL;
-  ti.m_richloc = &rich_loc;
-
+  text_info ti (_(fmt), &ap, 0, nullptr, &rich_loc);
   pp_format (pp, &ti);
   pp_output_formatted_text (pp);
 
@@ -2501,18 +2525,13 @@ simple_diagnostic_path::add_thread_event (diagnostic_thread_id_t thread_id,
   pretty_printer *pp = m_event_pp;
   pp_clear_output_area (pp);
 
-  text_info ti;
   rich_location rich_loc (line_table, UNKNOWN_LOCATION);
 
   va_list ap;
 
   va_start (ap, fmt);
 
-  ti.format_spec = _(fmt);
-  ti.args_ptr = &ap;
-  ti.err_no = 0;
-  ti.x_data = NULL;
-  ti.m_richloc = &rich_loc;
+  text_info ti (_(fmt), &ap, 0, nullptr, &rich_loc);
 
   pp_format (pp, &ti);
   pp_output_formatted_text (pp);

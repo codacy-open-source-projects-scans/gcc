@@ -1276,7 +1276,8 @@
   (and (match_code "vec_duplicate")
        (and (match_test "TARGET_AVX512F")
 	    (ior (match_test "TARGET_AVX512VL")
-		 (match_test "GET_MODE_SIZE (GET_MODE (op)) == 64")))
+		 (and (match_test "GET_MODE_SIZE (GET_MODE (op)) == 64")
+		      (match_test "TARGET_EVEX512"))))
        (match_test "VALID_BCST_MODE_P (GET_MODE_INNER (GET_MODE (op)))")
        (match_test "GET_MODE (XEXP (op, 0))
 		    == GET_MODE_INNER (GET_MODE (op))")
@@ -2259,6 +2260,7 @@
 	  || GET_CODE (SET_SRC (elt)) != UNSPEC_VOLATILE
 	  || GET_MODE (SET_SRC (elt)) != V2DImode
 	  || XVECLEN (SET_SRC (elt), 0) != 1
+	  || !REG_P (XVECEXP (SET_SRC (elt), 0, 0))
 	  || REGNO (XVECEXP (SET_SRC (elt), 0, 0)) != GET_SSE_REGNO (i))
 	return false;
     }

@@ -4093,7 +4093,7 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 		}
 	    }
 	}
-      else if (SCALAR_INT_MODE_P (mode))
+      else if (SCALAR_INT_MODE_P (mode) || GET_MODE_CLASS (mode) == MODE_VECTOR_INT)
 	{
 	  /* 0/x is 0 (or x&0 if x has side-effects).  */
 	  if (trueop0 == CONST0_RTX (mode)
@@ -4111,7 +4111,7 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 		return tem;
 	    }
 	  /* x/-1 is -x.  */
-	  if (trueop1 == constm1_rtx)
+	  if (trueop1 == CONSTM1_RTX (mode))
 	    {
 	      rtx x = rtl_hooks.gen_lowpart_no_emit (mode, op0);
 	      if (x)
@@ -6109,6 +6109,23 @@ simplify_context::simplify_relational_operation_1 (rtx_code code,
 	break;
       }
 
+  /* (ne:SI (subreg:QI (ashift:SI x 7) 0) 0) -> (and:SI x 1).  */
+  if (code == NE
+      && op1 == const0_rtx
+      && (op0code == TRUNCATE
+	  || (partial_subreg_p (op0)
+	      && subreg_lowpart_p (op0)))
+      && SCALAR_INT_MODE_P (mode)
+      && STORE_FLAG_VALUE == 1)
+    {
+      rtx tmp = XEXP (op0, 0);
+      if (GET_CODE (tmp) == ASHIFT
+	  && GET_MODE (tmp) == mode
+	  && CONST_INT_P (XEXP (tmp, 1))
+	  && is_int_mode (GET_MODE (op0), &int_mode)
+	  && INTVAL (XEXP (tmp, 1)) == GET_MODE_PRECISION (int_mode) - 1)
+	return simplify_gen_binary (AND, mode, XEXP (tmp, 0), const1_rtx);
+    }
   return NULL_RTX;
 }
 
@@ -8689,6 +8706,7 @@ template<unsigned int N>
 void
 simplify_const_poly_int_tests<N>::run ()
 {
+  using poly_int64 = poly_int<N, HOST_WIDE_INT>;
   rtx x1 = gen_int_mode (poly_int64 (1, 1), QImode);
   rtx x2 = gen_int_mode (poly_int64 (-80, 127), QImode);
   rtx x3 = gen_int_mode (poly_int64 (-79, -128), QImode);

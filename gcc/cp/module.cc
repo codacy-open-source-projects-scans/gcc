@@ -5158,7 +5158,6 @@ trees_out::start (tree t, bool code_streamed)
     case INTEGER_CST:
       u (TREE_INT_CST_NUNITS (t));
       u (TREE_INT_CST_EXT_NUNITS (t));
-      u (TREE_INT_CST_OFFSET_NUNITS (t));
       break;
 
     case OMP_CLAUSE:
@@ -5231,7 +5230,6 @@ trees_in::start (unsigned code)
 	unsigned n = u ();
 	unsigned e = u ();
 	t = make_int_cst (n, e);
-	TREE_INT_CST_OFFSET_NUNITS(t) = u ();
       }
       break;
 
@@ -6214,19 +6212,9 @@ trees_out::core_vals (tree t)
       break;
 
     case CONSTRUCTOR:
-      {
-	unsigned len = vec_safe_length (t->constructor.elts);
-	if (streaming_p ())
-	  WU (len);
-	if (len)
-	  for (unsigned ix = 0; ix != len; ix++)
-	    {
-	      const constructor_elt &elt = (*t->constructor.elts)[ix];
-
-	      WT (elt.index);
-	      WT (elt.value);
-	    }
-      }
+      // This must be streamed /after/ we've streamed the type,
+      // because it can directly refer to elements of the type. Eg,
+      // FIELD_DECLs of a RECORD_TYPE.
       break;
 
     case OMP_CLAUSE:
@@ -6458,6 +6446,21 @@ trees_out::core_vals (tree t)
       WT (type);
       if (prec && streaming_p ())
 	WU (prec);
+    }
+
+  if (TREE_CODE (t) == CONSTRUCTOR)
+    {
+      unsigned len = vec_safe_length (t->constructor.elts);
+      if (streaming_p ())
+	WU (len);
+      if (len)
+	for (unsigned ix = 0; ix != len; ix++)
+	  {
+	    const constructor_elt &elt = (*t->constructor.elts)[ix];
+
+	    WT (elt.index);
+	    WT (elt.value);
+	  }
     }
 
 #undef WT
@@ -6719,18 +6722,7 @@ trees_in::core_vals (tree t)
       break;
 
     case CONSTRUCTOR:
-      if (unsigned len = u ())
-	{
-	  vec_alloc (t->constructor.elts, len);
-	  for (unsigned ix = 0; ix != len; ix++)
-	    {
-	      constructor_elt elt;
-
-	      RT (elt.index);
-	      RTU (elt.value);
-	      t->constructor.elts->quick_push (elt);
-	    }
-	}
+      // Streamed after the node's type.
       break;
 
     case OMP_CLAUSE:
@@ -6902,6 +6894,20 @@ trees_in::core_vals (tree t)
       if (code != TEMPLATE_DECL)
 	t->typed.type = type;
     }
+
+  if (TREE_CODE (t) == CONSTRUCTOR)
+    if (unsigned len = u ())
+      {
+	vec_alloc (t->constructor.elts, len);
+	for (unsigned ix = 0; ix != len; ix++)
+	  {
+	    constructor_elt elt;
+
+	    RT (elt.index);
+	    RTU (elt.value);
+	    t->constructor.elts->quick_push (elt);
+	  }
+      }
 
 #undef RT
 #undef RM
@@ -15969,7 +15975,8 @@ module_state::read_location (bytes_in &sec) const
 	range.m_finish = read_location (sec);
 	unsigned discriminator = sec.u ();
 	if (locus != loc && range.m_start != loc && range.m_finish != loc)
-	  locus = get_combined_adhoc_loc (line_table, locus, range, NULL, discriminator);
+	  locus = line_table->get_or_create_combined_loc (locus, range,
+							  nullptr, discriminator);
       }
       break;
 

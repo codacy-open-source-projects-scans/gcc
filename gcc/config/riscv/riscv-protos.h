@@ -117,7 +117,6 @@ extern rtx riscv_emit_binary (enum rtx_code code, rtx dest, rtx x, rtx y);
 extern bool riscv_expand_conditional_move (rtx, rtx, rtx, rtx);
 extern rtx riscv_legitimize_call_address (rtx);
 extern void riscv_set_return_address (rtx, rtx);
-extern bool riscv_expand_block_move (rtx, rtx, rtx);
 extern rtx riscv_return_addr (int, rtx);
 extern poly_int64 riscv_initial_elimination_offset (int, int);
 extern void riscv_expand_prologue (void);
@@ -125,7 +124,6 @@ extern void riscv_expand_epilogue (int);
 extern bool riscv_epilogue_uses (unsigned int);
 extern bool riscv_can_use_return_insn (void);
 extern rtx riscv_function_value (const_tree, const_tree, enum machine_mode);
-extern bool riscv_expand_block_move (rtx, rtx, rtx);
 extern bool riscv_store_data_bypass_p (rtx_insn *, rtx_insn *);
 extern rtx riscv_gen_gpr_save_insn (struct riscv_frame_info *);
 extern bool riscv_gpr_save_operation_p (rtx);
@@ -159,6 +157,9 @@ extern bool riscv_hard_regno_rename_ok (unsigned, unsigned);
 
 rtl_opt_pass * make_pass_shorten_memrefs (gcc::context *ctxt);
 rtl_opt_pass * make_pass_vsetvl (gcc::context *ctxt);
+
+/* Routines implemented in riscv-string.c.  */
+extern bool riscv_expand_block_move (rtx, rtx, rtx);
 
 /* Information about one CPU we know about.  */
 struct riscv_cpu_info {
@@ -250,6 +251,18 @@ enum insn_flags : unsigned int
   /* flags for the floating-point rounding mode.  */
   /* Means INSN has FRM operand and the value is FRM_DYN.  */
   FRM_DYN_P = 1 << 15,
+
+  /* Means INSN has FRM operand and the value is FRM_RUP.  */
+  FRM_RUP_P = 1 << 16,
+
+  /* Means INSN has FRM operand and the value is FRM_RDN.  */
+  FRM_RDN_P = 1 << 17,
+
+  /* Means INSN has FRM operand and the value is FRM_RMM.  */
+  FRM_RMM_P = 1 << 18,
+
+  /* Means INSN has FRM operand and the value is FRM_RNE.  */
+  FRM_RNE_P = 1 << 19,
 };
 
 enum insn_type : unsigned int
@@ -290,6 +303,19 @@ enum insn_type : unsigned int
   UNARY_OP_TAMA = __MASK_OP_TAMA | UNARY_OP_P,
   UNARY_OP_TAMU = __MASK_OP_TAMU | UNARY_OP_P,
   UNARY_OP_FRM_DYN = UNARY_OP | FRM_DYN_P,
+  UNARY_OP_FRM_RMM = UNARY_OP | FRM_RMM_P,
+  UNARY_OP_FRM_RUP = UNARY_OP | FRM_RUP_P,
+  UNARY_OP_FRM_RDN = UNARY_OP | FRM_RDN_P,
+  UNARY_OP_TAMA_FRM_DYN = UNARY_OP_TAMA | FRM_DYN_P,
+  UNARY_OP_TAMA_FRM_RUP = UNARY_OP_TAMA | FRM_RUP_P,
+  UNARY_OP_TAMA_FRM_RDN = UNARY_OP_TAMA | FRM_RDN_P,
+  UNARY_OP_TAMA_FRM_RMM = UNARY_OP_TAMA | FRM_RMM_P,
+  UNARY_OP_TAMA_FRM_RNE = UNARY_OP_TAMA | FRM_RNE_P,
+  UNARY_OP_TAMU_FRM_DYN = UNARY_OP_TAMU | FRM_DYN_P,
+  UNARY_OP_TAMU_FRM_RUP = UNARY_OP_TAMU | FRM_RUP_P,
+  UNARY_OP_TAMU_FRM_RDN = UNARY_OP_TAMU | FRM_RDN_P,
+  UNARY_OP_TAMU_FRM_RMM = UNARY_OP_TAMU | FRM_RMM_P,
+  UNARY_OP_TAMU_FRM_RNE = UNARY_OP_TAMU | FRM_RNE_P,
 
   /* Binary operator.  */
   BINARY_OP = __NORMAL_OP | BINARY_OP_P,
@@ -337,6 +363,7 @@ enum insn_type : unsigned int
 
   /* For vreduce, no mask policy operand. */
   REDUCE_OP = __NORMAL_OP_TA | BINARY_OP_P | VTYPE_MODE_FROM_OP1_P,
+  REDUCE_OP_M = __MASK_OP_TA | BINARY_OP_P | VTYPE_MODE_FROM_OP1_P,
   REDUCE_OP_FRM_DYN = REDUCE_OP | FRM_DYN_P | VTYPE_MODE_FROM_OP1_P,
   REDUCE_OP_M_FRM_DYN
   = __MASK_OP_TA | BINARY_OP_P | FRM_DYN_P | VTYPE_MODE_FROM_OP1_P,
@@ -364,10 +391,27 @@ enum vlmul_type
   NUM_LMUL = 8
 };
 
+/* The RISC-V vsetvli pass uses "known vlmax" operations for optimization.
+   Whether or not an instruction actually is a vlmax operation is not
+   recognizable from the length operand alone but the avl_type operand
+   is used instead.  In general, there are two cases:
+
+    - Emit a vlmax operation by calling emit_vlmax_insn[_lra].  Here we emit
+      a vsetvli with vlmax configuration and set the avl_type to VLMAX for
+      VLA modes or VLS for VLS modes.
+    - Emit an operation that uses the existing (last-set) length and
+      set the avl_type to NONVLMAX.
+
+    Sometimes we also need to set the VLMAX or VLS avl_type to an operation that
+    already uses a given length register.  This can happen during or after
+    register allocation when we are not allowed to create a new register.
+    For that case we also allow to set the avl_type to VLMAX or VLS.
+*/
 enum avl_type
 {
-  NONVLMAX,
-  VLMAX,
+  NONVLMAX = 0,
+  VLMAX = 1,
+  VLS = 2,
 };
 /* Routines implemented in riscv-vector-builtins.cc.  */
 void init_builtins (void);
@@ -386,7 +430,7 @@ rtx expand_builtin (unsigned int, tree, rtx);
 bool check_builtin_call (location_t, vec<location_t>, unsigned int,
 			   tree, unsigned int, tree *);
 bool const_vec_all_same_in_range_p (rtx, HOST_WIDE_INT, HOST_WIDE_INT);
-bool legitimize_move (rtx, rtx);
+bool legitimize_move (rtx, rtx *);
 void emit_vlmax_vsetvl (machine_mode, rtx);
 void emit_hard_vlmax_vsetvl (machine_mode, rtx);
 void emit_vlmax_insn (unsigned, unsigned, rtx *);
@@ -432,6 +476,17 @@ bool expand_vec_cmp_float (rtx, rtx_code, rtx, rtx, bool);
 void expand_cond_len_unop (unsigned, rtx *);
 void expand_cond_len_binop (unsigned, rtx *);
 void expand_reduction (unsigned, unsigned, rtx *, rtx);
+void expand_vec_ceil (rtx, rtx, machine_mode, machine_mode);
+void expand_vec_floor (rtx, rtx, machine_mode, machine_mode);
+void expand_vec_nearbyint (rtx, rtx, machine_mode, machine_mode);
+void expand_vec_rint (rtx, rtx, machine_mode, machine_mode);
+void expand_vec_round (rtx, rtx, machine_mode, machine_mode);
+void expand_vec_trunc (rtx, rtx, machine_mode, machine_mode);
+void expand_vec_roundeven (rtx, rtx, machine_mode, machine_mode);
+void expand_vec_lrint (rtx, rtx, machine_mode, machine_mode);
+void expand_vec_lround (rtx, rtx, machine_mode, machine_mode);
+void expand_vec_lceil (rtx, rtx, machine_mode, machine_mode);
+void expand_vec_lfloor (rtx, rtx, machine_mode, machine_mode);
 #endif
 bool sew64_scalar_helper (rtx *, rtx *, rtx, machine_mode,
 			  bool, void (*)(rtx *, rtx));
@@ -450,6 +505,7 @@ bool slide1_sew64_helper (int, machine_mode, machine_mode,
 			  machine_mode, rtx *);
 rtx gen_avl_for_scalar_move (rtx);
 void expand_tuple_move (rtx *);
+bool expand_block_move (rtx, rtx, rtx);
 machine_mode preferred_simd_mode (scalar_mode);
 machine_mode get_mask_mode (machine_mode);
 void expand_vec_series (rtx, rtx, rtx);
@@ -462,6 +518,10 @@ void expand_cond_len_ternop (unsigned, rtx *);
 void prepare_ternary_operands (rtx *);
 void expand_lanes_load_store (rtx *, bool);
 void expand_fold_extract_last (rtx *);
+void expand_cond_unop (unsigned, rtx *);
+void expand_cond_binop (unsigned, rtx *);
+void expand_cond_ternop (unsigned, rtx *);
+void expand_popcount (rtx *);
 
 /* Rounding mode bitfield for fixed point VXRM.  */
 enum fixed_point_rounding_mode
@@ -497,6 +557,17 @@ opt_machine_mode vectorize_related_mode (machine_mode, scalar_mode,
 unsigned int autovectorize_vector_modes (vec<machine_mode> *, bool);
 bool cmp_lmul_le_one (machine_mode);
 bool cmp_lmul_gt_one (machine_mode);
+bool gather_scatter_valid_offset_mode_p (machine_mode);
+bool vls_mode_valid_p (machine_mode);
+bool vlmax_avl_type_p (rtx_insn *);
+bool has_vl_op (rtx_insn *);
+bool tail_agnostic_p (rtx_insn *);
+void validate_change_or_fail (rtx, rtx *, rtx, bool);
+bool nonvlmax_avl_type_p (rtx_insn *);
+bool vlmax_avl_p (rtx);
+uint8_t get_sew (rtx_insn *);
+enum vlmul_type get_vlmul (rtx_insn *);
+int count_regno_occurrences (rtx_insn *, unsigned int);
 }
 
 /* We classify builtin types into two classes:

@@ -3828,12 +3828,13 @@ c_common_get_alias_set (tree t)
   if (!TYPE_P (t))
     return -1;
 
-  /* Unlike char, char8_t doesn't alias. */
-  if (flag_char8_t && t == char8_type_node)
+  /* Unlike char, char8_t doesn't alias in C++.  (In C, char8_t is not
+     a distinct type.)  */
+  if (flag_char8_t && t == char8_type_node && c_dialect_cxx ())
     return -1;
 
   /* The C standard guarantees that any object may be accessed via an
-     lvalue that has narrow character type (except char8_t).  */
+     lvalue that has narrow character type.  */
   if (t == char_type_node
       || t == signed_char_type_node
       || t == unsigned_char_type_node)
@@ -9569,7 +9570,7 @@ maybe_add_include_fixit (rich_location *richloc, const char *header,
   richloc->add_fixit_insert_before (include_insert_loc, text);
   free (text);
 
-  if (override_location && global_dc->show_caret)
+  if (override_location && global_dc->m_source_printing.enabled)
     {
       /* Replace the primary location with that of the insertion point for the
 	 fix-it hint.

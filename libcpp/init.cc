@@ -191,7 +191,7 @@ init_library (void)
 /* Initialize a cpp_reader structure.  */
 cpp_reader *
 cpp_create_reader (enum c_lang lang, cpp_hash_table *table,
-		   class line_maps *line_table)
+		   class line_maps *line_table, cpp_hash_table *extra_table)
 {
   cpp_reader *pfile;
 
@@ -307,7 +307,7 @@ cpp_create_reader (enum c_lang lang, cpp_hash_table *table,
 
   _cpp_init_files (pfile);
 
-  _cpp_init_hashtable (pfile, table);
+  _cpp_init_hashtable (pfile, table, extra_table);
 
   return pfile;
 }
@@ -788,7 +788,7 @@ read_original_filename (cpp_reader *pfile)
 	      penult[1].reason = penult[0].reason;
 	      penult[0] = penult[1];
 	      pfile->line_table->info_ordinary.used--;
-	      pfile->line_table->info_ordinary.cache = 0;
+	      pfile->line_table->info_ordinary.m_cache = 0;
 	    }
 
 	  return true;

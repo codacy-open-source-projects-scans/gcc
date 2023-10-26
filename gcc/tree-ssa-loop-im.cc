@@ -400,6 +400,24 @@ movement_possibility_1 (gimple *stmt)
       || gimple_could_trap_p (stmt))
     return MOVE_PRESERVE_EXECUTION;
 
+  if (is_gimple_assign (stmt))
+    {
+      auto code = gimple_assign_rhs_code (stmt);
+      tree type = TREE_TYPE (gimple_assign_rhs1 (stmt));
+      /* For shifts and rotates and possibly out-of-bound shift operands
+	 we currently cannot rewrite them into something unconditionally
+	 well-defined.  */
+      if ((code == LSHIFT_EXPR
+	   || code == RSHIFT_EXPR
+	   || code == LROTATE_EXPR
+	   || code == RROTATE_EXPR)
+	  && (TREE_CODE (gimple_assign_rhs2 (stmt)) != INTEGER_CST
+	      /* We cannot use ranges at 'stmt' here.  */
+	      || wi::ltu_p (wi::to_wide (gimple_assign_rhs2 (stmt)),
+			    element_precision (type))))
+	ret = MOVE_PRESERVE_EXECUTION;
+    }
+
   /* Non local loads in a transaction cannot be hoisted out.  Well,
      unless the load happens on every path out of the loop, but we
      don't take this into account yet.  */
@@ -2324,7 +2342,7 @@ execute_sm (class loop *loop, im_mem_ref *ref,
 enum sm_kind { sm_ord, sm_unord, sm_other };
 struct seq_entry
 {
-  seq_entry () {}
+  seq_entry () = default;
   seq_entry (unsigned f, sm_kind k, tree fr = NULL)
     : first (f), second (k), from (fr) {}
   unsigned first;
@@ -3496,13 +3514,13 @@ tree_ssa_lim_initialize (bool store_motion)
     (mem_ref_alloc (NULL, 0, UNANALYZABLE_MEM_ID));
 
   memory_accesses.refs_loaded_in_loop.create (number_of_loops (cfun));
-  memory_accesses.refs_loaded_in_loop.quick_grow (number_of_loops (cfun));
+  memory_accesses.refs_loaded_in_loop.quick_grow_cleared (number_of_loops (cfun));
   memory_accesses.refs_stored_in_loop.create (number_of_loops (cfun));
-  memory_accesses.refs_stored_in_loop.quick_grow (number_of_loops (cfun));
+  memory_accesses.refs_stored_in_loop.quick_grow_cleared (number_of_loops (cfun));
   if (store_motion)
     {
       memory_accesses.all_refs_stored_in_loop.create (number_of_loops (cfun));
-      memory_accesses.all_refs_stored_in_loop.quick_grow
+      memory_accesses.all_refs_stored_in_loop.quick_grow_cleared
 						      (number_of_loops (cfun));
     }
 

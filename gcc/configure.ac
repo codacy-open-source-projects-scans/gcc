@@ -2427,6 +2427,17 @@ for f in $tm_d_file; do
   esac
 done
 
+tm_rust_file_list=
+tm_rust_include_list=
+for f in $tm_rust_file; do
+  case $f in
+    * )
+       tm_rust_file_list="${tm_rust_file_list} \$(srcdir)/config/$f"
+       tm_rust_include_list="${tm_rust_include_list} config/$f"
+       ;;
+  esac
+done
+
 xm_file_list=
 xm_include_list=
 for f in $xm_file; do
@@ -2620,6 +2631,21 @@ m4_defun([_LT_CONFIG_COMMANDS], [])
 AC_PROG_LIBTOOL
 AC_SUBST(objdir)
 AC_SUBST(enable_fast_install)
+
+AM_CONDITIONAL([ENABLE_DARWIN_AT_RPATH], [test x$enable_darwin_at_rpath = xyes])
+DARWIN_DO_EXTRA_RPATH=0
+AC_ARG_WITH(darwin-extra-rpath,
+[AS_HELP_STRING(
+  [[--with-darwin-extra-rpath=[ARG]]],
+   [Specify a runpath directory, additional to those provided by the compiler])],
+[if test x"$withval" != x; then
+   DARWIN_ADD_RPATH="$withval"
+   DARWIN_DO_EXTRA_RPATH=1
+ fi])
+AC_DEFINE_UNQUOTED(DARWIN_DO_EXTRA_RPATH, $DARWIN_DO_EXTRA_RPATH,
+  [Should add an extra runpath directory])
+AC_DEFINE_UNQUOTED(DARWIN_ADD_RPATH, "$DARWIN_ADD_RPATH",
+  [Specify a runpath directory, additional to those provided by the compiler])
 
 # Identify the assembler which will work hand-in-glove with the newly
 # built GCC, so that we can examine its features.  This is the assembler
@@ -3251,10 +3277,25 @@ AC_MSG_RESULT($gcc_cv_ld_ro_rw_mix)
 
 gcc_AC_INITFINI_ARRAY
 
+# Some assemblers (GNU as for LoongArch) generates relocations for
+# leb128 symbol arithmetic for relaxation, we need to disable relaxation
+# probing leb128 support then.
+case $target in
+  loongarch*-*-*)
+    gcc_GAS_CHECK_FEATURE([-mno-relax support],
+      gcc_cv_as_mno_relax,[-mno-relax],[.text],,
+      [check_leb128_asflags=-mno-relax])
+    ;;
+  *)
+    check_leb128_asflags=
+    ;;
+esac
+
 # Check if we have .[us]leb128, and support symbol arithmetic with it.
 # Older versions of GAS and some non-GNU assemblers, have a bugs handling
 # these directives, even when they appear to accept them.
-gcc_GAS_CHECK_FEATURE([.sleb128 and .uleb128], gcc_cv_as_leb128,,
+gcc_GAS_CHECK_FEATURE([.sleb128 and .uleb128], gcc_cv_as_leb128,
+[$check_leb128_asflags],
 [	.data
 	.uleb128 L2 - L1
 L1:
@@ -4348,6 +4389,14 @@ case "$target_os" in
       [-mmacosx-version-min=10.1], [.text],,
       [AC_DEFINE(HAVE_AS_MMACOSX_VERSION_MIN_OPTION, 1,
 	[Define if your macOS assembler supports the -mmacos-version-min option.])])
+    if test x$gcc_cv_as_mmacosx_version_min = "xyes"; then
+       gcc_GAS_CHECK_FEATURE([.build_version],
+           gcc_cv_as_darwin_build_version,
+           [-mmacosx-version-min=10.14],
+           [ .build_version macos, 10, 14 sdk_version 10, 14],,
+      [AC_DEFINE(HAVE_AS_MACOS_BUILD_VERSION, 1,
+	[Define if your macOS assembler supports .build_version directives])])
+    fi
     ;;
 esac
 
@@ -5370,6 +5419,10 @@ x:
        .cfi_endproc],,
       [AC_DEFINE(HAVE_AS_EH_FRAME_PCREL_ENCODING_SUPPORT, 1,
 	  [Define if your assembler supports eh_frame pcrel encoding.])])
+    gcc_GAS_CHECK_FEATURE([-mrelax option], gcc_cv_as_loongarch_relax,
+      [-mrelax], [.text],,
+      [AC_DEFINE(HAVE_AS_MRELAX_OPTION, 1,
+		[Define if your assembler supports -mrelax option.])])
     ;;
     s390*-*-*)
     gcc_GAS_CHECK_FEATURE([.gnu_attribute support],
@@ -6333,7 +6386,7 @@ if test x"$dsymutil_flag" = x"yes"; then
       dsymutil_kind=LLVM
       dsymutil_vers=`echo $dsymutil_temp | sed 's/.*LLVM\ version\ \([[0-9\.]]*\).*/\1/'`
     else
-      dsymutil_kind=UNKNOWN
+      dsymutil_kind=DET_UNKNOWN
       dsymutil_vers="0.0"
     fi
     dsymutil_major=`expr "$dsymutil_vers" : '\([[0-9]]*\)'`
@@ -7403,6 +7456,8 @@ AC_SUBST(tm_p_file_list)
 AC_SUBST(tm_p_include_list)
 AC_SUBST(tm_d_file_list)
 AC_SUBST(tm_d_include_list)
+AC_SUBST(tm_rust_file_list)
+AC_SUBST(tm_rust_include_list)
 AC_SUBST(xm_file_list)
 AC_SUBST(xm_include_list)
 AC_SUBST(xm_defines)
@@ -7411,6 +7466,7 @@ AC_SUBST(c_target_objs)
 AC_SUBST(cxx_target_objs)
 AC_SUBST(fortran_target_objs)
 AC_SUBST(d_target_objs)
+AC_SUBST(rust_target_objs)
 AC_SUBST(target_cpu_default)
 
 AC_SUBST_FILE(language_hooks)

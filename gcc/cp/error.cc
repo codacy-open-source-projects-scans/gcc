@@ -1510,10 +1510,6 @@ dump_decl (cxx_pretty_printer *pp, tree t, int flags)
       dump_decl (pp, BASELINK_FUNCTIONS (t), flags);
       break;
 
-    case NON_DEPENDENT_EXPR:
-      dump_expr (pp, t, flags);
-      break;
-
     case TEMPLATE_TYPE_PARM:
       if (flags & TFF_DECL_SPECIFIERS)
 	pp->declaration (t);
@@ -2942,10 +2938,6 @@ dump_expr (cxx_pretty_printer *pp, tree t, int flags)
       pp_cxx_right_paren (pp);
       break;
 
-    case NON_DEPENDENT_EXPR:
-      dump_expr (pp, TREE_OPERAND (t, 0), flags);
-      break;
-
     case ARGUMENT_PACK_SELECT:
       dump_template_argument (pp, ARGUMENT_PACK_SELECT_FROM_PACK (t), flags);
       break;
@@ -3774,6 +3766,8 @@ print_instantiation_partial_context_line (diagnostic_context *context,
 		   ? _("recursively required from here\n")
 		   : _("required from here\n"));
     }
+  gcc_rich_location rich_loc (loc);
+  diagnostic_show_locus (context, &rich_loc, DK_NOTE);
 }
 
 /* Same as print_instantiation_full_context but less verbose.  */
@@ -4454,10 +4448,10 @@ cp_printer (pretty_printer *pp, text_info *text, const char *spec,
 
   const char *result;
   tree t = NULL;
-#define next_tree    (t = va_arg (*text->args_ptr, tree))
-#define next_tcode   ((enum tree_code) va_arg (*text->args_ptr, int))
-#define next_lang    ((enum languages) va_arg (*text->args_ptr, int))
-#define next_int     va_arg (*text->args_ptr, int)
+#define next_tree    (t = va_arg (*text->m_args_ptr, tree))
+#define next_tcode   ((enum tree_code) va_arg (*text->m_args_ptr, int))
+#define next_lang    ((enum languages) va_arg (*text->m_args_ptr, int))
+#define next_int     va_arg (*text->m_args_ptr, int)
 
   if (precision != 0 || wide)
     return false;

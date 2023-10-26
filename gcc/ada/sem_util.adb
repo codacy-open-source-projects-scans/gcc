@@ -17510,6 +17510,36 @@ package body Sem_Util is
       end if;
    end Is_Fully_Initialized_Variant;
 
+   -----------------------------------
+   -- Is_Function_With_Side_Effects --
+   -----------------------------------
+
+   function Is_Function_With_Side_Effects (Subp : Entity_Id) return Boolean is
+      Arg  : Node_Id;
+      Expr : Node_Id;
+      Prag : constant Node_Id := Get_Pragma (Subp, Pragma_Side_Effects);
+
+   begin
+      --  Extract the value from the Boolean expression (if any)
+
+      if Present (Prag) then
+         Arg := First (Pragma_Argument_Associations (Prag));
+
+         if Present (Arg) then
+            Expr := Get_Pragma_Arg (Arg);
+
+            return Is_True (Expr_Value (Expr));
+
+         --  Otherwise the aspect or pragma defaults to True
+
+         else
+            return True;
+         end if;
+      end if;
+
+      return False;
+   end Is_Function_With_Side_Effects;
+
    ------------------------------------
    -- Is_Generic_Declaration_Or_Body --
    ------------------------------------
@@ -27791,15 +27821,6 @@ package body Sem_Util is
          Set_Is_Volatile          (T1, Is_Volatile (T2));
       end if;
    end Set_Rep_Info;
-
-   ----------------------------
-   -- Set_Scope_Is_Transient --
-   ----------------------------
-
-   procedure Set_Scope_Is_Transient (V : Boolean := True) is
-   begin
-      Scope_Stack.Table (Scope_Stack.Last).Is_Transient := V;
-   end Set_Scope_Is_Transient;
 
    -------------------
    -- Set_Size_Info --

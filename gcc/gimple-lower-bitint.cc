@@ -100,21 +100,19 @@ bitint_precision_kind (int prec)
       small_max_prec = prec;
       return bitint_prec_small;
     }
-  scalar_int_mode arith_mode = (targetm.scalar_mode_supported_p (TImode)
-				? TImode : DImode);
   if (!large_min_prec
-      && GET_MODE_PRECISION (arith_mode) > GET_MODE_PRECISION (limb_mode))
-    large_min_prec = GET_MODE_PRECISION (arith_mode) + 1;
+      && GET_MODE_PRECISION (limb_mode) < MAX_FIXED_MODE_SIZE)
+    large_min_prec = MAX_FIXED_MODE_SIZE + 1;
   if (!limb_prec)
     limb_prec = GET_MODE_PRECISION (limb_mode);
   if (!huge_min_prec)
     {
-      if (4 * limb_prec >= GET_MODE_PRECISION (arith_mode))
+      if (4 * limb_prec >= MAX_FIXED_MODE_SIZE)
 	huge_min_prec = 4 * limb_prec;
       else
-	huge_min_prec = GET_MODE_PRECISION (arith_mode) + 1;
+	huge_min_prec = MAX_FIXED_MODE_SIZE + 1;
     }
-  if (prec <= GET_MODE_PRECISION (arith_mode))
+  if (prec <= MAX_FIXED_MODE_SIZE)
     {
       if (!mid_min_prec || prec < mid_min_prec)
 	mid_min_prec = prec;
@@ -1934,7 +1932,8 @@ range_to_prec (tree op, gimple *stmt)
   unsigned int prec = TYPE_PRECISION (type);
 
   if (!optimize
-      || !get_range_query (cfun)->range_of_expr (r, op, stmt))
+      || !get_range_query (cfun)->range_of_expr (r, op, stmt)
+      || r.undefined_p ())
     {
       if (TYPE_UNSIGNED (type))
 	return prec;
@@ -2068,6 +2067,9 @@ bitint_large_huge::handle_operand_addr (tree op, gimple *stmt,
 	    }
 	  else if (gimple_code (g) == GIMPLE_NOP)
 	    {
+	      *prec = TYPE_UNSIGNED (TREE_TYPE (op)) ? limb_prec : -limb_prec;
+	      if (prec_stored)
+		*prec_stored = *prec;
 	      tree var = create_tmp_var (m_limb_type);
 	      TREE_ADDRESSABLE (var) = 1;
 	      ret = build_fold_addr_expr (var);

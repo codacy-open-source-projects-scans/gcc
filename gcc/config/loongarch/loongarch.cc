@@ -65,6 +65,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "rtl-iter.h"
 #include "opts.h"
 #include "function-abi.h"
+#include "cfgloop.h"
+#include "tree-vectorizer.h"
 
 /* This file should be included last.  */
 #include "target-def.h"
@@ -1923,6 +1925,40 @@ loongarch_symbolic_constant_p (rtx x, enum loongarch_symbol_type *symbol_type)
   gcc_unreachable ();
 }
 
+/* If -mexplicit-relocs=auto, we use machine operations with reloc hints
+   for cases where the linker is unable to relax so we can schedule the
+   machine operations, otherwise use an assembler pseudo-op so the
+   assembler will generate R_LARCH_RELAX.  */
+
+bool
+loongarch_explicit_relocs_p (enum loongarch_symbol_type type)
+{
+  if (la_opt_explicit_relocs != EXPLICIT_RELOCS_AUTO)
+    return la_opt_explicit_relocs == EXPLICIT_RELOCS_ALWAYS;
+
+  switch (type)
+    {
+      case SYMBOL_TLS_IE:
+      case SYMBOL_TLS_LE:
+      case SYMBOL_TLSGD:
+      case SYMBOL_TLSLDM:
+	/* The linker don't know how to relax TLS accesses.  */
+	return true;
+      case SYMBOL_GOT_DISP:
+	/* If we are performing LTO for a final link, and we have the
+	   linker plugin so we know the resolution of the symbols, then
+	   all GOT references are binding to external symbols or
+	   preemptable symbols.  So the linker cannot relax them.  */
+	return (in_lto_p
+		&& !flag_incremental_link
+		&& HAVE_LTO_PLUGIN == 2
+		&& (!global_options_set.x_flag_use_linker_plugin
+		    || global_options.x_flag_use_linker_plugin));
+      default:
+	return false;
+    }
+}
+
 /* Returns the number of instructions necessary to reference a symbol.  */
 
 static int
@@ -1938,7 +1974,7 @@ loongarch_symbol_insns (enum loongarch_symbol_type type, machine_mode mode)
     case SYMBOL_GOT_DISP:
       /* The constant will have to be loaded from the GOT before it
 	 is used in an address.  */
-      if (!TARGET_EXPLICIT_RELOCS && mode != MAX_MACHINE_MODE)
+      if (!loongarch_explicit_relocs_p (type) && mode != MAX_MACHINE_MODE)
 	return 0;
 
       return 3;
@@ -2728,7 +2764,7 @@ loongarch_call_tls_get_addr (rtx sym, enum loongarch_symbol_type type, rtx v0)
 
   start_sequence ();
 
-  if (TARGET_EXPLICIT_RELOCS)
+  if (la_opt_explicit_relocs != EXPLICIT_RELOCS_NONE)
     {
       /* Split tls symbol to high and low.  */
       rtx high = gen_rtx_HIGH (Pmode, copy_rtx (loc));
@@ -2893,7 +2929,7 @@ loongarch_legitimize_tls_address (rtx loc)
 	  tp = gen_rtx_REG (Pmode, THREAD_POINTER_REGNUM);
 	  tmp1 = gen_reg_rtx (Pmode);
 	  dest = gen_reg_rtx (Pmode);
-	  if (TARGET_EXPLICIT_RELOCS)
+	  if (la_opt_explicit_relocs != EXPLICIT_RELOCS_NONE)
 	    {
 	      tmp2 = loongarch_unspec_address (loc, SYMBOL_TLS_IE);
 	      tmp3 = gen_reg_rtx (Pmode);
@@ -2930,7 +2966,7 @@ loongarch_legitimize_tls_address (rtx loc)
 	  tmp1 = gen_reg_rtx (Pmode);
 	  dest = gen_reg_rtx (Pmode);
 
-	  if (TARGET_EXPLICIT_RELOCS)
+	  if (la_opt_explicit_relocs != EXPLICIT_RELOCS_NONE)
 	    {
 	      tmp2 = loongarch_unspec_address (loc, SYMBOL_TLS_LE);
 	      tmp3 = gen_reg_rtx (Pmode);
@@ -3036,7 +3072,7 @@ loongarch_symbol_extreme_p (enum loongarch_symbol_type type)
    If so, and if LOW_OUT is nonnull, emit the high part and store the
    low part in *LOW_OUT.  Leave *LOW_OUT unchanged otherwise.
 
-   Return false if build with '-mno-explicit-relocs'.
+   Return false if build with '-mexplicit-relocs=none'.
 
    TEMP is as for loongarch_force_temporary and is used to load the high
    part into a register.
@@ -3050,12 +3086,9 @@ loongarch_split_symbol (rtx temp, rtx addr, machine_mode mode, rtx *low_out)
 {
   enum loongarch_symbol_type symbol_type;
 
-  /* If build with '-mno-explicit-relocs', don't split symbol.  */
-  if (!TARGET_EXPLICIT_RELOCS)
-    return false;
-
   if ((GET_CODE (addr) == HIGH && mode == MAX_MACHINE_MODE)
       || !loongarch_symbolic_constant_p (addr, &symbol_type)
+      || !loongarch_explicit_relocs_p (symbol_type)
       || loongarch_symbol_insns (symbol_type, mode) == 0
       || !loongarch_split_symbol_type (symbol_type))
     return false;
@@ -3845,8 +3878,6 @@ loongarch_rtx_costs (rtx x, machine_mode mode, int outer_code,
     }
 }
 
-/* Vectorizer cost model implementation.  */
-
 /* Implement targetm.vectorize.builtin_vectorization_cost.  */
 
 static int
@@ -3865,34 +3896,180 @@ loongarch_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
       case vector_load:
       case vec_to_scalar:
       case scalar_to_vec:
-      case cond_branch_not_taken:
-      case vec_promote_demote:
       case scalar_store:
       case vector_store:
 	return 1;
 
+      case vec_promote_demote:
       case vec_perm:
 	return LASX_SUPPORTED_MODE_P (mode)
 	  && !LSX_SUPPORTED_MODE_P (mode) ? 2 : 1;
 
       case unaligned_load:
-      case vector_gather_load:
+      case unaligned_store:
 	return 2;
 
-      case unaligned_store:
-      case vector_scatter_store:
-	return 10;
-
       case cond_branch_taken:
-	return 3;
+	return 4;
+
+      case cond_branch_not_taken:
+	return 2;
 
       case vec_construct:
 	elements = TYPE_VECTOR_SUBPARTS (vectype);
-	return elements / 2 + 1;
+	if (ISA_HAS_LASX)
+	  return elements + 1;
+	else
+	  return elements;
 
       default:
 	gcc_unreachable ();
     }
+}
+
+class loongarch_vector_costs : public vector_costs
+{
+public:
+  using vector_costs::vector_costs;
+
+  unsigned int add_stmt_cost (int count, vect_cost_for_stmt kind,
+			      stmt_vec_info stmt_info, slp_tree, tree vectype,
+			      int misalign,
+			      vect_cost_model_location where) override;
+  void finish_cost (const vector_costs *) override;
+
+protected:
+  void count_operations (vect_cost_for_stmt, stmt_vec_info,
+			 vect_cost_model_location, unsigned int);
+  unsigned int determine_suggested_unroll_factor (loop_vec_info);
+  /* The number of vectorized stmts in loop.  */
+  unsigned m_stmts = 0;
+  /* The number of load and store operations in loop.  */
+  unsigned m_loads = 0;
+  unsigned m_stores = 0;
+  /* Reduction factor for suggesting unroll factor.  */
+  unsigned m_reduc_factor = 0;
+  /* True if the loop contains an average operation. */
+  bool m_has_avg =false;
+};
+
+/* Implement TARGET_VECTORIZE_CREATE_COSTS.  */
+static vector_costs *
+loongarch_vectorize_create_costs (vec_info *vinfo, bool costing_for_scalar)
+{
+  return new loongarch_vector_costs (vinfo, costing_for_scalar);
+}
+
+void
+loongarch_vector_costs::count_operations (vect_cost_for_stmt kind,
+					  stmt_vec_info stmt_info,
+					  vect_cost_model_location where,
+					  unsigned int count)
+{
+  if (!m_costing_for_scalar
+      && is_a<loop_vec_info> (m_vinfo)
+      && where == vect_body)
+    {
+      m_stmts += count;
+
+      if (kind == scalar_load
+	  || kind == vector_load
+	  || kind == unaligned_load)
+	m_loads += count;
+      else if (kind == scalar_store
+	       || kind == vector_store
+	       || kind == unaligned_store)
+	m_stores += count;
+      else if ((kind == scalar_stmt
+		|| kind == vector_stmt
+		|| kind == vec_to_scalar)
+	       && stmt_info && vect_is_reduction (stmt_info))
+	{
+	  tree lhs = gimple_get_lhs (stmt_info->stmt);
+	  unsigned int base = FLOAT_TYPE_P (TREE_TYPE (lhs)) ? 2 : 1;
+	  m_reduc_factor = MAX (base * count, m_reduc_factor);
+	}
+    }
+}
+
+unsigned int
+loongarch_vector_costs::determine_suggested_unroll_factor (loop_vec_info loop_vinfo)
+{
+  class loop *loop = LOOP_VINFO_LOOP (loop_vinfo);
+
+  if (m_has_avg)
+    return 1;
+
+  /* Don't unroll if it's specified explicitly not to be unrolled.  */
+  if (loop->unroll == 1
+      || (OPTION_SET_P (flag_unroll_loops) && !flag_unroll_loops)
+      || (OPTION_SET_P (flag_unroll_all_loops) && !flag_unroll_all_loops))
+    return 1;
+
+  unsigned int nstmts_nonldst = m_stmts - m_loads - m_stores;
+  /* Don't unroll if no vector instructions excepting for memory access.  */
+  if (nstmts_nonldst == 0)
+    return 1;
+
+  /* Use this simple hardware resource model that how many non vld/vst
+     vector instructions can be issued per cycle.  */
+  unsigned int issue_info = loongarch_vect_issue_info;
+  unsigned int reduc_factor = m_reduc_factor > 1 ? m_reduc_factor : 1;
+  unsigned int uf = CEIL (reduc_factor * issue_info, nstmts_nonldst);
+  uf = MIN ((unsigned int) loongarch_vect_unroll_limit, uf);
+
+  return 1 << ceil_log2 (uf);
+}
+
+unsigned
+loongarch_vector_costs::add_stmt_cost (int count, vect_cost_for_stmt kind,
+				       stmt_vec_info stmt_info, slp_tree,
+				       tree vectype, int misalign,
+				       vect_cost_model_location where)
+{
+  unsigned retval = 0;
+
+  if (flag_vect_cost_model)
+    {
+      int stmt_cost = loongarch_builtin_vectorization_cost (kind, vectype,
+							    misalign);
+      retval = adjust_cost_for_freq (stmt_info, where, count * stmt_cost);
+      m_costs[where] += retval;
+
+      count_operations (kind, stmt_info, where, count);
+    }
+
+  if (stmt_info)
+    {
+      /* Detect the use of an averaging operation.  */
+      gimple *stmt = stmt_info->stmt;
+      if (is_gimple_call (stmt)
+	  && gimple_call_internal_p (stmt))
+	{
+	  switch (gimple_call_internal_fn (stmt))
+	    {
+	    case IFN_AVG_FLOOR:
+	    case IFN_AVG_CEIL:
+	      m_has_avg = true;
+	    default:
+	      break;
+	    }
+	}
+    }
+
+  return retval;
+}
+
+void
+loongarch_vector_costs::finish_cost (const vector_costs *scalar_costs)
+{
+  loop_vec_info loop_vinfo = dyn_cast<loop_vec_info> (m_vinfo);
+  if (loop_vinfo)
+    {
+      m_suggested_unroll_factor = determine_suggested_unroll_factor (loop_vinfo);
+    }
+
+  vector_costs::finish_cost (scalar_costs);
 }
 
 /* Implement TARGET_ADDRESS_COST.  */
@@ -4651,7 +4828,7 @@ loongarch_output_move (rtx dest, rtx src)
 	}
     }
 
-  if (!TARGET_EXPLICIT_RELOCS
+  if (!loongarch_explicit_relocs_p (loongarch_classify_symbol (src))
       && dest_code == REG && symbolic_operand (src, VOIDmode))
     {
       if (loongarch_classify_symbol (src) == SYMBOL_PCREL)
@@ -7241,6 +7418,25 @@ loongarch_option_override_internal (struct gcc_options *opts,
   loongarch_update_gcc_opt_status (&la_target, opts, opts_set);
   loongarch_cpu_option_override (&la_target, opts, opts_set);
 
+  if (la_opt_explicit_relocs != M_OPT_UNSET
+      && la_opt_explicit_relocs_backward != M_OPT_UNSET)
+    error ("do not use %qs (with %qs) and %qs (without %qs) together",
+	   "-mexplicit-relocs=", "=",
+	   la_opt_explicit_relocs_backward ? "-mexplicit-relocs"
+					   : "-mno-explicit-relocs", "=");
+
+  if (la_opt_explicit_relocs_backward != M_OPT_UNSET)
+    la_opt_explicit_relocs = (la_opt_explicit_relocs_backward
+			      ? EXPLICIT_RELOCS_ALWAYS
+			      : EXPLICIT_RELOCS_NONE);
+
+  if (la_opt_explicit_relocs == M_OPT_UNSET)
+    la_opt_explicit_relocs = (HAVE_AS_EXPLICIT_RELOCS
+			      ? (HAVE_AS_MRELAX_OPTION
+				 ? EXPLICIT_RELOCS_AUTO
+				 : EXPLICIT_RELOCS_ALWAYS)
+			      : EXPLICIT_RELOCS_NONE);
+
   if (TARGET_ABI_LP64)
     flag_pcc_struct_return = 0;
 
@@ -7265,16 +7461,13 @@ loongarch_option_override_internal (struct gcc_options *opts,
   if (TARGET_DIRECT_EXTERN_ACCESS && flag_shlib)
     error ("%qs cannot be used for compiling a shared library",
 	   "-mdirect-extern-access");
-  if (loongarch_vector_access_cost == 0)
-    loongarch_vector_access_cost = 5;
-
 
   switch (la_target.cmodel)
     {
       case CMODEL_EXTREME:
 	if (!TARGET_EXPLICIT_RELOCS)
 	  error ("code model %qs needs %s",
-		 "extreme", "-mexplicit-relocs");
+		 "extreme", "-mexplicit-relocs=always");
 
 	if (opts->x_flag_plt)
 	  {
@@ -7578,7 +7771,8 @@ loongarch_handle_model_attribute (tree *node, tree name, tree arg, int,
       if (!TARGET_EXPLICIT_RELOCS)
 	{
 	  error_at (DECL_SOURCE_LOCATION (decl),
-		    "%qE attribute requires %s", name, "-mexplicit-relocs");
+		    "%qE attribute requires %s", name,
+		    "-mexplicit-relocs=always");
 	  *no_add_attrs = true;
 	  return NULL_TREE;
 	}
@@ -8030,6 +8224,143 @@ loongarch_expand_vec_perm_even_odd (struct expand_vec_perm_d *d)
       return false;
 
   return loongarch_expand_vec_perm_even_odd_1 (d, odd);
+}
+
+static void
+loongarch_expand_vec_interleave (rtx target, rtx op0, rtx op1, bool high_p)
+{
+  struct expand_vec_perm_d d;
+  unsigned i, nelt, base;
+  bool ok;
+
+  d.target = target;
+  d.op0 = op0;
+  d.op1 = op1;
+  d.vmode = GET_MODE (target);
+  d.nelt = nelt = GET_MODE_NUNITS (d.vmode);
+  d.one_vector_p = false;
+  d.testing_p = false;
+
+  base = high_p ? nelt / 2 : 0;
+  for (i = 0; i < nelt / 2; ++i)
+    {
+      d.perm[i * 2] = i + base;
+      d.perm[i * 2 + 1] = i + base + nelt;
+    }
+
+  ok = loongarch_expand_vec_perm_interleave (&d);
+  gcc_assert (ok);
+}
+
+/* The loongarch lasx instructions xvmulwev and xvmulwod return the even or odd
+   parts of the double sized result elements in the corresponding elements of
+   the target register. That's NOT what the vec_widen_umult_lo/hi patterns are
+   expected to do. We emulate the widening lo/hi multiplies with the even/odd
+   versions followed by a vector merge.  */
+
+void
+loongarch_expand_vec_widen_hilo (rtx dest, rtx op1, rtx op2,
+				 bool uns_p, bool high_p, const char *optab)
+{
+  machine_mode wmode = GET_MODE (dest);
+  machine_mode mode = GET_MODE (op1);
+  rtx t1, t2, t3;
+
+  t1 = gen_reg_rtx (wmode);
+  t2 = gen_reg_rtx (wmode);
+  t3 = gen_reg_rtx (wmode);
+  switch (mode)
+    {
+    case V16HImode:
+      if (!strcmp (optab, "add"))
+	{
+	  if (!uns_p)
+	    {
+	      emit_insn (gen_lasx_xvaddwev_w_h (t1, op1, op2));
+	      emit_insn (gen_lasx_xvaddwod_w_h (t2, op1, op2));
+	    }
+	  else
+	    {
+	      emit_insn (gen_lasx_xvaddwev_w_hu (t1, op1, op2));
+	      emit_insn (gen_lasx_xvaddwod_w_hu (t2, op1, op2));
+	    }
+	}
+      else if (!strcmp (optab, "mult"))
+	{
+	  if (!uns_p)
+	    {
+	      emit_insn (gen_lasx_xvmulwev_w_h (t1, op1, op2));
+	      emit_insn (gen_lasx_xvmulwod_w_h (t2, op1, op2));
+	    }
+	  else
+	    {
+	      emit_insn (gen_lasx_xvmulwev_w_hu (t1, op1, op2));
+	      emit_insn (gen_lasx_xvmulwod_w_hu (t2, op1, op2));
+	    }
+	}
+      else if (!strcmp (optab, "sub"))
+	{
+	  if (!uns_p)
+	    {
+	      emit_insn (gen_lasx_xvsubwev_w_h (t1, op1, op2));
+	      emit_insn (gen_lasx_xvsubwod_w_h (t2, op1, op2));
+	    }
+	  else
+	    {
+	      emit_insn (gen_lasx_xvsubwev_w_hu (t1, op1, op2));
+	      emit_insn (gen_lasx_xvsubwod_w_hu (t2, op1, op2));
+	    }
+	}
+      break;
+
+    case V32QImode:
+      if (!strcmp (optab, "add"))
+	{
+	  if (!uns_p)
+	    {
+	      emit_insn (gen_lasx_xvaddwev_h_b (t1, op1, op2));
+	      emit_insn (gen_lasx_xvaddwod_h_b (t2, op1, op2));
+	    }
+	  else
+	    {
+	      emit_insn (gen_lasx_xvaddwev_h_bu (t1, op1, op2));
+	      emit_insn (gen_lasx_xvaddwod_h_bu (t2, op1, op2));
+	    }
+	}
+      else if (!strcmp (optab, "mult"))
+	{
+	  if (!uns_p)
+	    {
+	      emit_insn (gen_lasx_xvmulwev_h_b (t1, op1, op2));
+	      emit_insn (gen_lasx_xvmulwod_h_b (t2, op1, op2));
+	    }
+	  else
+	    {
+	      emit_insn (gen_lasx_xvmulwev_h_bu (t1, op1, op2));
+	      emit_insn (gen_lasx_xvmulwod_h_bu (t2, op1, op2));
+	    }
+	}
+      else if (!strcmp (optab, "sub"))
+	{
+	  if (!uns_p)
+	    {
+	      emit_insn (gen_lasx_xvsubwev_h_b (t1, op1, op2));
+	      emit_insn (gen_lasx_xvsubwod_h_b (t2, op1, op2));
+	    }
+	  else
+	    {
+	      emit_insn (gen_lasx_xvsubwev_h_bu (t1, op1, op2));
+	      emit_insn (gen_lasx_xvsubwod_h_bu (t2, op1, op2));
+	    }
+	}
+      break;
+
+    default:
+      gcc_unreachable ();
+    }
+
+  loongarch_expand_vec_interleave (t3, t1, t2, high_p);
+  emit_move_insn (dest, gen_lowpart (wmode, t3));
 }
 
 /* Expand a variable vector permutation for LASX.  */
@@ -10194,10 +10525,104 @@ loongarch_gen_const_int_vector_shuffle (machine_mode mode, int val)
 void
 loongarch_expand_vector_group_init (rtx target, rtx vals)
 {
-  rtx ops[2] = { XVECEXP (vals, 0, 0), XVECEXP (vals, 0, 1) };
+  rtx ops[2] = { force_reg (E_V16QImode, XVECEXP (vals, 0, 0)),
+      force_reg (E_V16QImode, XVECEXP (vals, 0, 1)) };
   emit_insn (gen_rtx_SET (target, gen_rtx_VEC_CONCAT (E_V32QImode, ops[0],
 						      ops[1])));
 }
+
+/* Expand initialization of a vector which has all same elements.  */
+
+void
+loongarch_expand_vector_init_same (rtx target, rtx vals, unsigned nvar)
+{
+  machine_mode vmode = GET_MODE (target);
+  machine_mode imode = GET_MODE_INNER (vmode);
+  rtx same = XVECEXP (vals, 0, 0);
+  rtx temp, temp2;
+
+  if (CONST_INT_P (same) && nvar == 0
+      && loongarch_signed_immediate_p (INTVAL (same), 10, 0))
+    {
+      switch (vmode)
+	{
+	case E_V32QImode:
+	case E_V16HImode:
+	case E_V8SImode:
+	case E_V4DImode:
+	case E_V16QImode:
+	case E_V8HImode:
+	case E_V4SImode:
+	case E_V2DImode:
+	  temp = gen_rtx_CONST_VECTOR (vmode, XVEC (vals, 0));
+	  emit_move_insn (target, temp);
+	  return;
+	default:
+	  gcc_unreachable ();
+	}
+    }
+  temp = gen_reg_rtx (imode);
+  if (imode == GET_MODE (same))
+    temp2 = same;
+  else if (GET_MODE_SIZE (imode) >= UNITS_PER_WORD)
+    {
+      if (GET_CODE (same) == MEM)
+	{
+	  rtx reg_tmp = gen_reg_rtx (GET_MODE (same));
+	  loongarch_emit_move (reg_tmp, same);
+	  temp2 = simplify_gen_subreg (imode, reg_tmp, GET_MODE (reg_tmp), 0);
+	}
+      else
+	temp2 = simplify_gen_subreg (imode, same, GET_MODE (same), 0);
+    }
+  else
+    {
+      if (GET_CODE (same) == MEM)
+	{
+	  rtx reg_tmp = gen_reg_rtx (GET_MODE (same));
+	  loongarch_emit_move (reg_tmp, same);
+	  temp2 = lowpart_subreg (imode, reg_tmp, GET_MODE (reg_tmp));
+	}
+      else
+	temp2 = lowpart_subreg (imode, same, GET_MODE (same));
+    }
+  emit_move_insn (temp, temp2);
+
+  switch (vmode)
+    {
+    case E_V32QImode:
+    case E_V16HImode:
+    case E_V8SImode:
+    case E_V4DImode:
+    case E_V16QImode:
+    case E_V8HImode:
+    case E_V4SImode:
+    case E_V2DImode:
+      loongarch_emit_move (target, gen_rtx_VEC_DUPLICATE (vmode, temp));
+      break;
+
+    case E_V8SFmode:
+      emit_insn (gen_lasx_xvreplve0_w_f_scalar (target, temp));
+      break;
+
+    case E_V4DFmode:
+      emit_insn (gen_lasx_xvreplve0_d_f_scalar (target, temp));
+      break;
+
+    case E_V4SFmode:
+      emit_insn (gen_lsx_vreplvei_w_f_scalar (target, temp));
+      break;
+
+    case E_V2DFmode:
+      emit_insn (gen_lsx_vreplvei_d_f_scalar (target, temp));
+      break;
+
+    default:
+      gcc_unreachable ();
+    }
+}
+
+/* Expand a vector initialization.  */
 
 void
 loongarch_expand_vector_init (rtx target, rtx vals)
@@ -10205,294 +10630,245 @@ loongarch_expand_vector_init (rtx target, rtx vals)
   machine_mode vmode = GET_MODE (target);
   machine_mode imode = GET_MODE_INNER (vmode);
   unsigned i, nelt = GET_MODE_NUNITS (vmode);
-  unsigned nvar = 0;
-  bool all_same = true;
-  rtx x;
+  /* VALS is divided into high and low half-part.  */
+  /* Number of non constant elements in corresponding parts of VALS.  */
+  unsigned nvar = 0, hi_nvar = 0, lo_nvar = 0;
+  /* all_same : true if all elements of VALS are the same.
+     hi_same : true if all elements of the high half-part are the same.
+     lo_same : true if all elements of the low half-part are the same.
+     half_same : true if the high half-part is the same as the low one.  */
+  bool all_same = false, hi_same = true, lo_same = true, half_same = true;
+  rtx val[32], val_hi[32], val_lo[16];
+  rtx x, op0, op1;
+  /* Copy one element of vals to per element of target vector.  */
+  typedef rtx (*loongarch_vec_repl1_fn) (rtx, rtx);
+  /* Copy two elements of vals to target vector.  */
+  typedef rtx (*loongarch_vec_repl2_fn) (rtx, rtx, rtx);
+  /* Insert scalar operands into the specified position of the vector.  */
+  typedef rtx (*loongarch_vec_set_fn) (rtx, rtx, rtx);
+  /* Copy 64bit lowpart to highpart.  */
+  typedef rtx (*loongarch_vec_mirror_fn) (rtx, rtx, rtx);
+  /* Merge lowpart and highpart into target.  */
+  typedef rtx (*loongarch_vec_merge_fn) (rtx, rtx, rtx, rtx);
 
-  for (i = 0; i < nelt; ++i)
+  loongarch_vec_repl1_fn loongarch_vec_repl1_128 = NULL,
+			 loongarch_vec_repl1_256 = NULL;
+  loongarch_vec_repl2_fn loongarch_vec_repl2_128 = NULL,
+			 loongarch_vec_repl2_256 = NULL;
+  loongarch_vec_set_fn loongarch_vec_set128 = NULL, loongarch_vec_set256 = NULL;
+  loongarch_vec_mirror_fn loongarch_vec_mirror = NULL;
+  loongarch_vec_merge_fn loongarch_lasx_vecinit_merge = NULL;
+  machine_mode half_mode = VOIDmode;
+
+  /* Check whether elements of each part are the same.  */
+  for (i = 0; i < nelt / 2; ++i)
     {
-      x = XVECEXP (vals, 0, i);
-      if (!loongarch_constant_elt_p (x))
-	nvar++;
-      if (i > 0 && !rtx_equal_p (x, XVECEXP (vals, 0, 0)))
-	all_same = false;
+      val_hi[i] = val_hi[i + nelt / 2] = val[i + nelt / 2]
+	= XVECEXP (vals, 0, i + nelt / 2);
+      val_lo[i] = val[i] = XVECEXP (vals, 0, i);
+      if (!loongarch_constant_elt_p (val_hi[i]))
+	hi_nvar++;
+      if (!loongarch_constant_elt_p (val_lo[i]))
+	lo_nvar++;
+      if (i > 0 && !rtx_equal_p (val_hi[i], val_hi[0]))
+	hi_same = false;
+      if (i > 0 && !rtx_equal_p (val_lo[i], val_lo[0]))
+	lo_same = false;
+      if (!rtx_equal_p (val_hi[i], val_lo[i]))
+	half_same = false;
+    }
+
+  /* If all elements are the same, set all_same true.  */
+  if (hi_same && lo_same && half_same)
+    all_same = true;
+
+  nvar = hi_nvar + lo_nvar;
+
+  switch (vmode)
+    {
+    case E_V32QImode:
+      half_mode = E_V16QImode;
+      loongarch_vec_set256 = gen_vec_setv32qi_internal;
+      loongarch_vec_repl1_256 = gen_lasx_xvreplgr2vr_b;
+      loongarch_lasx_vecinit_merge
+	= half_same ? gen_lasx_xvpermi_q_v32qi : gen_lasx_vecinit_merge_v32qi;
+      /* FALLTHRU.  */
+    case E_V16QImode:
+      loongarch_vec_set128 = gen_vec_setv16qi;
+      loongarch_vec_repl1_128 = gen_lsx_vreplgr2vr_b;
+      loongarch_vec_mirror = gen_lsx_vreplvei_mirror_b;
+      break;
+
+    case E_V16HImode:
+      half_mode = E_V8HImode;
+      loongarch_vec_set256 = gen_vec_setv16hi_internal;
+      loongarch_vec_repl1_256 = gen_lasx_xvreplgr2vr_h;
+      loongarch_lasx_vecinit_merge
+	= half_same ? gen_lasx_xvpermi_q_v16hi : gen_lasx_vecinit_merge_v16hi;
+      /* FALLTHRU.  */
+    case E_V8HImode:
+      loongarch_vec_set128 = gen_vec_setv8hi;
+      loongarch_vec_repl1_128 = gen_lsx_vreplgr2vr_h;
+      loongarch_vec_mirror = gen_lsx_vreplvei_mirror_h;
+      break;
+
+    case E_V8SImode:
+      half_mode = V4SImode;
+      loongarch_vec_set256 = gen_vec_setv8si;
+      loongarch_vec_repl1_256 = gen_lasx_xvreplgr2vr_w;
+      loongarch_lasx_vecinit_merge
+	= half_same ? gen_lasx_xvpermi_q_v8si : gen_lasx_vecinit_merge_v8si;
+      /* FALLTHRU.  */
+    case E_V4SImode:
+      loongarch_vec_set128 = gen_vec_setv4si;
+      loongarch_vec_repl1_128 = gen_lsx_vreplgr2vr_w;
+      loongarch_vec_mirror = gen_lsx_vreplvei_mirror_w;
+      break;
+
+    case E_V4DImode:
+      half_mode = E_V2DImode;
+      loongarch_vec_set256 = gen_vec_setv4di;
+      loongarch_vec_repl1_256 = gen_lasx_xvreplgr2vr_d;
+      loongarch_lasx_vecinit_merge
+	= half_same ? gen_lasx_xvpermi_q_v4di : gen_lasx_vecinit_merge_v4di;
+      /* FALLTHRU.  */
+    case E_V2DImode:
+      loongarch_vec_set128 = gen_vec_setv2di;
+      loongarch_vec_repl1_128 = gen_lsx_vreplgr2vr_d;
+      loongarch_vec_mirror = gen_lsx_vreplvei_mirror_d;
+      break;
+
+    case E_V8SFmode:
+      half_mode = E_V4SFmode;
+      loongarch_vec_set256 = gen_vec_setv8sf;
+      loongarch_vec_repl1_128 = gen_lsx_vreplvei_w_f_scalar;
+      loongarch_vec_repl2_256 = gen_lasx_xvilvl_w_f_internal;
+      loongarch_lasx_vecinit_merge
+	= half_same ? gen_lasx_xvpermi_q_v8sf : gen_lasx_vecinit_merge_v8sf;
+      /* FALLTHRU.  */
+    case E_V4SFmode:
+      loongarch_vec_set128 = gen_vec_setv4sf;
+      loongarch_vec_repl2_128 = gen_lsx_vilvl_w_f_internal;
+      loongarch_vec_mirror = gen_lsx_vreplvei_mirror_w_f;
+      break;
+
+    case E_V4DFmode:
+      half_mode = E_V2DFmode;
+      loongarch_vec_set256 = gen_vec_setv4df;
+      loongarch_vec_repl1_128 = gen_lsx_vreplvei_d_f_scalar;
+      loongarch_vec_repl2_256 = gen_lasx_xvilvl_d_f_internal;
+      loongarch_lasx_vecinit_merge
+	= half_same ? gen_lasx_xvpermi_q_v4df : gen_lasx_vecinit_merge_v4df;
+      /* FALLTHRU.  */
+    case E_V2DFmode:
+      loongarch_vec_set128 = gen_vec_setv2df;
+      loongarch_vec_repl2_128 = gen_lsx_vilvl_d_f_internal;
+      loongarch_vec_mirror = gen_lsx_vreplvei_mirror_d_f;
+      break;
+
+    default:
+      gcc_unreachable ();
     }
 
   if (ISA_HAS_LASX && GET_MODE_SIZE (vmode) == 32)
     {
+      /* If all elements are the same, just do a broadcost.  */
       if (all_same)
-	{
-	  rtx same = XVECEXP (vals, 0, 0);
-	  rtx temp, temp2;
-
-	  if (CONST_INT_P (same) && nvar == 0
-	      && loongarch_signed_immediate_p (INTVAL (same), 10, 0))
-	    {
-	      switch (vmode)
-		{
-		case E_V32QImode:
-		case E_V16HImode:
-		case E_V8SImode:
-		case E_V4DImode:
-		  temp = gen_rtx_CONST_VECTOR (vmode, XVEC (vals, 0));
-		  emit_move_insn (target, temp);
-		  return;
-
-		default:
-		  gcc_unreachable ();
-		}
-	    }
-
-	  temp = gen_reg_rtx (imode);
-	  if (imode == GET_MODE (same))
-	    temp2 = same;
-	  else if (GET_MODE_SIZE (imode) >= UNITS_PER_WORD)
-	    {
-	      if (GET_CODE (same) == MEM)
-		{
-		  rtx reg_tmp = gen_reg_rtx (GET_MODE (same));
-		  loongarch_emit_move (reg_tmp, same);
-		  temp2 = simplify_gen_subreg (imode, reg_tmp,
-					       GET_MODE (reg_tmp), 0);
-		}
-	      else
-		temp2 = simplify_gen_subreg (imode, same,
-					     GET_MODE (same), 0);
-	    }
-	  else
-	    {
-	      if (GET_CODE (same) == MEM)
-		{
-		  rtx reg_tmp = gen_reg_rtx (GET_MODE (same));
-		  loongarch_emit_move (reg_tmp, same);
-		  temp2 = lowpart_subreg (imode, reg_tmp,
-					  GET_MODE (reg_tmp));
-		}
-	      else
-		temp2 = lowpart_subreg (imode, same, GET_MODE (same));
-	    }
-	  emit_move_insn (temp, temp2);
-
-	  switch (vmode)
-	    {
-	    case E_V32QImode:
-	    case E_V16HImode:
-	    case E_V8SImode:
-	    case E_V4DImode:
-	      loongarch_emit_move (target,
-				   gen_rtx_VEC_DUPLICATE (vmode, temp));
-	      break;
-
-	    case E_V8SFmode:
-	      emit_insn (gen_lasx_xvreplve0_w_f_scalar (target, temp));
-	      break;
-
-	    case E_V4DFmode:
-	      emit_insn (gen_lasx_xvreplve0_d_f_scalar (target, temp));
-	      break;
-
-	    default:
-	      gcc_unreachable ();
-	    }
-	}
+	loongarch_expand_vector_init_same (target, vals, nvar);
       else
 	{
-	  rtvec vec = shallow_copy_rtvec (XVEC (vals, 0));
+	  gcc_assert (nelt >= 4);
 
-	  for (i = 0; i < nelt; ++i)
-	    RTVEC_ELT (vec, i) = CONST0_RTX (imode);
-
-	  emit_move_insn (target, gen_rtx_CONST_VECTOR (vmode, vec));
-
-	  machine_mode half_mode = VOIDmode;
 	  rtx target_hi, target_lo;
+	  /* Write elements of high half-part in target directly.  */
+	  target_hi = target;
+	  target_lo = gen_reg_rtx (half_mode);
 
-	  switch (vmode)
+	  /* If all elements of high half-part are the same,
+	     just do a broadcost.  Also applicable to low half-part.  */
+	  if (hi_same)
 	    {
-	    case E_V32QImode:
-	      half_mode=E_V16QImode;
-	      target_hi = gen_reg_rtx (half_mode);
-	      target_lo = gen_reg_rtx (half_mode);
-	      for (i = 0; i < nelt/2; ++i)
-		{
-		  rtx temp_hi = gen_reg_rtx (imode);
-		  rtx temp_lo = gen_reg_rtx (imode);
-		  emit_move_insn (temp_hi, XVECEXP (vals, 0, i+nelt/2));
-		  emit_move_insn (temp_lo, XVECEXP (vals, 0, i));
-		  if (i == 0)
-		    {
-		      emit_insn (gen_lsx_vreplvei_b_scalar (target_hi,
-							    temp_hi));
-		      emit_insn (gen_lsx_vreplvei_b_scalar (target_lo,
-							    temp_lo));
-		    }
-		  else
-		    {
-		      emit_insn (gen_vec_setv16qi (target_hi, temp_hi,
-						   GEN_INT (i)));
-		      emit_insn (gen_vec_setv16qi (target_lo, temp_lo,
-						   GEN_INT (i)));
-		    }
-		}
-	      emit_insn (gen_rtx_SET (target,
-				      gen_rtx_VEC_CONCAT (vmode, target_hi,
-							  target_lo)));
-	      break;
-
-	    case E_V16HImode:
-	      half_mode=E_V8HImode;
-	      target_hi = gen_reg_rtx (half_mode);
-	      target_lo = gen_reg_rtx (half_mode);
-	      for (i = 0; i < nelt/2; ++i)
-		{
-		  rtx temp_hi = gen_reg_rtx (imode);
-		  rtx temp_lo = gen_reg_rtx (imode);
-		  emit_move_insn (temp_hi, XVECEXP (vals, 0, i+nelt/2));
-		  emit_move_insn (temp_lo, XVECEXP (vals, 0, i));
-		  if (i == 0)
-		    {
-		      emit_insn (gen_lsx_vreplvei_h_scalar (target_hi,
-							    temp_hi));
-		      emit_insn (gen_lsx_vreplvei_h_scalar (target_lo,
-							    temp_lo));
-		    }
-		  else
-		    {
-		      emit_insn (gen_vec_setv8hi (target_hi, temp_hi,
-						  GEN_INT (i)));
-		      emit_insn (gen_vec_setv8hi (target_lo, temp_lo,
-						  GEN_INT (i)));
-		    }
-		}
-	      emit_insn (gen_rtx_SET (target,
-				      gen_rtx_VEC_CONCAT (vmode, target_hi,
-							  target_lo)));
-	      break;
-
-	    case E_V8SImode:
-	      half_mode=V4SImode;
-	      target_hi = gen_reg_rtx (half_mode);
-	      target_lo = gen_reg_rtx (half_mode);
-	      for (i = 0; i < nelt/2; ++i)
-		{
-		  rtx temp_hi = gen_reg_rtx (imode);
-		  rtx temp_lo = gen_reg_rtx (imode);
-		  emit_move_insn (temp_hi, XVECEXP (vals, 0, i+nelt/2));
-		  emit_move_insn (temp_lo, XVECEXP (vals, 0, i));
-		  if (i == 0)
-		    {
-		      emit_insn (gen_lsx_vreplvei_w_scalar (target_hi,
-							    temp_hi));
-		      emit_insn (gen_lsx_vreplvei_w_scalar (target_lo,
-							    temp_lo));
-		    }
-		  else
-		    {
-		      emit_insn (gen_vec_setv4si (target_hi, temp_hi,
-						  GEN_INT (i)));
-		      emit_insn (gen_vec_setv4si (target_lo, temp_lo,
-						  GEN_INT (i)));
-		    }
-		}
-	      emit_insn (gen_rtx_SET (target,
-				      gen_rtx_VEC_CONCAT (vmode, target_hi,
-							  target_lo)));
-	      break;
-
-	    case E_V4DImode:
-	      half_mode=E_V2DImode;
-	      target_hi = gen_reg_rtx (half_mode);
-	      target_lo = gen_reg_rtx (half_mode);
-	      for (i = 0; i < nelt/2; ++i)
-		{
-		  rtx temp_hi = gen_reg_rtx (imode);
-		  rtx temp_lo = gen_reg_rtx (imode);
-		  emit_move_insn (temp_hi, XVECEXP (vals, 0, i+nelt/2));
-		  emit_move_insn (temp_lo, XVECEXP (vals, 0, i));
-		  if (i == 0)
-		    {
-		      emit_insn (gen_lsx_vreplvei_d_scalar (target_hi,
-							    temp_hi));
-		      emit_insn (gen_lsx_vreplvei_d_scalar (target_lo,
-							    temp_lo));
-		    }
-		  else
-		    {
-		      emit_insn (gen_vec_setv2di (target_hi, temp_hi,
-						  GEN_INT (i)));
-		      emit_insn (gen_vec_setv2di (target_lo, temp_lo,
-						  GEN_INT (i)));
-		    }
-		}
-	      emit_insn (gen_rtx_SET (target,
-				      gen_rtx_VEC_CONCAT (vmode, target_hi,
-							  target_lo)));
-	      break;
-
-	    case E_V8SFmode:
-	      half_mode=E_V4SFmode;
-	      target_hi = gen_reg_rtx (half_mode);
-	      target_lo = gen_reg_rtx (half_mode);
-	      for (i = 0; i < nelt/2; ++i)
-		{
-		  rtx temp_hi = gen_reg_rtx (imode);
-		  rtx temp_lo = gen_reg_rtx (imode);
-		  emit_move_insn (temp_hi, XVECEXP (vals, 0, i+nelt/2));
-		  emit_move_insn (temp_lo, XVECEXP (vals, 0, i));
-		  if (i == 0)
-		    {
-		      emit_insn (gen_lsx_vreplvei_w_f_scalar (target_hi,
-							      temp_hi));
-		      emit_insn (gen_lsx_vreplvei_w_f_scalar (target_lo,
-							      temp_lo));
-		    }
-		  else
-		    {
-		      emit_insn (gen_vec_setv4sf (target_hi, temp_hi,
-						  GEN_INT (i)));
-		      emit_insn (gen_vec_setv4sf (target_lo, temp_lo,
-						  GEN_INT (i)));
-		    }
-		}
-	      emit_insn (gen_rtx_SET (target,
-				      gen_rtx_VEC_CONCAT (vmode, target_hi,
-							  target_lo)));
-	      break;
-
-	    case E_V4DFmode:
-	      half_mode=E_V2DFmode;
-	      target_hi = gen_reg_rtx (half_mode);
-	      target_lo = gen_reg_rtx (half_mode);
-	      for (i = 0; i < nelt/2; ++i)
-		{
-		  rtx temp_hi = gen_reg_rtx (imode);
-		  rtx temp_lo = gen_reg_rtx (imode);
-		  emit_move_insn (temp_hi, XVECEXP (vals, 0, i+nelt/2));
-		  emit_move_insn (temp_lo, XVECEXP (vals, 0, i));
-		  if (i == 0)
-		    {
-		      emit_insn (gen_lsx_vreplvei_d_f_scalar (target_hi,
-							      temp_hi));
-		      emit_insn (gen_lsx_vreplvei_d_f_scalar (target_lo,
-							      temp_lo));
-		    }
-		  else
-		    {
-		      emit_insn (gen_vec_setv2df (target_hi, temp_hi,
-						  GEN_INT (i)));
-		      emit_insn (gen_vec_setv2df (target_lo, temp_lo,
-						  GEN_INT (i)));
-		    }
-		}
-	      emit_insn (gen_rtx_SET (target,
-				      gen_rtx_VEC_CONCAT (vmode, target_hi,
-							  target_lo)));
-	      break;
-
-	    default:
-	      gcc_unreachable ();
+	      rtx vtmp = gen_rtx_PARALLEL (vmode, gen_rtvec_v (nelt, val_hi));
+	      loongarch_expand_vector_init_same (target_hi, vtmp, hi_nvar);
+	    }
+	  if (lo_same)
+	    {
+	      rtx vtmp
+		= gen_rtx_PARALLEL (half_mode, gen_rtvec_v (nelt / 2, val_lo));
+	      loongarch_expand_vector_init_same (target_lo, vtmp, lo_nvar);
 	    }
 
+	  for (i = 0; i < nelt / 2; ++i)
+	    {
+	      if (!hi_same)
+		{
+		  if (vmode == E_V8SFmode || vmode == E_V4DFmode)
+		    {
+		      /* Using xvilvl to load lowest 2 elements simultaneously
+			 to reduce the number of instructions.  */
+		      if (i == 1)
+			{
+			  op0 = gen_reg_rtx (imode);
+			  emit_move_insn (op0, val_hi[0]);
+			  op1 = gen_reg_rtx (imode);
+			  emit_move_insn (op1, val_hi[1]);
+			  emit_insn (
+			    loongarch_vec_repl2_256 (target_hi, op0, op1));
+			}
+		      else if (i > 1)
+			{
+			  op0 = gen_reg_rtx (imode);
+			  emit_move_insn (op0, val_hi[i]);
+			  emit_insn (
+			    loongarch_vec_set256 (target_hi, op0, GEN_INT (i)));
+			}
+		    }
+		  else
+		    {
+		      /* Assign the lowest element of val_hi to all elements
+			 of target_hi.  */
+		      if (i == 0)
+			{
+			  op0 = gen_reg_rtx (imode);
+			  emit_move_insn (op0, val_hi[0]);
+			  emit_insn (loongarch_vec_repl1_256 (target_hi, op0));
+			}
+		      else if (!rtx_equal_p (val_hi[i], val_hi[0]))
+			{
+			  op0 = gen_reg_rtx (imode);
+			  emit_move_insn (op0, val_hi[i]);
+			  emit_insn (
+			    loongarch_vec_set256 (target_hi, op0, GEN_INT (i)));
+			}
+		    }
+		}
+	      if (!lo_same && !half_same)
+		{
+		  /* Assign the lowest element of val_lo to all elements
+		     of target_lo.  */
+		  if (i == 0)
+		    {
+		      op0 = gen_reg_rtx (imode);
+		      emit_move_insn (op0, val_lo[0]);
+		      emit_insn (loongarch_vec_repl1_128 (target_lo, op0));
+		    }
+		  else if (!rtx_equal_p (val_lo[i], val_lo[0]))
+		    {
+		      op0 = gen_reg_rtx (imode);
+		      emit_move_insn (op0, val_lo[i]);
+		      emit_insn (
+			loongarch_vec_set128 (target_lo, op0, GEN_INT (i)));
+		    }
+		}
+	    }
+	  if (half_same)
+	    {
+	      emit_insn (loongarch_lasx_vecinit_merge (target, target_hi,
+						       target_hi, const0_rtx));
+	      return;
+	    }
+	  emit_insn (loongarch_lasx_vecinit_merge (target, target_hi, target_lo,
+						   GEN_INT (0x20)));
 	}
       return;
     }
@@ -10500,130 +10876,54 @@ loongarch_expand_vector_init (rtx target, rtx vals)
   if (ISA_HAS_LSX)
     {
       if (all_same)
-	{
-	  rtx same = XVECEXP (vals, 0, 0);
-	  rtx temp, temp2;
-
-	  if (CONST_INT_P (same) && nvar == 0
-	      && loongarch_signed_immediate_p (INTVAL (same), 10, 0))
-	    {
-	      switch (vmode)
-		{
-		case E_V16QImode:
-		case E_V8HImode:
-		case E_V4SImode:
-		case E_V2DImode:
-		  temp = gen_rtx_CONST_VECTOR (vmode, XVEC (vals, 0));
-		  emit_move_insn (target, temp);
-		  return;
-
-		default:
-		  gcc_unreachable ();
-		}
-	    }
-	  temp = gen_reg_rtx (imode);
-	  if (imode == GET_MODE (same))
-	    temp2 = same;
-	  else if (GET_MODE_SIZE (imode) >= UNITS_PER_WORD)
-	    {
-	      if (GET_CODE (same) == MEM)
-		{
-		  rtx reg_tmp = gen_reg_rtx (GET_MODE (same));
-		  loongarch_emit_move (reg_tmp, same);
-		  temp2 = simplify_gen_subreg (imode, reg_tmp,
-					       GET_MODE (reg_tmp), 0);
-		}
-	      else
-		temp2 = simplify_gen_subreg (imode, same, GET_MODE (same), 0);
-	    }
-	  else
-	    {
-	      if (GET_CODE (same) == MEM)
-		{
-		  rtx reg_tmp = gen_reg_rtx (GET_MODE (same));
-		  loongarch_emit_move (reg_tmp, same);
-		  temp2 = lowpart_subreg (imode, reg_tmp, GET_MODE (reg_tmp));
-		}
-	      else
-		temp2 = lowpart_subreg (imode, same, GET_MODE (same));
-	    }
-	  emit_move_insn (temp, temp2);
-
-	  switch (vmode)
-	    {
-	    case E_V16QImode:
-	    case E_V8HImode:
-	    case E_V4SImode:
-	    case E_V2DImode:
-	      loongarch_emit_move (target, gen_rtx_VEC_DUPLICATE (vmode, temp));
-	      break;
-
-	    case E_V4SFmode:
-	      emit_insn (gen_lsx_vreplvei_w_f_scalar (target, temp));
-	      break;
-
-	    case E_V2DFmode:
-	      emit_insn (gen_lsx_vreplvei_d_f_scalar (target, temp));
-	      break;
-
-	    default:
-	      gcc_unreachable ();
-	    }
-	}
+	loongarch_expand_vector_init_same (target, vals, nvar);
       else
 	{
-	  emit_move_insn (target, CONST0_RTX (vmode));
-
 	  for (i = 0; i < nelt; ++i)
 	    {
-	      rtx temp = gen_reg_rtx (imode);
-	      emit_move_insn (temp, XVECEXP (vals, 0, i));
-	      switch (vmode)
+	      if (vmode == E_V4SFmode || vmode == E_V2DFmode)
 		{
-		case E_V16QImode:
+		  /* Using vilvl to load lowest 2 elements simultaneously to
+		     reduce the number of instructions.  */
+		  if (i == 1)
+		    {
+		      op0 = gen_reg_rtx (imode);
+		      emit_move_insn (op0, val[0]);
+		      op1 = gen_reg_rtx (imode);
+		      emit_move_insn (op1, val[1]);
+		      emit_insn (loongarch_vec_repl2_128 (target, op0, op1));
+		    }
+		  else if (i > 1)
+		    {
+		      op0 = gen_reg_rtx (imode);
+		      emit_move_insn (op0, val[i]);
+		      emit_insn (
+			loongarch_vec_set128 (target, op0, GEN_INT (i)));
+		    }
+		}
+	      else
+		{
+		  if (half_same && i == nelt / 2)
+		    {
+		      emit_insn (
+			loongarch_vec_mirror (target, target, const0_rtx));
+		      return;
+		    }
+		  /* Assign the lowest element of val to all elements of
+		     target.  */
 		  if (i == 0)
-		    emit_insn (gen_lsx_vreplvei_b_scalar (target, temp));
-		  else
-		    emit_insn (gen_vec_setv16qi (target, temp, GEN_INT (i)));
-		  break;
-
-		case E_V8HImode:
-		  if (i == 0)
-		    emit_insn (gen_lsx_vreplvei_h_scalar (target, temp));
-		  else
-		    emit_insn (gen_vec_setv8hi (target, temp, GEN_INT (i)));
-		  break;
-
-		case E_V4SImode:
-		  if (i == 0)
-		    emit_insn (gen_lsx_vreplvei_w_scalar (target, temp));
-		  else
-		    emit_insn (gen_vec_setv4si (target, temp, GEN_INT (i)));
-		  break;
-
-		case E_V2DImode:
-		  if (i == 0)
-		    emit_insn (gen_lsx_vreplvei_d_scalar (target, temp));
-		  else
-		    emit_insn (gen_vec_setv2di (target, temp, GEN_INT (i)));
-		  break;
-
-		case E_V4SFmode:
-		  if (i == 0)
-		    emit_insn (gen_lsx_vreplvei_w_f_scalar (target, temp));
-		  else
-		    emit_insn (gen_vec_setv4sf (target, temp, GEN_INT (i)));
-		  break;
-
-		case E_V2DFmode:
-		  if (i == 0)
-		    emit_insn (gen_lsx_vreplvei_d_f_scalar (target, temp));
-		  else
-		    emit_insn (gen_vec_setv2df (target, temp, GEN_INT (i)));
-		  break;
-
-		default:
-		  gcc_unreachable ();
+		    {
+		      op0 = gen_reg_rtx (imode);
+		      emit_move_insn (op0, val[0]);
+		      emit_insn (loongarch_vec_repl1_128 (target, op0));
+		    }
+		  else if (!rtx_equal_p (val[i], val[0]))
+		    {
+		      op0 = gen_reg_rtx (imode);
+		      emit_move_insn (op0, val[i]);
+		      emit_insn (
+			loongarch_vec_set128 (target, op0, GEN_INT (i)));
+		    }
 		}
 	    }
 	}
@@ -10640,8 +10940,8 @@ loongarch_expand_vector_init (rtx target, rtx vals)
   /* For two-part initialization, always use CONCAT.  */
   if (nelt == 2)
     {
-      rtx op0 = force_reg (imode, XVECEXP (vals, 0, 0));
-      rtx op1 = force_reg (imode, XVECEXP (vals, 0, 1));
+      rtx op0 = force_reg (imode, val[0]);
+      rtx op1 = force_reg (imode, val[1]);
       x = gen_rtx_VEC_CONCAT (vmode, op0, op1);
       emit_insn (gen_rtx_SET (target, x));
       return;
@@ -11175,6 +11475,8 @@ loongarch_builtin_support_vector_misalignment (machine_mode mode,
 #undef TARGET_VECTORIZE_BUILTIN_VECTORIZATION_COST
 #define TARGET_VECTORIZE_BUILTIN_VECTORIZATION_COST \
   loongarch_builtin_vectorization_cost
+#undef TARGET_VECTORIZE_CREATE_COSTS
+#define TARGET_VECTORIZE_CREATE_COSTS loongarch_vectorize_create_costs
 
 
 #undef TARGET_IN_SMALL_DATA_P

@@ -1,3 +1,125 @@
+2023-10-25  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* oacc-parallel.c (GOACC_data_start): Handle
+	'GOACC_FLAG_LOCAL_DEVICE'.
+	(GOACC_parallel_keyed): Simplify accordingly.
+	* testsuite/libgomp.oacc-fortran/self-1.f90: Adjust.
+
+2023-10-25  Thomas Schwinge  <thomas@codesourcery.com>
+
+	* testsuite/libgomp.oacc-c-c++-common/if-1.c: Enhance.
+	* testsuite/libgomp.oacc-c-c++-common/self-1.c: Likewise.
+	* testsuite/libgomp.oacc-fortran/if-1.f90: Likewise.
+	* testsuite/libgomp.oacc-c-c++-common/if-self-1.c: New.
+	* testsuite/libgomp.oacc-fortran/self-1.f90: Likewise.
+
+2023-10-25  Chung-Lin Tang  <cltang@codesourcery.com>
+
+	* oacc-parallel.c (GOACC_parallel_keyed): Add code to handle
+	GOACC_FLAG_LOCAL_DEVICE case.
+	* testsuite/libgomp.oacc-c-c++-common/self-1.c: New test.
+
+2023-10-22  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* Makefile.am: Handle Darwin rpaths.
+	* Makefile.in: Regenerate.
+	* configure: Regenerate.
+	* configure.ac: Handle Darwin rpaths
+
+2023-10-20  Andrew Stubbs  <ams@codesourcery.com>
+
+	* plugin/plugin-gcn.c (EF_AMDGPU_MACH_AMDGCN_GFX1030): New.
+	(isa_hsa_name): Recognise gfx1030.
+	(isa_code): Likewise.
+	* team.c (defined): Remove s_endpgm.
+
+2023-10-20  Tobias Burnus  <tobias@codesourcery.com>
+
+	* omp_lib.f90.in: Tag omp_lock_hint_* as being deprecated when
+	_OPENMP >= 201811.
+
+2023-10-15  Tobias Burnus  <tobias@codesourcery.com>
+
+	* libgomp.texi (Enabling OpenMP): Update for C/C++ attributes;
+	improve wording especially for Fortran; mention -fopenmp-simd.
+	(Enabling OpenACC): Minor cleanup; remove conditional compilation
+	sentinel.
+
+2023-10-15  Tobias Burnus  <tobias@codesourcery.com>
+
+	* libgomp.texi (ACC_DEVICE_TYPE, ACC_DEVICE_NUM, ACC_PROFLIB):
+	Actually document what the function does.
+	(GCC_ACC_NOTIFY): Remove unused env var.
+
+2023-10-15  Tobias Burnus  <tobias@codesourcery.com>
+
+	* libgomp.texi: Replace most future tense by present tense.
+
+2023-10-14  Tobias Burnus  <tobias@codesourcery.com>
+
+	* testsuite/libgomp.fortran/allocate-6.f90: Add missing
+	dg-additional-options "-fdump-tree-gimple"; fix scan.
+
+2023-10-14  Tobias Burnus  <tobias@codesourcery.com>
+
+	* libgomp.texi: Fix some typos.
+	(Memory Management Routines): Document remaining 5.x routines.
+	(Memory allocation): Make clear when the section applies.
+
+2023-10-14  Tobias Burnus  <tobias@codesourcery.com>
+
+	* libgomp.texi (OpenMP Impl. Status): Mention that Fortran now
+	supports the allocate directive for stack variables.
+	* testsuite/libgomp.fortran/allocate-5.f90: New test.
+	* testsuite/libgomp.fortran/allocate-6.f90: New test.
+	* testsuite/libgomp.fortran/allocate-7.f90: New test.
+	* testsuite/libgomp.fortran/allocate-8.f90: New test.
+
+2023-10-12  Tobias Burnus  <tobias@codesourcery.com>
+
+	* libgomp.texi (OMP_DEFAULT_DEVICE): Update spec ref; add @ref to
+	OMP_TARGET_OFFLOAD.
+	(OMP_TARGET_OFFLOAD): Update spec ref; add @ref to OMP_DEFAULT_DEVICE;
+	clarify MANDATORY behavior.
+
+2023-10-12  Zhang, Jun  <jun.zhang@intel.com>
+
+	* env.c (initialize_env): Use do_adjust_default_spincount.
+	* config/linux/x86/spincount.h: New file.
+
+2023-10-08  Tobias Burnus  <tobias@codesourcery.com>
+
+	* testsuite/libgomp.fortran/strictly-structured-block-1.f90: New test.
+
+2023-10-06  Tobias Burnus  <tobias@codesourcery.com>
+
+	* libgomp.texi (Device Memory Routines): New.
+
+2023-10-04  Tobias Burnus  <tobias@codesourcery.com>
+
+	* libgomp.texi (OpenMP Context Selectors): Clarify 'kind' trait
+	and that other target archs have no 'arch'/'isa' traits implemented.
+
+2023-09-20  Tobias Burnus  <tobias@codesourcery.com>
+
+	* libgomp.texi (OpenMP 5.1 Impl.): Mark 'omp allocate' as
+	implemented for C only.
+	* testsuite/libgomp.c/allocate-4.c: New test.
+	* testsuite/libgomp.c/allocate-5.c: New test.
+	* testsuite/libgomp.c/allocate-6.c: New test.
+
+2023-09-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/111392
+	* libgomp.texi: Mark decl attribute was added to the C++ attribute
+	syntax as implemented.
+
+2023-09-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR libgomp/111413
+	* env.c (initialize_env): Don't dereference environ if it is NULL.
+	Reindent.
+
 2023-09-18  Richard Biener  <rguenther@suse.de>
 
 	PR tree-optimization/111294

@@ -90,6 +90,9 @@
 #  tm_d_file		A list of headers with definitions of target hook
 #			macros for the D compiler.
 #
+#  tm_rust_file		list of headers with definitions of target hook
+#			macros for the Rust compiler.
+#
 #  out_file		The name of the machine description C support
 #			file, if different from "$cpu_type/$cpu_type.c".
 #
@@ -149,6 +152,9 @@
 #  fortran_target_objs	List of extra target-dependent objects that be
 #			linked into the fortran compiler only.
 #
+#  rust_target_objs	List of extra target-dependent objects that be
+#			linked into the Rust compiler only.
+#
 #  target_gtfiles       List of extra source files with type information.
 #
 #  xm_defines		List of macros to define when compiling for the
@@ -201,6 +207,9 @@
 #
 #  target_has_targetdm	Set to yes or no depending on whether the target
 #			has its own definition of targetdm.
+#
+#  target_has_targetrustm	Set to yes or no depending on whether the target
+#			has its own definition of targetrustm.
 
 out_file=
 common_out_file=
@@ -218,9 +227,11 @@ c_target_objs=
 cxx_target_objs=
 d_target_objs=
 fortran_target_objs=
+rust_target_objs=
 target_has_targetcm=no
 target_has_targetm_common=yes
 target_has_targetdm=no
+target_has_targetrustm=no
 tm_defines=
 xm_defines=
 # Set this to force installation and use of collect2.
@@ -425,18 +436,20 @@ i[34567]86-*-* | x86_64-*-*)
 		       avx512vbmi2vlintrin.h avx512vnniintrin.h
 		       avx512vnnivlintrin.h vaesintrin.h vpclmulqdqintrin.h
 		       avx512vpopcntdqvlintrin.h avx512bitalgintrin.h
-		       pconfigintrin.h wbnoinvdintrin.h movdirintrin.h
-		       waitpkgintrin.h cldemoteintrin.h avx512bf16vlintrin.h
-		       avx512bf16intrin.h enqcmdintrin.h serializeintrin.h
-		       avx512vp2intersectintrin.h avx512vp2intersectvlintrin.h
-		       tsxldtrkintrin.h amxtileintrin.h amxint8intrin.h
-		       amxbf16intrin.h x86gprintrin.h uintrintrin.h
-		       hresetintrin.h keylockerintrin.h avxvnniintrin.h
-		       mwaitintrin.h avx512fp16intrin.h avx512fp16vlintrin.h
-		       avxifmaintrin.h avxvnniint8intrin.h avxneconvertintrin.h
+		       avx512bitalgvlintrin.h pconfigintrin.h wbnoinvdintrin.h
+		       movdirintrin.h waitpkgintrin.h cldemoteintrin.h
+		       avx512bf16vlintrin.h avx512bf16intrin.h enqcmdintrin.h
+		       serializeintrin.h avx512vp2intersectintrin.h
+		       avx512vp2intersectvlintrin.h tsxldtrkintrin.h
+		       amxtileintrin.h amxint8intrin.h amxbf16intrin.h
+		       x86gprintrin.h uintrintrin.h hresetintrin.h
+		       keylockerintrin.h avxvnniintrin.h mwaitintrin.h
+		       avx512fp16intrin.h avx512fp16vlintrin.h avxifmaintrin.h
+		       avxvnniint8intrin.h avxneconvertintrin.h
 		       cmpccxaddintrin.h amxfp16intrin.h prfchiintrin.h
 		       raointintrin.h amxcomplexintrin.h avxvnniint16intrin.h
-		       sm3intrin.h sha512intrin.h sm4intrin.h"
+		       sm3intrin.h sha512intrin.h sm4intrin.h
+		       usermsrintrin.h"
 	;;
 ia64-*-*)
 	extra_headers=ia64intrin.h
@@ -591,6 +604,16 @@ then
 	tm_d_file="${tm_d_file} ${cpu_type}/${cpu_type}-d.h"
 fi
 
+tm_rust_file=
+if test -f ${srcdir}/config/${cpu_type}/${cpu_type}-rust.h
+then
+	tm_rust_file="${cpu_type}/${cpu_type}-rust.h"
+fi
+if test -f ${srcdir}/config/${cpu_type}/${cpu_type}-rust.cc
+then
+	rust_target_objs="${rust_target_objs} ${cpu_type}-rust.o"
+fi
+
 extra_modes=
 if test -f ${srcdir}/config/${cpu_type}/${cpu_type}-modes.def
 then
@@ -685,7 +708,7 @@ skylake goldmont goldmont-plus tremont cascadelake tigerlake cooperlake \
 sapphirerapids alderlake rocketlake eden-x2 nano nano-1000 nano-2000 nano-3000 \
 nano-x2 eden-x4 nano-x4 lujiazui x86-64 x86-64-v2 x86-64-v3 x86-64-v4 \
 sierraforest graniterapids graniterapids-d grandridge arrowlake arrowlake-s \
-native"
+clearwaterforest pantherlake native"
 
 # Additional x86 processors supported by --with-cpu=.  Each processor
 # MUST be separated by exactly one space.
@@ -759,8 +782,10 @@ case ${target} in
   cxx_target_objs="${cxx_target_objs} darwin-c.o"
   d_target_objs="${d_target_objs} darwin-d.o"
   fortran_target_objs="darwin-f.o"
+  rust_target_objs="${rust_target_objs} darwin-rust.o"
   target_has_targetcm=yes
   target_has_targetdm=yes
+  target_has_targetrustm=yes
   extra_objs="${extra_objs} darwin.o"
   extra_gcc_objs="darwin-driver.o"
   default_use_cxa_atexit=yes
@@ -791,6 +816,8 @@ case ${target} in
   d_target_objs="${d_target_objs} dragonfly-d.o"
   tmake_file="${tmake_file} t-dragonfly"
   target_has_targetdm=yes
+  rust_target_objs="${rust_target_objs} dragonfly-rust.o"
+  target_has_targetrustm=yes
   ;;
 *-*-freebsd*)
   # This is the generic ELF configuration of FreeBSD.  Later
@@ -842,9 +869,14 @@ case ${target} in
   d_target_objs="${d_target_objs} freebsd-d.o"
   tmake_file="${tmake_file} t-freebsd"
   target_has_targetdm=yes
+  rust_target_objs="${rust_target_objs} freebsd-rust.o"
+  target_has_targetrustm=yes
   ;;
 *-*-fuchsia*)
   native_system_header_dir=/include
+  tmake_file="t-fuchsia"
+  rust_target_objs="${rust_target_objs} fuchsia-rust.o"
+  target_has_targetrustm=yes
   ;;
 *-*-linux* | frv-*-*linux* | *-*-kfreebsd*-gnu | *-*-gnu* | *-*-kopensolaris*-gnu | *-*-uclinuxfdpiceabi)
   extra_options="$extra_options gnu-user.opt"
@@ -915,6 +947,8 @@ case ${target} in
     *-*-*linux*)
       d_target_objs="${d_target_objs} linux-d.o"
       target_has_targetdm=yes
+      rust_target_objs="${rust_target_objs} linux-rust.o"
+      target_has_targetrustm=yes
       ;;
     *-*-kfreebsd*-gnu)
       d_target_objs="${d_target_objs} kfreebsd-d.o"
@@ -949,6 +983,8 @@ case ${target} in
       default_gnu_indirect_function=yes
       ;;
   esac
+  rust_target_objs="${rust_target_objs} netbsd-rust.o"
+  target_has_targetrustm=yes
   ;;
 *-*-openbsd*)
   tmake_file="t-openbsd"
@@ -964,6 +1000,8 @@ case ${target} in
   esac
   d_target_objs="${d_target_objs} openbsd-d.o"
   target_has_targetdm=yes
+  rust_target_objs="${rust_target_objs} openbsd-rust.o"
+  target_has_targetrustm=yes
   ;;
 *-*-phoenix*)
   gas=yes
@@ -1028,6 +1066,8 @@ case ${target} in
       ;;
   esac
   target_has_targetdm=yes
+  rust_target_objs="${rust_target_objs} sol2-rust.o"
+  target_has_targetrustm=yes
   ;;
 *-*-*vms*)
   extra_options="${extra_options} vms/vms.opt"
@@ -1059,6 +1099,9 @@ case ${target} in
   cxx_target_objs="${cxx_target_objs} vxworks-c.o"
   extra_headers="${extra_headers} ../vxworks/vxworks-predef.h"
   target_has_targetcm="yes"
+
+  rust_target_objs="${rust_target_objs} vxworks-rust.o"
+  target_has_targetrustm=yes
 
   extra_gcc_objs="vxworks-driver.o"
 
@@ -1125,6 +1168,17 @@ case ${target} in
   no-no) use_gcc_stdint=provide ;;
   *) ;;
   esac
+  ;;
+esac
+
+# Figure out if we need to enable heap trampolines by default
+case ${target} in
+*-*-darwin2*)
+  # Currently, we do this for macOS 11 and above.
+  tm_defines="$tm_defines HEAP_TRAMPOLINES_INIT=1"
+  ;;
+*)
+  tm_defines="$tm_defines HEAP_TRAMPOLINES_INIT=0"
   ;;
 esac
 
@@ -2132,6 +2186,8 @@ i[34567]86-*-mingw* | x86_64-*-mingw*)
 	d_target_objs="${d_target_objs} winnt-d.o"
 	target_has_targetcm="yes"
 	target_has_targetdm="yes"
+	rust_target_objs="${rust_target_objs} winnt-rust.o"
+	target_has_targetrustm="yes"
 	case ${target} in
 		x86_64-*-* | *-w64-*)
 			need_64bit_isa=yes
@@ -2481,7 +2537,7 @@ riscv*-*-freebsd*)
 
 loongarch*-*-linux*)
 	tm_file="elfos.h gnu-user.h linux.h linux-android.h glibc-stdint.h ${tm_file}"
-	tm_file="${tm_file} loongarch/gnu-user.h loongarch/linux.h"
+	tm_file="${tm_file} loongarch/gnu-user.h loongarch/linux.h loongarch/loongarch-driver.h"
 	extra_options="${extra_options} linux-android.opt"
 	tmake_file="${tmake_file} loongarch/t-multilib loongarch/t-linux"
 	gnu_ld=yes
@@ -2494,7 +2550,7 @@ loongarch*-*-linux*)
 
 loongarch*-*-elf*)
 	tm_file="elfos.h newlib-stdint.h ${tm_file}"
-	tm_file="${tm_file} loongarch/elf.h loongarch/linux.h"
+	tm_file="${tm_file} loongarch/elf.h loongarch/linux.h loongarch/loongarch-driver.h"
 	tmake_file="${tmake_file} loongarch/t-multilib loongarch/t-linux"
 	gnu_ld=yes
 	gas=yes
@@ -3607,6 +3663,10 @@ if [ "$target_has_targetdm" = "no" ]; then
   d_target_objs="$d_target_objs default-d.o"
 fi
 
+if [ "$target_has_targetrustm" = "no" ]; then
+  rust_target_objs="$rust_target_objs default-rust.o"
+fi
+
 # Support for --with-cpu and related options (and a few unrelated options,
 # too).
 case ${with_cpu} in
@@ -4139,8 +4199,8 @@ case "${target}" in
 		fi
 		for which in cpu arch tune; do
 			eval "val=\$with_$which"
-			base_val=`echo $val | sed -e 's/\+.*//'`
-			ext_val=`echo $val | sed -e 's/[a-z0-9.-]\+//'`
+			base_val=`echo $val | sed -E -e 's/\+.*//'`
+			ext_val=`echo $val | sed -E -e 's/[a-z0-9.-]+//'`
 
 			if [ $which = arch ]; then
 			  def=aarch64-arches.def
@@ -4172,9 +4232,9 @@ case "${target}" in
 
 			  while [ x"$ext_val" != x ]
 			  do
-				ext_val=`echo $ext_val | sed -e 's/\+//'`
-				ext=`echo $ext_val | sed -e 's/\+.*//'`
-				base_ext=`echo $ext | sed -e 's/^no//'`
+				ext_val=`echo $ext_val | sed -E -e 's/\+//'`
+				ext=`echo $ext_val | sed -E -e 's/\+.*//'`
+				base_ext=`echo $ext | sed -E -e 's/^no//'`
 				opt_line=`echo -e "$options_parsed" | \
 					grep "^\"$base_ext\""`
 
@@ -4185,7 +4245,7 @@ case "${target}" in
 				  echo "Unknown extension used in --with-$which=$val" 1>&2
 				  exit 1
 				fi
-				ext_val=`echo $ext_val | sed -e 's/[a-z0-9]\+//'`
+				ext_val=`echo $ext_val | sed -E -e 's/[a-z0-9]+//'`
 			  done
 
 			  true
@@ -4480,7 +4540,7 @@ case "${target}" in
 		for which in arch tune; do
 			eval "val=\$with_$which"
 			case ${val} in
-			"" | fiji | gfx900 | gfx906 | gfx908 | gfx90a)
+			"" | fiji | gfx900 | gfx906 | gfx908 | gfx90a | gfx1030)
 				# OK
 				;;
 			*)
@@ -4489,7 +4549,19 @@ case "${target}" in
 				;;
 			esac
 		done
-		[ "x$with_arch" = x ] && with_arch=fiji
+		[ "x$with_arch" = x ] && with_arch=gfx900
+
+		case "x${with_multilib_list}" in
+		x | xno)
+			TM_MULTILIB_CONFIG=
+			;;
+		xdefault | xyes)
+			TM_MULTILIB_CONFIG=`echo "gfx900,gfx906,gfx908,gfx90a" | sed "s/${with_arch},\?//;s/,$//"`
+			;;
+		*)
+			TM_MULTILIB_CONFIG="${with_multilib_list}"
+			;;
+		esac
 		;;
 
 	hppa*-*-*)

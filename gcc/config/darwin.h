@@ -133,10 +133,9 @@ extern GTY(()) int darwin_ms_struct;
    cases where these driver opts are used multiple times, or to control
    operations on more than one command (e.g. dynamiclib).  These are handled
    specially and we then add %<xxxx specs for the commands that _don't_ need
-   them.  NOTE: the order of 'shared' and 'dynamiclib' is significant, hence
-   they are placed out of alphabetical order at the start.  Likewise, we keep
-   a couple of cases where a negative option originally appeared after the
-   positive alternate, potentially overriding it.
+   them.
+   We keep a couple of cases where a negative option originally appeared after
+   the positive alternate, potentially overriding it.
    When we report an error with %e, it seems necessary to strip the option
    before doing so, otherwise it survives to the cc1 command line (%e doesn't
    appear to abort the program before this).
@@ -147,9 +146,9 @@ extern GTY(()) int darwin_ms_struct;
 
 #undef SUBTARGET_DRIVER_SELF_SPECS
 #define SUBTARGET_DRIVER_SELF_SPECS					\
-  "%{shared:%{!dynamiclib:-dynamiclib}} %<shared",			\
-  "%{static:%{dynamic|dynamiclib:%econflicting code generation switches}}",\
-  "%{dynamiclib:-Xlinker -dylib \
+  "%{static|fapple-kext|mkernel:%{shared|dynamic|dynamiclib: \
+     %econflicting code generation switches}}",\
+  "%{shared|dynamiclib:-Xlinker -dylib \
      %{allowable_client*:-Xlinker -allowable_client -Xlinker %*} \
        %<allowable_client* \
      %{bundle_loader*: %<bundle_loader* \
@@ -167,8 +166,8 @@ extern GTY(()) int darwin_ms_struct;
        %e-keep_private_externs not allowed with -dynamiclib} \
      %{private_bundle: %<private_bundle \
        %e-private_bundle not allowed with -dynamiclib} \
-    }",									\
-  "%{!dynamiclib: \
+    }",							\
+  "%{!dynamiclib:%{!shared: \
      %{bundle_loader*:-Xlinker -bundle_loader -Xlinker %*} \
        %<bundle_loader* \
      %{client_name*:-Xlinker -client_name -Xlinker %*} \
@@ -183,13 +182,14 @@ extern GTY(()) int darwin_ms_struct;
        %<keep_private_externs \
      %{private_bundle:-Xlinker -private_bundle} \
        %<private_bundle \
-    }",									\
+    }}",									\
   "%{all_load:-Xlinker -all_load} %<all_load",				\
   "%{arch_errors_fatal:-Xlinker -arch_errors_fatal} \
     %<arch_errors_fatal",						\
   "%{bind_at_load:-Xlinker -bind_at_load} %<bind_at_load",		\
-  "%{bundle:%{!dynamiclib:-Xlinker -bundle; \
-              :%e-bundle not allowed with -dynamiclib}}",	\
+  "%{bundle:%{!dynamiclib:%{!shared: -Xlinker -bundle; \
+			    :%e-bundle not allowed with -shared}; \
+	      :%e-bundle not allowed with -dynamiclib}}",		\
   "%{dead_strip:-Xlinker -dead_strip} %<dead_strip",			\
   "%{dylib_file*:-Xlinker -dylib_file -Xlinker %*} %<dylib_file*",	\
   "%{dylinker:-Xlinker -dylinker} %<dylinker",				\
@@ -307,7 +307,32 @@ extern GTY(()) int darwin_ms_struct;
    %:version-compare(>= 10.7 mmacosx-version-min= -no_pie) }"
 
 #define DARWIN_CC1_SPEC							\
-  "%<dynamic %<dynamiclib %<force_cpusubtype_ALL %<multiply_defined* "
+  "%<dynamic %<force_cpusubtype_ALL %<multiply_defined* %<dynamiclib"
+
+/* When we are using embedded runpaths DARWIN_AT_RPATH is set. */
+#if DARWIN_AT_RPATH
+# define DARWIN_RPATH_LINK \
+"%{!r:%{!nostdlib:%{!nodefaultrpaths:%(darwin_rpaths)}}}"
+# define DARWIN_SHARED_LIBGCC "-lgcc_s.1.1"
+#else
+# define DARWIN_RPATH_LINK ""
+# define DARWIN_SHARED_LIBGCC \
+"%:version-compare(!> 10.11 mmacosx-version-min= -lgcc_s.1.1) \
+ %:version-compare(>= 10.11 mmacosx-version-min= -lemutls_w) "
+#endif
+
+/* We might elect to add a path even when this compiler does not use embedded
+   run paths, so that we can use libraries from an alternate compiler that is
+   using embedded runpaths.  */
+#if DARWIN_DO_EXTRA_RPATH
+# define DARWIN_EXTRA_RPATH \
+"%{!r:%{!nostdlib:%{!nodefaultrpaths:\
+    %:version-compare(>= 10.5 mmacosx-version-min= -rpath) \
+    %:version-compare(>= 10.5 mmacosx-version-min= " DARWIN_ADD_RPATH ") \
+  }}}"
+#else
+# define DARWIN_EXTRA_RPATH ""
+#endif
 
 #define SUBSUBTARGET_OVERRIDE_OPTIONS					\
   do {									\
@@ -403,7 +428,9 @@ extern GTY(()) int darwin_ms_struct;
     DARWIN_NOPIE_SPEC \
     DARWIN_RDYNAMIC \
     DARWIN_NOCOMPACT_UNWIND \
-    "}}}}}}} %<pie %<no-pie %<rdynamic %<X %<rpath "
+    DARWIN_EXTRA_RPATH \
+    DARWIN_RPATH_LINK \
+    "}}}}}}} %<pie %<no-pie %<rdynamic %<X %<rpath %<nodefaultrpaths "
 
 /* Spec that controls whether the debug linker is run automatically for
    a link step.  This needs to be done if there is a source file on the
@@ -518,8 +545,7 @@ extern GTY(()) int darwin_ms_struct;
     %:version-compare(!> 10.6 mmacosx-version-min= -lgcc_eh)		  \
     %:version-compare(>= 10.6 mmacosx-version-min= -lemutls_w);		  \
    shared-libgcc|fexceptions|fobjc-exceptions|fgnu-runtime:		  \
-    %:version-compare(!> 10.11 mmacosx-version-min= -lgcc_s.1.1)	  \
-    %:version-compare(>= 10.11 mmacosx-version-min= -lemutls_w)		  \
+   " DARWIN_SHARED_LIBGCC "						  \
     %:version-compare(!> 10.3.9 mmacosx-version-min= -lgcc_eh)		  \
     %:version-compare(>< 10.3.9 10.5 mmacosx-version-min= -lgcc_s.10.4)   \
     %:version-compare(>< 10.5 10.6 mmacosx-version-min= -lgcc_s.10.5);	  \
@@ -530,8 +556,8 @@ extern GTY(()) int darwin_ms_struct;
 
 #undef  STARTFILE_SPEC
 #define STARTFILE_SPEC							    \
-"%{dynamiclib: %(darwin_dylib1) %{fgnu-tm: -lcrttms.o}}			   \
- %{!dynamiclib:%{bundle:%(darwin_bundle1)}				    \
+"%{dynamiclib|shared: %(darwin_dylib1) %{fgnu-tm: -lcrttms.o}}		   \
+ %{!dynamiclib:%{!shared:%{bundle:%(darwin_bundle1)}			    \
      %{!bundle:%{pg:%{static:-lgcrt0.o}					    \
                      %{!static:%{object:-lgcrt0.o}			    \
                                %{!object:%{preload:-lgcrt0.o}		    \
@@ -542,8 +568,8 @@ extern GTY(()) int darwin_ms_struct;
                       %{!static:%{object:-lcrt0.o}			    \
                                 %{!object:%{preload:-lcrt0.o}		    \
                                   %{!preload: %(darwin_crt1)		    \
-					      %(darwin_crt2)}}}}}}	    \
- %(darwin_crt3) %<dynamiclib "
+					      %(darwin_crt2)}}}}}}}	    \
+ %(darwin_crt3) "
 
 /* We want a destructor last in the list.  */
 #define TM_DESTRUCTOR "%{fgnu-tm: -lcrttme.o}"
@@ -554,7 +580,8 @@ extern GTY(()) int darwin_ms_struct;
   { "darwin_crt2", DARWIN_CRT2_SPEC },					\
   { "darwin_crt3", DARWIN_CRT3_SPEC },					\
   { "darwin_dylib1", DARWIN_DYLIB1_SPEC },				\
-  { "darwin_bundle1", DARWIN_BUNDLE1_SPEC },
+  { "darwin_bundle1", DARWIN_BUNDLE1_SPEC },				\
+  { "darwin_rpaths", DARWIN_RPATH_SPEC },
 
 #define DARWIN_CRT1_SPEC						\
   "%:version-compare(!> 10.5 mmacosx-version-min= -lcrt1.o)		\
@@ -579,6 +606,17 @@ extern GTY(()) int darwin_ms_struct;
 #define DARWIN_BUNDLE1_SPEC \
 "%{!static:%:version-compare(< 10.6 mmacosx-version-min= -lbundle1.o)	\
 	   %{fgnu-tm: -lcrttms.o}}"
+
+#if DARWIN_AT_RPATH
+/* A default rpath, that picks up dependent libraries installed in the same
+   director as one being loaded.  */
+#define DARWIN_RPATH_SPEC \
+  "%:version-compare(>= 10.5 mmacosx-version-min= -rpath) \
+   %:version-compare(>= 10.5 mmacosx-version-min= @loader_path) \
+   %P "
+#else
+#define DARWIN_RPATH_SPEC ""
+#endif
 
 #ifdef HAVE_AS_MMACOSX_VERSION_MIN_OPTION
 /* Emit macosx version (but only major).  */

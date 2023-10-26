@@ -5747,9 +5747,12 @@ visit_reference_op_load (tree lhs, tree op, gimple *stmt)
     {
       /* Avoid the type punning in case the result mode has padding where
 	 the op we lookup has not.  */
-      if (maybe_lt (GET_MODE_PRECISION (TYPE_MODE (TREE_TYPE (result))),
-		    GET_MODE_PRECISION (TYPE_MODE (TREE_TYPE (op)))))
+      if (TYPE_MODE (TREE_TYPE (result)) != BLKmode
+	  && maybe_lt (GET_MODE_PRECISION (TYPE_MODE (TREE_TYPE (result))),
+		       GET_MODE_PRECISION (TYPE_MODE (TREE_TYPE (op)))))
 	result = NULL_TREE;
+      else if (CONSTANT_CLASS_P (result))
+	result = const_unop (VIEW_CONVERT_EXPR, TREE_TYPE (op), result);
       else
 	{
 	  /* We will be setting the value number of lhs to the value number
@@ -7004,10 +7007,7 @@ eliminate_dom_walker::eliminate_stmt (basic_block b, gimple_stmt_iterator *gsi)
 	  && !type_has_mode_precision_p (TREE_TYPE (lhs)))
 	{
 	  if (TREE_CODE (TREE_TYPE (lhs)) == BITINT_TYPE
-	      && (TYPE_PRECISION (TREE_TYPE (lhs))
-		  > (targetm.scalar_mode_supported_p (TImode)
-		     ? GET_MODE_PRECISION (TImode)
-		     : GET_MODE_PRECISION (DImode))))
+	      && TYPE_PRECISION (TREE_TYPE (lhs)) > MAX_FIXED_MODE_SIZE)
 	    lookup_lhs = NULL_TREE;
 	  else if (TREE_CODE (lhs) == COMPONENT_REF
 		   || TREE_CODE (lhs) == MEM_REF)
@@ -7691,7 +7691,11 @@ rpo_elim::eliminate_avail (basic_block bb, tree op)
     {
       if (SSA_NAME_IS_DEFAULT_DEF (valnum))
 	return valnum;
-      vn_avail *av = VN_INFO (valnum)->avail;
+      vn_ssa_aux_t valnum_info = VN_INFO (valnum);
+      /* See above.  */
+      if (!valnum_info->visited)
+	return valnum;
+      vn_avail *av = valnum_info->avail;
       if (!av)
 	return NULL_TREE;
       if (av->location == bb->index)

@@ -339,6 +339,7 @@ private:
   bool set_range_from_bitmask ();
 
   bool intersect (const wide_int& lb, const wide_int& ub);
+  bool union_append (const irange &r);
   unsigned char m_num_ranges;
   bool m_resizable;
   unsigned char m_max_ranges;
@@ -626,7 +627,9 @@ irange::maybe_resize (int needed)
     {
       m_max_ranges = HARD_MAX_RANGES;
       wide_int *newmem = new wide_int[m_max_ranges * 2];
-      memcpy (newmem, m_base, sizeof (wide_int) * num_pairs () * 2);
+      unsigned n = num_pairs () * 2;
+      for (unsigned i = 0; i < n; ++i)
+	newmem[i] = m_base[i];
       m_base = newmem;
     }
 }

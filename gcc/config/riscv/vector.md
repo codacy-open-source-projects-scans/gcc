@@ -800,31 +800,22 @@
 	(const_int INVALID_ATTRIBUTE)))
 
 ;; The avl type value.
-(define_attr "avl_type" ""
-  (cond [(eq_attr "mode" "V1QI,V2QI,V4QI,V8QI,V16QI,V32QI,V64QI,V128QI,V256QI,V512QI,V1024QI,V2048QI,V4096QI,
-			  V1BI,V2BI,V4BI,V8BI,V16BI,V32BI,V64BI,V128BI,V256BI,V512BI,V1024BI,V2048BI,V4096BI,
-			  V1HI,V2HI,V4HI,V8HI,V16HI,V32HI,V64HI,V128HI,V256HI,V512HI,V1024HI,V2048HI,
-			  V1SI,V2SI,V4SI,V8SI,V16SI,V32SI,V64SI,V128SI,V256SI,V512SI,V1024SI,
-			  V1DI,V2DI,V4DI,V8DI,V16DI,V32DI,V64DI,V128DI,V256DI,V512DI,
-			  V1HF,V2HF,V4HF,V8HF,V16HF,V32HF,V64HF,V128HF,V256HF,V512HF,V1024HF,V2048HF,
-			  V1SF,V2SF,V4SF,V8SF,V16SF,V32SF,V64SF,V128SF,V256SF,V512SF,V1024SF,
-			  V1DF,V2DF,V4DF,V8DF,V16DF,V32DF,V64DF,V128DF,V256DF,V512DF")
-	   (symbol_ref "riscv_vector::NONVLMAX")
-	(eq_attr "type" "vlde,vldff,vste,vimov,vimov,vimov,vfmov,vext,vimerge,\
+(define_attr "avl_type_idx" ""
+  (cond [(eq_attr "type" "vlde,vldff,vste,vimov,vimov,vimov,vfmov,vext,vimerge,\
 			  vfsqrt,vfrecp,vfmerge,vfcvtitof,vfcvtftoi,vfwcvtitof,\
 			  vfwcvtftoi,vfwcvtftof,vfncvtitof,vfncvtftoi,vfncvtftof,\
 			  vfclass,vired,viwred,vfredu,vfredo,vfwredu,vfwredo,\
 			  vimovxv,vfmovfv,vlsegde,vlsegdff")
-	   (symbol_ref "INTVAL (operands[7])")
+	   (const_int 7)
 	 (eq_attr "type" "vldm,vstm,vimov,vmalu,vmalu")
-	   (symbol_ref "INTVAL (operands[5])")
+	   (const_int 5)
 
 	 ;; If operands[3] of "vlds" is not vector mode, it is pred_broadcast.
 	 ;; wheras it is pred_strided_load if operands[3] is vector mode.
 	 (eq_attr "type" "vlds")
 	   (if_then_else (match_test "VECTOR_MODE_P (GET_MODE (operands[3]))")
 	     (const_int INVALID_ATTRIBUTE)
-	     (symbol_ref "INTVAL (operands[7])"))
+	     (const_int 7))
 
 	 (eq_attr "type" "vldux,vldox,vialu,vshift,viminmax,vimul,vidiv,vsalu,\
 			  viwalu,viwmul,vnshift,vaalu,vsmul,vsshift,\
@@ -832,18 +823,18 @@
 			  vfsgnj,vfcmp,vslideup,vslidedown,vislide1up,\
 			  vislide1down,vfslide1up,vfslide1down,vgather,viwmuladd,vfwmuladd,\
 			  vlsegds,vlsegdux,vlsegdox")
-	   (symbol_ref "INTVAL (operands[8])")
+	   (const_int 8)
 	 (eq_attr "type" "vstux,vstox,vssegts,vssegtux,vssegtox")
-	   (symbol_ref "INTVAL (operands[5])")
+	   (const_int 5)
 
 	 (eq_attr "type" "vimuladd,vfmuladd")
-	   (symbol_ref "INTVAL (operands[9])")
+	   (const_int 9)
 
 	 (eq_attr "type" "vmsfs,vmidx,vcompress")
-	   (symbol_ref "INTVAL (operands[6])")
+	   (const_int 6)
 
 	 (eq_attr "type" "vmpop,vmffs,vssegte")
-	   (symbol_ref "INTVAL (operands[4])")]
+	   (const_int 4)]
 	(const_int INVALID_ATTRIBUTE)))
 
 ;; Defines rounding mode of an fixed-point operation.
@@ -939,7 +930,8 @@
 	(unspec:P [(match_operand:P 1 "const_int_operand" "i")] UNSPEC_VLMAX))]
   "TARGET_VECTOR"
   ""
-  [(set_attr "type" "vector")])
+  [(set_attr "type" "vsetvl_pre")]
+  )
 
 ;; Set VXRM
 (define_insn "vxrmsi"
@@ -1037,7 +1029,7 @@
 	 before spilling. The clobber scratch is used by spilling fractional
 	 registers in IRA/LRA so it's too early.  */
 
-  if (riscv_vector::legitimize_move (operands[0], operands[1]))
+  if (riscv_vector::legitimize_move (operands[0], &operands[1]))
     DONE;
 })
 
@@ -1093,7 +1085,7 @@
 	(match_operand:VB 1 "general_operand"))]
   "TARGET_VECTOR"
 {
-  if (riscv_vector::legitimize_move (operands[0], operands[1]))
+  if (riscv_vector::legitimize_move (operands[0], &operands[1]))
     DONE;
 })
 
@@ -1207,7 +1199,8 @@
     DONE;
   }
   [(set_attr "type" "vmov,vlde,vste")
-   (set_attr "mode" "<VT:MODE>")])
+   (set_attr "mode" "<VT:MODE>")
+   (set (attr "avl_type_idx") (const_int INVALID_ATTRIBUTE))])
 
 ;; -----------------------------------------------------------------
 ;; ---- VLS Moves Operations
@@ -1218,46 +1211,9 @@
 	(match_operand:VLS_AVL_IMM 1 "general_operand"))]
   "TARGET_VECTOR"
 {
-  if (riscv_vector::legitimize_move (operands[0], operands[1]))
+  if (riscv_vector::legitimize_move (operands[0], &operands[1]))
     DONE;
 })
-
-(define_insn_and_split "*mov<mode>_mem_to_mem"
-  [(set (match_operand:VLS_AVL_IMM 0 "memory_operand")
-	(match_operand:VLS_AVL_IMM 1 "memory_operand"))]
-  "TARGET_VECTOR && can_create_pseudo_p ()"
-  "#"
-  "&& 1"
-  [(const_int 0)]
-  {
-    if (GET_MODE_BITSIZE (<MODE>mode).to_constant () <= MAX_BITS_PER_WORD)
-      {
-        /* Opitmize the following case:
-
-	    typedef int8_t v2qi __attribute__ ((vector_size (2)));
-	    v2qi v = *(v2qi*)in;
-	    *(v2qi*)out = v;
-
-	    We prefer scalar load/store instead of vle.v/vse.v when
-	    the VLS modes size is smaller scalar mode.  */
-        machine_mode mode;
-        unsigned size = GET_MODE_BITSIZE (<MODE>mode).to_constant ();
-        if (FLOAT_MODE_P (<MODE>mode))
-	  mode = mode_for_size (size, MODE_FLOAT, 0).require ();
-        else
-	  mode = mode_for_size (size, MODE_INT, 0).require ();
-        emit_move_insn (gen_lowpart (mode, operands[0]),
-		        gen_lowpart (mode, operands[1]));
-      }
-    else
-      {
-	operands[1] = force_reg (<MODE>mode, operands[1]);
-	emit_move_insn (operands[0], operands[1]);
-      }
-    DONE;
-  }
-  [(set_attr "type" "vmov")]
-)
 
 (define_insn_and_split "*mov<mode>"
   [(set (match_operand:VLS_AVL_IMM 0 "reg_or_mem_operand" "=vr, m, vr")
@@ -1274,7 +1230,7 @@
        || !register_operand (operands[1], <MODE>mode))"
   [(const_int 0)]
   {
-    bool ok_p = riscv_vector::legitimize_move (operands[0], operands[1]);
+    bool ok_p = riscv_vector::legitimize_move (operands[0], &operands[1]);
     gcc_assert (ok_p);
     DONE;
   }
@@ -1286,7 +1242,7 @@
 	(match_operand:VLS_AVL_REG 1 "general_operand"))]
   "TARGET_VECTOR"
 {
-  bool ok_p = riscv_vector::legitimize_move (operands[0], operands[1]);
+  bool ok_p = riscv_vector::legitimize_move (operands[0], &operands[1]);
   gcc_assert (ok_p);
   DONE;
 })
@@ -1363,6 +1319,19 @@
   }
 )
 
+;; According to RVV ISA:
+;; If an element accessed by a vector memory instruction is not naturally aligned to the size of the element,
+;; either the element is transferred successfully or an address misaligned exception is raised on that element.
+(define_expand "movmisalign<mode>"
+  [(set (match_operand:V 0 "nonimmediate_operand")
+	(match_operand:V 1 "general_operand"))]
+  "TARGET_VECTOR && TARGET_VECTOR_MISALIGN_SUPPORTED"
+  {
+    emit_move_insn (operands[0], operands[1]);
+    DONE;
+  }
+)
+
 ;; -----------------------------------------------------------------
 ;; ---- Duplicate Operations
 ;; -----------------------------------------------------------------
@@ -1371,7 +1340,7 @@
 ;; This pattern only handles duplicates of non-constant inputs.
 ;; Constant vectors go through the movm pattern instead.
 ;; So "direct_broadcast_operand" can only be mem or reg, no CONSTANT.
-(define_insn_and_split "@vec_duplicate<mode>"
+(define_insn_and_split "vec_duplicate<mode>"
   [(set (match_operand:V_VLS 0 "register_operand")
         (vec_duplicate:V_VLS
           (match_operand:<VEL> 1 "direct_broadcast_operand")))]
@@ -1690,7 +1659,7 @@
   "vse<sew>.v\t%2,%0%p1"
   [(set_attr "type" "vste")
    (set_attr "mode" "<MODE>")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[4])"))
+   (set (attr "avl_type_idx") (const_int 4))
    (set_attr "vl_op_idx" "3")])
 
 ;; vlm.v/vsm.v/vmclr.m/vmset.m.
@@ -1741,7 +1710,7 @@
   "vsm.v\t%2,%0"
   [(set_attr "type" "vstm")
    (set_attr "mode" "<MODE>")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[4])"))
+   (set (attr "avl_type_idx") (const_int 4))
    (set_attr "vl_op_idx" "3")])
 
 (define_insn "@pred_merge<mode>"
@@ -2083,43 +2052,51 @@
 ;; -------------------------------------------------------------------------------
 
 (define_insn "@pred_strided_load<mode>"
-  [(set (match_operand:V 0 "register_operand"              "=vr,    vr,    vd")
+  [(set (match_operand:V 0 "register_operand"              "=vr,    vr,    vd,    vr,    vr,    vd")
 	(if_then_else:V
 	  (unspec:<VM>
-	    [(match_operand:<VM> 1 "vector_mask_operand" "vmWc1,   Wc1,    vm")
-	     (match_operand 5 "vector_length_operand"    "   rK,    rK,    rK")
-	     (match_operand 6 "const_int_operand"        "    i,     i,     i")
-	     (match_operand 7 "const_int_operand"        "    i,     i,     i")
-	     (match_operand 8 "const_int_operand"        "    i,     i,     i")
+	    [(match_operand:<VM> 1 "vector_mask_operand" "vmWc1,   Wc1,    vm,    vmWc1,   Wc1,    vm")
+	     (match_operand 5 "vector_length_operand"    "   rK,    rK,    rK,       rK,    rK,    rK")
+	     (match_operand 6 "const_int_operand"        "    i,     i,     i,        i,     i,     i")
+	     (match_operand 7 "const_int_operand"        "    i,     i,     i,        i,     i,     i")
+	     (match_operand 8 "const_int_operand"        "    i,     i,     i,        i,     i,     i")
 	     (reg:SI VL_REGNUM)
 	     (reg:SI VTYPE_REGNUM)] UNSPEC_VPREDICATE)
 	  (unspec:V
-	    [(match_operand:V 3 "memory_operand"         "    m,     m,     m")
-	     (match_operand 4 "pmode_reg_or_0_operand"   "   rJ,    rJ,    rJ")] UNSPEC_STRIDED)
-	  (match_operand:V 2 "vector_merge_operand"      "    0,    vu,    vu")))]
+	    [(match_operand:V 3 "memory_operand"         "     m,     m,     m,    m,     m,     m")
+	     (match_operand 4 "<V:stride_predicate>"     "<V:stride_load_constraint>")] UNSPEC_STRIDED)
+	  (match_operand:V 2 "vector_merge_operand"      "     0,    vu,    vu,    0,    vu,    vu")))]
   "TARGET_VECTOR"
-  "vlse<sew>.v\t%0,%3,%z4%p1"
+  "@
+  vlse<sew>.v\t%0,%3,%z4%p1
+  vlse<sew>.v\t%0,%3,%z4
+  vlse<sew>.v\t%0,%3,%z4,%1.t
+  vle<sew>.v\t%0,%3%p1
+  vle<sew>.v\t%0,%3
+  vle<sew>.v\t%0,%3,%1.t"
   [(set_attr "type" "vlds")
    (set_attr "mode" "<MODE>")])
 
 (define_insn "@pred_strided_store<mode>"
-  [(set (match_operand:V 0 "memory_operand"                 "+m")
+  [(set (match_operand:V 0 "memory_operand"                 "+m,    m")
 	(if_then_else:V
 	  (unspec:<VM>
-	    [(match_operand:<VM> 1 "vector_mask_operand" "vmWc1")
-	     (match_operand 4 "vector_length_operand"    "   rK")
-	     (match_operand 5 "const_int_operand"        "    i")
+	    [(match_operand:<VM> 1 "vector_mask_operand" "vmWc1,    vmWc1")
+	     (match_operand 4 "vector_length_operand"    "   rK,       rK")
+	     (match_operand 5 "const_int_operand"        "    i,        i")
 	     (reg:SI VL_REGNUM)
 	     (reg:SI VTYPE_REGNUM)] UNSPEC_VPREDICATE)
 	  (unspec:V
-	    [(match_operand 2 "pmode_reg_or_0_operand"   "   rJ")
-	     (match_operand:V 3 "register_operand"       "   vr")] UNSPEC_STRIDED)
+	    [(match_operand 2 "<V:stride_predicate>"     "<V:stride_store_constraint>")
+	     (match_operand:V 3 "register_operand"       "   vr,       vr")] UNSPEC_STRIDED)
 	  (match_dup 0)))]
   "TARGET_VECTOR"
-  "vsse<sew>.v\t%3,%0,%z2%p1"
+  "@
+  vsse<sew>.v\t%3,%0,%z2%p1
+  vse<sew>.v\t%3,%0%p1"
   [(set_attr "type" "vsts")
    (set_attr "mode" "<MODE>")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[5])"))])
+   (set (attr "avl_type_idx") (const_int 5))])
 
 ;; -------------------------------------------------------------------------------
 ;; ---- Predicated indexed loads/stores
@@ -2897,7 +2874,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 (define_insn "@pred_sbc<mode>"
   [(set (match_operand:VI 0 "register_operand"           "=vd,vd")
@@ -2921,7 +2898,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 (define_insn "@pred_adc<mode>_scalar"
   [(set (match_operand:VI_QHS 0 "register_operand"        "=vd,vd")
@@ -2946,7 +2923,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 (define_insn "@pred_sbc<mode>_scalar"
   [(set (match_operand:VI_QHS 0 "register_operand"         "=vd,vd")
@@ -2971,7 +2948,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 (define_expand "@pred_adc<mode>_scalar"
   [(set (match_operand:VI_D 0 "register_operand")
@@ -3028,7 +3005,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 (define_insn "*pred_adc<mode>_extended_scalar"
   [(set (match_operand:VI_D 0 "register_operand"                "=vd,vd")
@@ -3054,7 +3031,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 (define_expand "@pred_sbc<mode>_scalar"
   [(set (match_operand:VI_D 0 "register_operand")
@@ -3111,7 +3088,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 (define_insn "*pred_sbc<mode>_extended_scalar"
   [(set (match_operand:VI_D 0 "register_operand"                "=vd,vd")
@@ -3137,7 +3114,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 (define_insn "@pred_madc<mode>"
   [(set (match_operand:<VM> 0 "register_operand"         "=vr, &vr, &vr")
@@ -3156,7 +3133,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "4")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[5])"))])
+   (set (attr "avl_type_idx") (const_int 5))])
 
 (define_insn "@pred_msbc<mode>"
   [(set (match_operand:<VM> 0 "register_operand"        "=vr, vr, &vr")
@@ -3175,7 +3152,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "4")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[5])"))])
+   (set (attr "avl_type_idx") (const_int 5))])
 
 (define_insn "@pred_madc<mode>_scalar"
   [(set (match_operand:<VM> 0 "register_operand"         "=vr, &vr")
@@ -3195,7 +3172,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "4")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[5])"))])
+   (set (attr "avl_type_idx") (const_int 5))])
 
 (define_insn "@pred_msbc<mode>_scalar"
   [(set (match_operand:<VM> 0 "register_operand"         "=vr, &vr")
@@ -3215,7 +3192,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "4")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[5])"))])
+   (set (attr "avl_type_idx") (const_int 5))])
 
 (define_expand "@pred_madc<mode>_scalar"
   [(set (match_operand:<VM> 0 "register_operand")
@@ -3263,7 +3240,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "4")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[5])"))])
+   (set (attr "avl_type_idx") (const_int 5))])
 
 (define_insn "*pred_madc<mode>_extended_scalar"
   [(set (match_operand:<VM> 0 "register_operand"             "=vr, &vr")
@@ -3284,7 +3261,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "4")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[5])"))])
+   (set (attr "avl_type_idx") (const_int 5))])
 
 (define_expand "@pred_msbc<mode>_scalar"
   [(set (match_operand:<VM> 0 "register_operand")
@@ -3332,7 +3309,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "4")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[5])"))])
+   (set (attr "avl_type_idx") (const_int 5))])
 
 (define_insn "*pred_msbc<mode>_extended_scalar"
   [(set (match_operand:<VM> 0 "register_operand"              "=vr, &vr")
@@ -3353,7 +3330,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "4")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[5])"))])
+   (set (attr "avl_type_idx") (const_int 5))])
 
 (define_insn "@pred_madc<mode>_overflow"
   [(set (match_operand:<VM> 0 "register_operand"         "=vr, &vr, &vr")
@@ -3371,7 +3348,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "3")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[4])"))])
+   (set (attr "avl_type_idx") (const_int 4))])
 
 (define_insn "@pred_msbc<mode>_overflow"
   [(set (match_operand:<VM> 0 "register_operand"         "=vr, vr, &vr, &vr")
@@ -3389,7 +3366,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "3")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[4])"))])
+   (set (attr "avl_type_idx") (const_int 4))])
 
 (define_insn "@pred_madc<mode>_overflow_scalar"
   [(set (match_operand:<VM> 0 "register_operand"         "=vr, &vr")
@@ -3408,7 +3385,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "3")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[4])"))])
+   (set (attr "avl_type_idx") (const_int 4))])
 
 (define_insn "@pred_msbc<mode>_overflow_scalar"
   [(set (match_operand:<VM> 0 "register_operand"         "=vr, &vr")
@@ -3427,7 +3404,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "3")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[4])"))])
+   (set (attr "avl_type_idx") (const_int 4))])
 
 (define_expand "@pred_madc<mode>_overflow_scalar"
   [(set (match_operand:<VM> 0 "register_operand")
@@ -3473,7 +3450,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "3")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[4])"))])
+   (set (attr "avl_type_idx") (const_int 4))])
 
 (define_insn "*pred_madc<mode>_overflow_extended_scalar"
   [(set (match_operand:<VM> 0 "register_operand"             "=vr, &vr")
@@ -3493,7 +3470,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "3")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[4])"))])
+   (set (attr "avl_type_idx") (const_int 4))])
 
 (define_expand "@pred_msbc<mode>_overflow_scalar"
   [(set (match_operand:<VM> 0 "register_operand")
@@ -3539,7 +3516,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "3")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[4])"))])
+   (set (attr "avl_type_idx") (const_int 4))])
 
 (define_insn "*pred_msbc<mode>_overflow_extended_scalar"
   [(set (match_operand:<VM> 0 "register_operand"             "=vr, &vr")
@@ -3559,7 +3536,7 @@
   [(set_attr "type" "vicalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "3")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[4])"))])
+   (set (attr "avl_type_idx") (const_int 4))])
 
 ;; -------------------------------------------------------------------------------
 ;; ---- Predicated integer unary operations
@@ -3589,7 +3566,7 @@
    (set_attr "vl_op_idx" "4")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[5])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; -------------------------------------------------------------------------------
 ;; ---- Predicated integer widening binary operations
@@ -3840,7 +3817,7 @@
    (set_attr "vl_op_idx" "4")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[5])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; -------------------------------------------------------------------------------
 ;; ---- Predicated integer Narrowing operations
@@ -3916,7 +3893,7 @@
    (set_attr "vl_op_idx" "4")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[5])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; -------------------------------------------------------------------------------
 ;; ---- Predicated fixed-point operations
@@ -4388,7 +4365,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; We don't use early-clobber for LMUL <= 1 to get better codegen.
 (define_insn "*pred_cmp<mode>"
@@ -4468,7 +4445,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; We don't use early-clobber for LMUL <= 1 to get better codegen.
 (define_insn "*pred_ltge<mode>"
@@ -4550,7 +4527,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; We don't use early-clobber for LMUL <= 1 to get better codegen.
 (define_insn "*pred_cmp<mode>_scalar"
@@ -4634,7 +4611,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; We don't use early-clobber for LMUL <= 1 to get better codegen.
 (define_insn "*pred_eqne<mode>_scalar"
@@ -4773,7 +4750,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 (define_insn "*pred_eqne<mode>_scalar_merge_tie_mask"
   [(set (match_operand:<VM> 0 "register_operand"                "=vm")
@@ -4797,7 +4774,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; We don't use early-clobber for LMUL <= 1 to get better codegen.
 (define_insn "*pred_cmp<mode>_scalar"
@@ -4906,7 +4883,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; We don't use early-clobber for LMUL <= 1 to get better codegen.
 (define_insn "*pred_cmp<mode>_extended_scalar"
@@ -4974,7 +4951,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; We don't use early-clobber for LMUL <= 1 to get better codegen.
 (define_insn "*pred_eqne<mode>_extended_scalar"
@@ -5222,7 +5199,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_insn "*pred_macc<mode>"
   [(set (match_operand:V_VLSI 0 "register_operand"           "=vd,?&vd, vr,?&vr")
@@ -5253,7 +5230,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_expand "@pred_mul_plus<mode>_scalar"
   [(set (match_operand:V_VLSI_QHS 0 "register_operand")
@@ -5306,7 +5283,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_insn "*pred_macc<mode>_scalar"
   [(set (match_operand:V_VLSI 0 "register_operand"            "=vd,?&vd, vr,?&vr")
@@ -5338,7 +5315,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_expand "@pred_mul_plus<mode>_scalar"
   [(set (match_operand:V_VLSI_D 0 "register_operand")
@@ -5405,7 +5382,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_insn "*pred_macc<mode>_extended_scalar"
   [(set (match_operand:V_VLSI_D 0 "register_operand"               "=vd,?&vd, vr,?&vr")
@@ -5438,7 +5415,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_expand "@pred_minus_mul<mode>"
   [(set (match_operand:V_VLSI 0 "register_operand")
@@ -5519,7 +5496,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_insn "*pred_nmsac<mode>"
   [(set (match_operand:V_VLSI 0 "register_operand"           "=vd,?&vd, vr,?&vr")
@@ -5550,7 +5527,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_expand "@pred_minus_mul<mode>_scalar"
   [(set (match_operand:V_VLSI_QHS 0 "register_operand")
@@ -5603,7 +5580,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_insn "*pred_nmsac<mode>_scalar"
   [(set (match_operand:V_VLSI 0 "register_operand"            "=vd,?&vd, vr,?&vr")
@@ -5635,7 +5612,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_expand "@pred_minus_mul<mode>_scalar"
   [(set (match_operand:V_VLSI_D 0 "register_operand")
@@ -5702,7 +5679,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 (define_insn "*pred_nmsac<mode>_extended_scalar"
   [(set (match_operand:V_VLSI_D 0 "register_operand"               "=vd,?&vd, vr,?&vr")
@@ -5735,7 +5712,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))])
+   (set (attr "avl_type_idx") (const_int 8))])
 
 ;; -------------------------------------------------------------------------------
 ;; ---- Predicated widen integer ternary operations
@@ -5902,7 +5879,7 @@
   [(set_attr "type" "vmalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "5")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[6])"))])
+   (set (attr "avl_type_idx") (const_int 6))])
 
 (define_insn "@pred_n<optab><mode>"
   [(set (match_operand:VB_VLS 0 "register_operand"                   "=vr")
@@ -5923,7 +5900,7 @@
   [(set_attr "type" "vmalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "5")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[6])"))])
+   (set (attr "avl_type_idx") (const_int 6))])
 
 (define_insn "@pred_<optab>not<mode>"
   [(set (match_operand:VB_VLS 0 "register_operand"                   "=vr")
@@ -5944,7 +5921,7 @@
   [(set_attr "type" "vmalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "5")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[6])"))])
+   (set (attr "avl_type_idx") (const_int 6))])
 
 (define_insn "@pred_not<mode>"
   [(set (match_operand:VB_VLS 0 "register_operand"                   "=vr")
@@ -5963,7 +5940,7 @@
   [(set_attr "type" "vmalu")
    (set_attr "mode" "<MODE>")
    (set_attr "vl_op_idx" "4")
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[5])"))])
+   (set (attr "avl_type_idx") (const_int 5))])
 
 (define_insn "@pred_popcount<VB:mode><P:mode>"
   [(set (match_operand:P 0 "register_operand"               "=r")
@@ -6382,7 +6359,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))
+   (set (attr "avl_type_idx") (const_int 8))
    (set (attr "frm_mode")
 	(symbol_ref "riscv_vector::get_frm_mode (operands[9])"))])
 
@@ -6417,7 +6394,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))
+   (set (attr "avl_type_idx") (const_int 8))
    (set (attr "frm_mode")
 	(symbol_ref "riscv_vector::get_frm_mode (operands[9])"))])
 
@@ -6476,7 +6453,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))
+   (set (attr "avl_type_idx") (const_int 8))
    (set (attr "frm_mode")
 	(symbol_ref "riscv_vector::get_frm_mode (operands[9])"))])
 
@@ -6512,7 +6489,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))
+   (set (attr "avl_type_idx") (const_int 8))
    (set (attr "frm_mode")
 	(symbol_ref "riscv_vector::get_frm_mode (operands[9])"))])
 
@@ -6606,7 +6583,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))
+   (set (attr "avl_type_idx") (const_int 8))
    (set (attr "frm_mode")
 	(symbol_ref "riscv_vector::get_frm_mode (operands[9])"))])
 
@@ -6642,7 +6619,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))
+   (set (attr "avl_type_idx") (const_int 8))
    (set (attr "frm_mode")
 	(symbol_ref "riscv_vector::get_frm_mode (operands[9])"))])
 
@@ -6703,7 +6680,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))
+   (set (attr "avl_type_idx") (const_int 8))
    (set (attr "frm_mode")
 	(symbol_ref "riscv_vector::get_frm_mode (operands[9])"))])
 
@@ -6740,7 +6717,7 @@
    (set_attr "vl_op_idx" "5")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[6])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[7])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[8])"))
+   (set (attr "avl_type_idx") (const_int 8))
    (set (attr "frm_mode")
 	(symbol_ref "riscv_vector::get_frm_mode (operands[9])"))])
 
@@ -6778,7 +6755,7 @@
    (set_attr "vl_op_idx" "4")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[5])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))
+   (set (attr "avl_type_idx") (const_int 7))
    (set (attr "frm_mode")
 	(symbol_ref "riscv_vector::get_frm_mode (operands[8])"))])
 
@@ -6803,7 +6780,7 @@
    (set_attr "vl_op_idx" "4")
    (set (attr "ta") (symbol_ref "riscv_vector::get_ta(operands[5])"))
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 (define_insn "@pred_<misc_op><mode>"
   [(set (match_operand:VF 0 "register_operand"           "=vd, vd, vr, vr")
@@ -7192,7 +7169,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; We use early-clobber for source LMUL > dest LMUL.
 (define_insn "*pred_cmp<mode>_narrow"
@@ -7254,7 +7231,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; We don't use early-clobber for LMUL <= 1 to get better codegen.
 (define_insn "*pred_cmp<mode>_scalar"
@@ -7338,7 +7315,7 @@
    (set_attr "merge_op_idx" "1")
    (set_attr "vl_op_idx" "5")
    (set (attr "ma") (symbol_ref "riscv_vector::get_ma(operands[6])"))
-   (set (attr "avl_type") (symbol_ref "INTVAL (operands[7])"))])
+   (set (attr "avl_type_idx") (const_int 7))])
 
 ;; We don't use early-clobber for LMUL <= 1 to get better codegen.
 (define_insn "*pred_eqne<mode>_scalar"
@@ -7430,7 +7407,7 @@
 	     (reg:SI VTYPE_REGNUM)
 	     (reg:SI FRM_REGNUM)] UNSPEC_VPREDICATE)
 	  (unspec:<VCONVERT>
-	     [(match_operand:VF 3 "register_operand"         " vr, vr, vr, vr")] VFCVTS)
+	     [(match_operand:V_VLSF 3 "register_operand"     " vr, vr, vr, vr")] VFCVTS)
 	  (match_operand:<VCONVERT> 2 "vector_merge_operand" " vu,  0, vu,  0")))]
   "TARGET_VECTOR"
   "vfcvt.x<v_su>.f.v\t%0,%3%p1"
@@ -7451,7 +7428,7 @@
 	     (reg:SI VL_REGNUM)
 	     (reg:SI VTYPE_REGNUM)] UNSPEC_VPREDICATE)
 	  (any_fix:<VCONVERT>
-	     (match_operand:VF 3 "register_operand"          " vr, vr, vr, vr"))
+	     (match_operand:V_VLSF 3 "register_operand"          " vr, vr, vr, vr"))
 	  (match_operand:<VCONVERT> 2 "vector_merge_operand" " vu,  0, vu,  0")))]
   "TARGET_VECTOR"
   "vfcvt.rtz.x<u>.f.v\t%0,%3%p1"
@@ -7459,8 +7436,8 @@
    (set_attr "mode" "<MODE>")])
 
 (define_insn "@pred_<float_cvt><mode>"
-  [(set (match_operand:VF 0 "register_operand"              "=vd, vd, vr, vr")
-	(if_then_else:VF
+  [(set (match_operand:V_VLSF 0 "register_operand"              "=vd, vd, vr, vr")
+	(if_then_else:V_VLSF
 	  (unspec:<VM>
 	    [(match_operand:<VM> 1 "vector_mask_operand"    " vm, vm,Wc1,Wc1")
 	     (match_operand 4 "vector_length_operand"       " rK, rK, rK, rK")
@@ -7471,9 +7448,9 @@
 	     (reg:SI VL_REGNUM)
 	     (reg:SI VTYPE_REGNUM)
 	     (reg:SI FRM_REGNUM)] UNSPEC_VPREDICATE)
-	  (any_float:VF
+	  (any_float:V_VLSF
 	     (match_operand:<VCONVERT> 3 "register_operand" " vr, vr, vr, vr"))
-	  (match_operand:VF 2 "vector_merge_operand"        " vu,  0, vu,  0")))]
+	  (match_operand:V_VLSF 2 "vector_merge_operand"        " vu,  0, vu,  0")))]
   "TARGET_VECTOR"
   "vfcvt.f.x<u>.v\t%0,%3%p1"
   [(set_attr "type" "vfcvtitof")
@@ -7531,8 +7508,8 @@
    (set_attr "mode" "<VNCONVERT>")])
 
 (define_insn "@pred_widen_<float_cvt><mode>"
-  [(set (match_operand:VF 0 "register_operand"                "=&vr,  &vr")
-	(if_then_else:VF
+  [(set (match_operand:V_VLSF 0 "register_operand"                "=&vr,  &vr")
+	(if_then_else:V_VLSF
 	  (unspec:<VM>
 	    [(match_operand:<VM> 1 "vector_mask_operand"     "vmWc1,vmWc1")
 	     (match_operand 4 "vector_length_operand"        "   rK,   rK")
@@ -7541,9 +7518,9 @@
 	     (match_operand 7 "const_int_operand"            "    i,    i")
 	     (reg:SI VL_REGNUM)
 	     (reg:SI VTYPE_REGNUM)] UNSPEC_VPREDICATE)
-	  (any_float:VF
+	  (any_float:V_VLSF
 	     (match_operand:<VNCONVERT> 3 "register_operand" "   vr,   vr"))
-	  (match_operand:VF 2 "vector_merge_operand"         "   vu,    0")))]
+	  (match_operand:V_VLSF 2 "vector_merge_operand"         "   vu,    0")))]
   "TARGET_VECTOR"
   "vfwcvt.f.x<u>.v\t%0,%3%p1"
   [(set_attr "type" "vfwcvtitof")
@@ -7610,7 +7587,7 @@
 	     (reg:SI VL_REGNUM)
 	     (reg:SI VTYPE_REGNUM)] UNSPEC_VPREDICATE)
 	  (any_fix:<VNCONVERT>
-	     (match_operand:VF 3 "register_operand"           "  0,  0,  0,  0,   vr,   vr"))
+	     (match_operand:V_VLSF 3 "register_operand"           "  0,  0,  0,  0,   vr,   vr"))
 	  (match_operand:<VNCONVERT> 2 "vector_merge_operand" " vu,  0, vu,  0,   vu,    0")))]
   "TARGET_VECTOR"
   "vfncvt.rtz.x<u>.f.w\t%0,%3%p1"
