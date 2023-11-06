@@ -1874,7 +1874,7 @@
   "%vlddqu\t{%1, %0|%0, %1}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "ssemov")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "movu" "1")
    (set (attr "prefix_data16")
      (if_then_else
@@ -2175,9 +2175,9 @@
    (set_attr "type" "msklog")
    (set_attr "prefix" "vex")])
 
-(define_insn "kortest<mode>"
-  [(set (reg:CC FLAGS_REG)
-	(unspec:CC
+(define_insn "*kortest<mode>"
+  [(set (reg FLAGS_REG)
+	(unspec
 	  [(match_operand:SWI1248_AVX512BWDQ 0 "register_operand" "k")
 	   (match_operand:SWI1248_AVX512BWDQ 1 "register_operand" "k")]
 	  UNSPEC_KORTEST))]
@@ -2186,6 +2186,30 @@
   [(set_attr "mode" "<MODE>")
    (set_attr "type" "msklog")
    (set_attr "prefix" "vex")])
+
+(define_insn "kortest<mode>_ccc"
+  [(set (reg:CCC FLAGS_REG)
+	(unspec:CCC
+	  [(match_operand:SWI1248_AVX512BWDQ 0 "register_operand")
+	   (match_operand:SWI1248_AVX512BWDQ 1 "register_operand")]
+	  UNSPEC_KORTEST))]
+  "TARGET_AVX512F")
+
+(define_insn "kortest<mode>_ccz"
+  [(set (reg:CCZ FLAGS_REG)
+	(unspec:CCZ
+	  [(match_operand:SWI1248_AVX512BWDQ 0 "register_operand")
+	   (match_operand:SWI1248_AVX512BWDQ 1 "register_operand")]
+	  UNSPEC_KORTEST))]
+  "TARGET_AVX512F")
+
+(define_expand "kortest<mode>"
+  [(set (reg:CC FLAGS_REG)
+	(unspec:CC
+	  [(match_operand:SWI1248_AVX512BWDQ 0 "register_operand")
+	   (match_operand:SWI1248_AVX512BWDQ 1 "register_operand")]
+	  UNSPEC_KORTEST))]
+  "TARGET_AVX512F")
 
 (define_insn "kunpckhi"
   [(set (match_operand:HI 0 "register_operand" "=k")
@@ -2554,7 +2578,7 @@
   "%vrcpps\t{%1, %0|%0, %1}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sse")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "atom_sse_attr" "rcp")
    (set_attr "btver2_sse_attr" "rcp")
    (set_attr "prefix" "maybe_vex")
@@ -2573,7 +2597,7 @@
    vrcpss\t{%1, %2, %0|%0, %2, %k1}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sse")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "atom_sse_attr" "rcp")
    (set_attr "btver2_sse_attr" "rcp")
    (set_attr "prefix" "orig,vex")
@@ -2593,7 +2617,7 @@
    vrcpss\t{%1, %2, %0|%0, %2, %1}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sse")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "atom_sse_attr" "rcp")
    (set_attr "btver2_sse_attr" "rcp")
    (set_attr "prefix" "orig,vex")
@@ -2777,7 +2801,7 @@
   "%vrsqrtps\t{%1, %0|%0, %1}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sse")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "prefix" "maybe_vex")
    (set_attr "mode" "<MODE>")])
 
@@ -2846,7 +2870,7 @@
    vrsqrtss\t{%1, %2, %0|%0, %2, %k1}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sse")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "prefix" "orig,vex")
    (set_attr "mode" "SF")])
 
@@ -2864,7 +2888,7 @@
    vrsqrtss\t{%1, %2, %0|%0, %2, %1}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sse")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "prefix" "orig,vex")
    (set_attr "mode" "SF")])
 
@@ -3049,7 +3073,7 @@
    vaddsub<ssemodesuffix>\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sseadd")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set (attr "atom_unit")
      (if_then_else
        (match_test "<MODE>mode == V2DFmode")
@@ -3206,7 +3230,7 @@
   "TARGET_AVX"
   "vh<plusminus_mnemonic>pd\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "type" "sseadd")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "V4DF")])
 
@@ -3249,7 +3273,7 @@
    haddpd\t{%2, %0|%0, %2}
    vhaddpd\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "type" "sseadd")
    (set_attr "prefix" "orig,vex")
    (set_attr "mode" "V2DF")])
@@ -3273,7 +3297,7 @@
    vhsubpd\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sseadd")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "prefix" "orig,vex")
    (set_attr "mode" "V2DF")])
 
@@ -3354,7 +3378,7 @@
   "TARGET_AVX"
   "vh<plusminus_mnemonic>ps\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "type" "sseadd")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "V8SF")])
 
@@ -3385,7 +3409,7 @@
    vh<plusminus_mnemonic>ps\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sseadd")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "atom_unit" "complex")
    (set_attr "prefix" "orig,vex")
    (set_attr "prefix_rep" "1,*")
@@ -3589,7 +3613,7 @@
   "TARGET_AVX"
   "vcmp<ssemodesuffix>\t{%3, %2, %1, %0|%0, %1, %2, %3}"
   [(set_attr "type" "ssecmp")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "vex")
    (set_attr "mode" "<MODE>")])
@@ -3803,7 +3827,7 @@
   "TARGET_AVX"
   "vcmp<ssescalarmodesuffix>\t{%3, %2, %1, %0|%0, %1, %<iptr>2, %3}"
   [(set_attr "type" "ssecmp")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "vex")
    (set_attr "mode" "<ssescalarmode>")])
@@ -3819,7 +3843,7 @@
    cmp%D3<ssemodesuffix>\t{%2, %0|%0, %2}
    vcmp%D3<ssemodesuffix>\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "type" "ssecmp")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "orig,vex")
@@ -3835,7 +3859,7 @@
    cmp%D3<ssemodesuffix>\t{%2, %0|%0, %2}
    vcmp%D3<ssemodesuffix>\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "type" "ssecmp")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "orig,vex")
@@ -3854,7 +3878,7 @@
    cmp%D3<ssescalarmodesuffix>\t{%2, %0|%0, %<iptr>2}
    vcmp%D3<ssescalarmodesuffix>\t{%2, %1, %0|%0, %1, %<iptr>2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "type" "ssecmp")
    (set_attr "length_immediate" "1,*")
    (set_attr "prefix" "orig,vex")
@@ -4644,29 +4668,14 @@
   DONE;
 })
 
-(define_expand "vcond<mode><mode>"
-  [(set (match_operand:VHF_AVX512VL 0 "register_operand")
-	(if_then_else:VHF_AVX512VL
+(define_expand "vcond<VI2HFBF_AVX512VL:mode><VHF_AVX512VL:mode>"
+  [(set (match_operand:VI2HFBF_AVX512VL 0 "register_operand")
+	(if_then_else:VI2HFBF_AVX512VL
 	  (match_operator 3 ""
 	    [(match_operand:VHF_AVX512VL 4 "vector_operand")
 	     (match_operand:VHF_AVX512VL 5 "vector_operand")])
-	  (match_operand:VHF_AVX512VL 1 "general_operand")
-	  (match_operand:VHF_AVX512VL 2 "general_operand")))]
-  "TARGET_AVX512FP16"
-{
-  bool ok = ix86_expand_fp_vcond (operands);
-  gcc_assert (ok);
-  DONE;
-})
-
-(define_expand "vcond<sseintvecmodelower><mode>"
-  [(set (match_operand:<sseintvecmode> 0 "register_operand")
-	(if_then_else:<sseintvecmode>
-	  (match_operator 3 ""
-	    [(match_operand:VHF_AVX512VL 4 "vector_operand")
-	     (match_operand:VHF_AVX512VL 5 "vector_operand")])
-	  (match_operand:<sseintvecmode> 1 "general_operand")
-	  (match_operand:<sseintvecmode> 2 "general_operand")))]
+	  (match_operand:VI2HFBF_AVX512VL 1 "general_operand")
+	  (match_operand:VI2HFBF_AVX512VL 2 "general_operand")))]
   "TARGET_AVX512FP16"
 {
   bool ok = ix86_expand_fp_vcond (operands);
@@ -4817,7 +4826,7 @@
   return "";
 }
   [(set_attr "isa" "noavx,avx_noavx512f,avx512dq,avx512f")
-   (set_attr "gpr32" "1,0,1,1")
+   (set_attr "addr" "*,gpr16,*,*")
    (set_attr "type" "sselog")
    (set_attr "prefix" "orig,maybe_vex,evex,evex")
    (set (attr "mode")
@@ -5161,7 +5170,7 @@
   return "";
 }
   [(set_attr "isa" "noavx,avx_noavx512f,avx512vl,avx512f_512")
-   (set_attr "gpr32" "1,0,1,1")
+   (set_attr "addr" "*,gpr16,*,*")
    (set_attr "type" "sselog")
    (set (attr "prefix_data16")
      (if_then_else
@@ -10949,10 +10958,10 @@
      (if_then_else (eq_attr "alternative" "7,8")
 		   (const_string "native")
 		   (const_string "*")))
-   (set (attr "gpr32")
+   (set (attr "addr")
      (if_then_else (eq_attr "alternative" "3,4")
-		   (const_string "0")
-		   (const_string "1")))
+		   (const_string "gpr16")
+		   (const_string "*")))
    (set (attr "prefix_data16")
      (if_then_else (eq_attr "alternative" "3,4")
 		   (const_string "1")
@@ -11084,10 +11093,10 @@
 	      (const_string "fmov")
 	   ]
 	   (const_string "ssemov")))
-   (set (attr "gpr32")
+   (set (attr "addr")
      (if_then_else (eq_attr "alternative" "8,9")
-		   (const_string "0")
-		   (const_string "1")))
+		   (const_string "gpr16")
+		   (const_string "*")))
    (set (attr "prefix_extra")
      (if_then_else (eq_attr "alternative" "8,9,10")
 		   (const_string "1")
@@ -11279,7 +11288,7 @@
 }
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "sselog")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "prefix_data16" "1,1,*")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -11380,7 +11389,7 @@
     }
 }
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "type" "sselog")
    (set_attr "prefix_data16" "1,1,*")
    (set_attr "prefix_extra" "1")
@@ -11492,7 +11501,7 @@
   DONE;
 }
   [(set_attr "isa" "noavx,noavx,avx,noavx,avx")
-   (set_attr "gpr32" "0,0,1,1,1")
+   (set_attr "addr" "gpr16,gpr16,*,*,*")
    (set_attr "type" "sselog,sselog,sselog,*,*")
    (set_attr "prefix_data16" "1,1,1,*,*")
    (set_attr "prefix_extra" "1,1,1,*,*")
@@ -12345,7 +12354,7 @@
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "isa" "noavx512vl,avx512vl")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix" "vex,evex")
    (set_attr "mode" "OI")])
 
@@ -12391,7 +12400,7 @@
    }
 }
   [(set_attr "isa" "*,sse4_noavx,avx,noavx,avx")
-   (set_attr "gpr32" "1,0,1,1,1")
+   (set_attr "addr" "*,gpr16,*,*,*")
    (set_attr "type" "sselog1,sselog1,sselog1,sseishft1,sseishft1")
    (set_attr "prefix" "maybe_evex")
    (set_attr "mode" "TI")])
@@ -15765,7 +15774,7 @@
    pmuldq\t{%2, %0|%0, %2}
    vpmuldq\t{%2, %1, %0<mask_operand3>|%0<mask_operand3>, %1, %2}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "type" "sseimul")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,vex")
@@ -16011,7 +16020,7 @@
    pmulld\t{%2, %0|%0, %2}
    vpmulld\t{%2, %1, %0<mask_operand3>|%0<mask_operand3>, %1, %2}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "type" "sseimul")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "<bcst_mask_prefix4>")
@@ -16827,7 +16836,7 @@
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "sseiadd")
    (set_attr "prefix_extra" "1")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "prefix" "orig,orig,vex")
    (set_attr "mode" "TI")])
 
@@ -16842,7 +16851,7 @@
    vp<maxmin_int>w\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sseiadd")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix" "orig,vex")
    (set_attr "mode" "TI")])
 
@@ -16910,7 +16919,7 @@
    vp<maxmin_int><ssemodesuffix>\t{%2, %1, %0<mask_operand3>|%0<mask_operand3>, %1, %2}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "sseiadd")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "prefix_extra" "1,1,*")
    (set_attr "prefix" "orig,orig,vex")
    (set_attr "mode" "TI")])
@@ -16925,7 +16934,7 @@
    p<maxmin_int>b\t{%2, %0|%0, %2}
    vp<maxmin_int>b\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sseiadd")
    (set_attr "prefix" "orig,vex")
    (set_attr "mode" "TI")])
@@ -16948,7 +16957,7 @@
      (if_then_else (eq (const_string "<MODE>mode") (const_string "V4DImode"))
 		   (const_string "1")
 		   (const_string "*")))
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "OI")])
 
@@ -17139,7 +17148,7 @@
    vpcmpeqq\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssecmp")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,vex")
    (set_attr "mode" "TI")])
@@ -17155,7 +17164,7 @@
    pcmpeq<ssemodesuffix>\t{%2, %0|%0, %2}
    vpcmpeq<ssemodesuffix>\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "type" "ssecmp")
    (set_attr "prefix" "orig,vex")
    (set_attr "mode" "TI")])
@@ -17172,7 +17181,7 @@
    vpcmpgtq\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssecmp")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,vex")
    (set_attr "mode" "TI")])
@@ -17189,7 +17198,7 @@
      (if_then_else (eq (const_string "<MODE>mode") (const_string "V4DImode"))
 		   (const_string "1")
 		   (const_string "*")))
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "OI")])
 
@@ -17219,7 +17228,7 @@
    pcmpgt<ssemodesuffix>\t{%2, %0|%0, %2}
    vpcmpgt<ssemodesuffix>\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "type" "ssecmp")
    (set_attr "prefix" "orig,vex")
    (set_attr "mode" "TI")])
@@ -17628,7 +17637,7 @@
   return "";
 }
   [(set_attr "isa" "noavx,avx_noavx512f,avx512f,*,*")
-   (set_attr "gpr32" "1,0,1,1,1")
+   (set_attr "addr" "*,gpr16,*,*,*")
    (set_attr "type" "sselog")
    (set (attr "prefix_data16")
      (if_then_else
@@ -17859,7 +17868,7 @@
   return "";
 }
   [(set_attr "isa" "noavx,avx_noavx512f,avx512f")
-   (set_attr "gpr32" "1,0,1")
+   (set_attr "addr" "*,gpr16,*")
    (set_attr "type" "sselog")
    (set (attr "prefix_data16")
      (if_then_else
@@ -17956,7 +17965,7 @@
   return "";
 }
   [(set_attr "isa" "noavx,avx_noavx512f,avx512f")
-   (set_attr "gpr32" "1,0,1")
+   (set_attr "addr" "*,gpr16,*")
    (set_attr "type" "sselog")
    (set (attr "prefix_data16")
      (if_then_else
@@ -17990,7 +17999,7 @@
    vp<logic>\t{%2, %1, %0|%0, %1, %2}
    vp<logic>d\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx_noavx512vl,avx512vl")
-   (set_attr "gpr32" "1,0,1")
+   (set_attr "addr" "*,gpr16,*")
    (set_attr "prefix" "orig,vex,evex")
    (set_attr "prefix_data16" "1,*,*")
    (set_attr "type" "sselog")
@@ -18971,7 +18980,10 @@
 }
   [(set_attr "isa" "noavx,noavx,avx,avx,<pinsr_evex_isa>,<pinsr_evex_isa>,avx2")
    (set_attr "type" "sselog")
-   (set_attr "gpr32" "0,0,1,1,1,1,1")
+   (set (attr "addr")
+	(if_then_else (eq_attr "alternative" "0,1")
+		      (const_string "gpr16")
+		      (const_string "*")))
    (set (attr "prefix_rex")
      (if_then_else
        (and (not (match_test "TARGET_AVX"))
@@ -20148,7 +20160,7 @@
    pextr<ssemodesuffix>\t{%2, %1, %0|%0, %1, %2}
    vpextr<ssemodesuffix>\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "sse2_noavx,avx,sse4_noavx,avx")
-   (set_attr "gpr32" "1,1,0,1")
+   (set_attr "addr" "*,*,gpr16,*")
    (set_attr "type" "sselog1")
    (set (attr "prefix_extra")
      (if_then_else
@@ -20325,7 +20337,10 @@
 }
   [(set_attr "isa" "noavx,avx,avx512dq,noavx,noavx,avx")
    (set_attr "type" "sselog1,sselog1,sselog1,sseishft1,sseishft1,sseishft1")
-   (set_attr "gpr32" "0,1,1,1,1,1")
+   (set (attr "addr")
+	(if_then_else (eq_attr "alternative" "0")
+		      (const_string "gpr16")
+		      (const_string "*")))
    (set (attr "prefix_extra")
      (if_then_else (eq_attr "alternative" "0,1")
 		   (const_string "1")
@@ -20416,7 +20431,10 @@
 	      (const_string "imov")
 	   ]
 	   (const_string "sselog1")))
-   (set_attr "gpr32" "0,1,1,1,1,1,1,1,1,1")
+   (set (attr "addr")
+	(if_then_else (eq_attr "alternative" "0")
+		      (const_string "gpr16")
+		      (const_string "*")))
    (set (attr "length_immediate")
      (if_then_else (eq_attr "alternative" "0,1,2,4,5,6")
 		   (const_string "1")
@@ -20576,10 +20594,10 @@
 	      (const_string "mmxmov")
 	   ]
 	   (const_string "sselog")))
-   (set (attr "gpr32")
+   (set (attr "addr")
      (if_then_else (eq_attr "alternative" "0,1")
-		   (const_string "0")
-		   (const_string "1")))
+		   (const_string "gpr16")
+		   (const_string "*")))
    (set (attr "prefix_extra")
      (if_then_else (eq_attr "alternative" "0,1,2,3")
 		   (const_string "1")
@@ -20734,10 +20752,10 @@
        (eq_attr "alternative" "0,1,2,3,4,5")
        (const_string "sselog")
        (const_string "ssemov")))
-   (set (attr "gpr32")
+   (set (attr "addr")
      (if_then_else (eq_attr "alternative" "0,1")
-		   (const_string "0")
-		   (const_string "1")))
+		   (const_string "gpr16")
+		   (const_string "*")))
    (set (attr "prefix_rex")
      (if_then_else (eq_attr "alternative" "0,1,2,3")
 		   (const_string "1")
@@ -21330,7 +21348,7 @@
   "%vldmxcsr\t%0"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sse")
-   (set_attr "gpr32" "1,0")
+   (set_attr "addr" "*,gpr16")
    (set_attr "atom_sse_attr" "mxcsr")
    (set_attr "prefix" "maybe_vex")
    (set_attr "memory" "load")])
@@ -21342,7 +21360,7 @@
   "%vstmxcsr\t%0"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sse")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "atom_sse_attr" "mxcsr")
    (set_attr "prefix" "maybe_vex")
    (set_attr "memory" "store")])
@@ -21413,7 +21431,7 @@
   "TARGET_AVX2"
   "vph<plusminus_mnemonic>w\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "type" "sseiadd")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "vex")
    (set_attr "mode" "OI")])
@@ -21439,7 +21457,7 @@
    vph<plusminus_mnemonic>w\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sseiadd")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "atom_unit" "complex")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,vex")
@@ -21503,7 +21521,7 @@
   "TARGET_AVX2"
   "vph<plusminus_mnemonic>d\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "type" "sseiadd")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "vex")
    (set_attr "mode" "OI")])
@@ -21527,7 +21545,7 @@
    vph<plusminus_mnemonic>d\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sseiadd")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "atom_unit" "complex")
    (set_attr "prefix_data16" "1,*")
    (set_attr "prefix_extra" "1")
@@ -21567,7 +21585,7 @@
 }
   [(set_attr "mmx_isa" "native,sse_noavx,avx")
    (set_attr "type" "sseiadd")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "atom_unit" "complex")
    (set_attr "prefix_extra" "1")
    (set (attr "prefix_rex") (symbol_ref "x86_extended_reg_mentioned_p (insn)"))
@@ -21712,7 +21730,7 @@
    pmaddubsw\t{%2, %0|%0, %2}
    vpmaddubsw\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sseiadd")
    (set_attr "atom_unit" "simul")
    (set_attr "prefix_extra" "1")
@@ -21841,7 +21859,7 @@
    pmulhrsw\t{%2, %0|%0, %2}
    vpmulhrsw\t{%2, %1, %0<mask_operand4>|%0<mask_operand4>, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sseimul")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,maybe_evex")
@@ -21965,7 +21983,7 @@
    pshufb\t{%2, %0|%0, %2}
    vpshufb\t{%2, %1, %0<mask_operand3>|%0<mask_operand3>, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sselog1")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,maybe_evex")
@@ -22033,7 +22051,7 @@
    vpsign<ssemodesuffix>\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sselog1")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,vex")
    (set_attr "mode" "<sseinsnmode>")])
@@ -22099,7 +22117,7 @@
     }
 }
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sseishft")
    (set_attr "atom_unit" "sishuf")
    (set_attr "prefix_extra" "1")
@@ -22174,7 +22192,7 @@
 }
   [(set_attr "mmx_isa" "native,sse_noavx,avx")
    (set_attr "type" "sseishft")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "atom_unit" "sishuf")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -22197,7 +22215,7 @@
   "TARGET_SSSE3"
   "%vpabs<ssemodesuffix>\t{%1, %0|%0, %1}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sselog1")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "maybe_vex")
@@ -22346,7 +22364,7 @@
    vblend<ssemodesuffix>\t{%3, %2, %1, %0|%0, %1, %2, %3}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "length_immediate" "1")
    (set_attr "prefix_data16" "1,1,*")
    (set_attr "prefix_extra" "1")
@@ -22367,7 +22385,7 @@
    vblendv<ssemodesuffix>\t{%3, %2, %1, %0|%0, %1, %2, %3}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "length_immediate" "1")
    (set_attr "prefix_data16" "1,1,*")
    (set_attr "prefix_extra" "1")
@@ -22433,7 +22451,7 @@
   "operands[3] = gen_lowpart (<MODE>mode, operands[3]);"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "length_immediate" "1")
    (set_attr "prefix_data16" "1,1,*")
    (set_attr "prefix_extra" "1")
@@ -22472,7 +22490,7 @@
 }
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "length_immediate" "1")
    (set_attr "prefix_data16" "1,1,*")
    (set_attr "prefix_extra" "1")
@@ -22521,7 +22539,7 @@
    vdp<ssemodesuffix>\t{%3, %2, %1, %0|%0, %1, %2, %3}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssemul")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "length_immediate" "1")
    (set_attr "prefix_data16" "1,1,*")
    (set_attr "prefix_extra" "1")
@@ -22541,7 +22559,7 @@
   "TARGET_SSE4_1"
   "%vmovntdqa\t{%1, %0|%0, %1}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "type" "ssemov")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,maybe_evex")
@@ -22560,9 +22578,8 @@
    mpsadbw\t{%3, %2, %0|%0, %2, %3}
    vmpsadbw\t{%3, %2, %1, %0|%0, %1, %2, %3}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16")
    (set_attr "type" "sselog1")
-   (set_attr "gpr32" "0")
    (set_attr "length_immediate" "1")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,vex")
@@ -22582,7 +22599,7 @@
    packusdw\t{%2, %0|%0, %2}
    vpackusdw\t{%2, %1, %0<mask_operand3>|%0<mask_operand3>, %1, %2}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "type" "sselog")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,<mask_prefix>")
@@ -22602,7 +22619,7 @@
    vpblendvb\t{%3, %2, %1, %0|%0, %1, %2, %3}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "*,*,1")
    (set_attr "prefix" "orig,orig,vex")
@@ -22655,7 +22672,7 @@
   ""
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "*,*,1")
    (set_attr "prefix" "orig,orig,vex")
@@ -22697,7 +22714,7 @@
    vpblendw\t{%3, %2, %1, %0|%0, %1, %2, %3}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "orig,orig,vex")
@@ -22769,7 +22786,7 @@
   return "vpblendw\t{%3, %2, %1, %0|%0, %1, %2, %3}";
 }
   [(set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "vex")
@@ -22796,7 +22813,7 @@
   "TARGET_SSE4_1"
   "%vphminposuw\t{%1, %0|%0, %1}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "type" "sselog1")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,vex")
@@ -22936,7 +22953,7 @@
    pmov<extsuffix>bw\t{%1, %0|%0, %1}
    vpmov<extsuffix>bw\t{%1, %0<mask_operand2>|%0<mask_operand2>, %1}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "type" "ssemov")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,maybe_evex")
@@ -22992,7 +23009,7 @@
     }
 }
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")])
+   (set_attr "addr" "gpr16,gpr16,*")])
 
 (define_insn_and_split "*sse4_1_zero_extendv8qiv8hi2_4"
   [(set (match_operand:V16QI 0 "register_operand" "=Yr,*x,Yw")
@@ -23028,7 +23045,7 @@
   operands[1] = lowpart_subreg (V16QImode, operands[1], <ssehalfvecmode>mode);
 }
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")])
+   (set_attr "addr" "gpr16,gpr16,*")])
 
 (define_expand "<insn>v8qiv8hi2"
   [(set (match_operand:V8HI 0 "register_operand")
@@ -23151,7 +23168,7 @@
   "TARGET_SSE4_1 && <mask_avx512vl_condition>"
   "%vpmov<extsuffix>bd\t{%1, %0<mask_operand2>|%0<mask_operand2>, %1}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "type" "ssemov")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,maybe_evex")
@@ -23324,7 +23341,7 @@
   "TARGET_SSE4_1 && <mask_avx512vl_condition>"
   "%vpmov<extsuffix>wd\t{%1, %0<mask_operand2>|%0<mask_operand2>, %1}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "type" "ssemov")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,maybe_evex")
@@ -23397,7 +23414,7 @@
     }
 }
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")])
+   (set_attr "addr" "gpr16,gpr16,*")])
 
 (define_insn_and_split "*sse4_1_zero_extendv4hiv4si2_4"
   [(set (match_operand:V8HI 0 "register_operand" "=Yr,*x,v")
@@ -23431,7 +23448,7 @@
   operands[1] = lowpart_subreg (V8HImode, operands[1], <ssehalfvecmode>mode);
 }
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")])
+   (set_attr "addr" "gpr16,gpr16,*")])
 
 (define_insn "avx512f_<code>v8qiv8di2<mask_name>"
   [(set (match_operand:V8DI 0 "register_operand" "=v")
@@ -23575,7 +23592,7 @@
   "TARGET_SSE4_1 && <mask_avx512vl_condition>"
   "%vpmov<extsuffix>bq\t{%1, %0<mask_operand2>|%0<mask_operand2>, %1}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "ssemov")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "maybe_evex")
@@ -23714,7 +23731,7 @@
   "TARGET_SSE4_1 && <mask_avx512vl_condition>"
   "%vpmov<extsuffix>wq\t{%1, %0<mask_operand2>|%0<mask_operand2>, %1}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "type" "ssemov")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,maybe_evex")
@@ -23880,7 +23897,7 @@
   "TARGET_SSE4_1 && <mask_avx512vl_condition>"
   "%vpmov<extsuffix>dq\t{%1, %0<mask_operand2>|%0<mask_operand2>, %1}"
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "gpr16,gpr16,*")
    (set_attr "type" "ssemov")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,maybe_evex")
@@ -23929,7 +23946,7 @@
     }
 }
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")])
+   (set_attr "addr" "gpr16,gpr16,*")])
 
 (define_insn_and_split "*sse4_1_zero_extendv2siv2di2_4"
   [(set (match_operand:V4SI 0 "register_operand" "=Yr,*x,v")
@@ -23959,7 +23976,7 @@
   operands[1] = lowpart_subreg (V4SImode, operands[1], V2SImode);
 }
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")])
+   (set_attr "addr" "gpr16,gpr16,*")])
 
 (define_expand "<insn>v2siv2di2"
   [(set (match_operand:V2DI 0 "register_operand")
@@ -23992,7 +24009,7 @@
   "TARGET_AVX"
   "vtest<ssemodesuffix>\t{%1, %0|%0, %1}"
   [(set_attr "type" "ssecomi")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "vex")
    (set_attr "mode" "<MODE>")])
@@ -24008,7 +24025,7 @@
   "%vptest\t{%1, %0|%0, %1}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssecomi")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,vex")
    (set (attr "btver2_decode")
@@ -24051,7 +24068,7 @@
   "%vptest\t{%1, %0|%0, %1}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssecomi")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,orig,vex")
    (set_attr "mode" "TI")])
@@ -24169,7 +24186,7 @@
   "%vround<ssemodesuffix>\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,noavx,avx")
    (set_attr "type" "ssecvt")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_data16" "1,1,*")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -24281,7 +24298,7 @@
 }
   [(set_attr "isa" "noavx,noavx,noavx512f,avx512f")
    (set_attr "type" "ssecvt")
-   (set_attr "gpr32" "0,0,0,1")
+   (set_attr "addr" "gpr16,gpr16,gpr16,*")
    (set_attr "length_immediate" "1")
    (set_attr "prefix_data16" "1,1,*,*")
    (set_attr "prefix_extra" "1")
@@ -24318,7 +24335,7 @@
 }
   [(set_attr "isa" "noavx,noavx,noavx512f,avx512f")
    (set_attr "type" "ssecvt")
-   (set_attr "gpr32" "0,0,0,1")
+   (set_attr "addr" "gpr16,gpr16,gpr16,*")
    (set_attr "length_immediate" "1")
    (set_attr "prefix_data16" "1,1,*,*")
    (set_attr "prefix_extra" "1")
@@ -24587,7 +24604,7 @@
   "TARGET_SSE4_2"
   "%vpcmpestri\t{%5, %3, %1|%1, %3, %5}"
   [(set_attr "type" "sselog")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "maybe_vex")
    (set_attr "length_immediate" "1")
@@ -24615,7 +24632,7 @@
   "TARGET_SSE4_2"
   "%vpcmpestrm\t{%5, %3, %1|%1, %3, %5}"
   [(set_attr "type" "sselog")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "maybe_vex")
@@ -24641,7 +24658,7 @@
    %vpcmpestri\t{%6, %4, %2|%2, %4, %6}
    %vpcmpestri\t{%6, %4, %2|%2, %4, %6}"
   [(set_attr "type" "sselog")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "memory" "none,load,none,load")
@@ -24696,7 +24713,7 @@
   DONE;
 }
   [(set_attr "type" "sselog")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "memory" "none,load")
@@ -24718,7 +24735,7 @@
   "TARGET_SSE4_2"
   "%vpcmpistri\t{%3, %2, %1|%1, %2, %3}"
   [(set_attr "type" "sselog")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "maybe_vex")
@@ -24742,7 +24759,7 @@
   "TARGET_SSE4_2"
   "%vpcmpistrm\t{%3, %2, %1|%1, %2, %3}"
   [(set_attr "type" "sselog")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "maybe_vex")
@@ -24766,7 +24783,7 @@
    %vpcmpistri\t{%4, %3, %2|%2, %3, %4}
    %vpcmpistri\t{%4, %3, %2|%2, %3, %4}"
   [(set_attr "type" "sselog")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "memory" "none,load,none,load")
@@ -26193,7 +26210,7 @@
    vaesenc\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,aes,avx512vl")
    (set_attr "type" "sselog1")
-   (set_attr "gpr32" "0,1,1")
+   (set_attr "addr" "gpr16,*,*")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,vex,evex")
    (set_attr "btver2_decode" "double,double,double")
@@ -26211,7 +26228,7 @@
    vaesenclast\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,aes,avx512vl")
    (set_attr "type" "sselog1")
-   (set_attr "gpr32" "0,1,1")
+   (set_attr "addr" "gpr16,*,*")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,vex,evex")
    (set_attr "btver2_decode" "double,double,double") 
@@ -26229,7 +26246,7 @@
    vaesdec\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,aes,avx512vl")
    (set_attr "type" "sselog1")
-   (set_attr "gpr32" "0,1,1")
+   (set_attr "addr" "gpr16,*,*")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,vex,evex")
    (set_attr "btver2_decode" "double,double,double") 
@@ -26246,7 +26263,7 @@
    vaesdeclast\t{%2, %1, %0|%0, %1, %2}
    vaesdeclast\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,aes,avx512vl")
-   (set_attr "gpr32" "0,1,1")
+   (set_attr "addr" "gpr16,*,*")
    (set_attr "type" "sselog1")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,vex,evex")
@@ -26260,7 +26277,7 @@
   "TARGET_AES"
   "%vaesimc\t{%1, %0|%0, %1}"
   [(set_attr "type" "sselog1")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "maybe_vex")
    (set_attr "mode" "TI")])
@@ -26273,7 +26290,7 @@
   "TARGET_AES"
   "%vaeskeygenassist\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "type" "sselog1")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "maybe_vex")
@@ -26292,7 +26309,7 @@
    vpclmulqdq\t{%3, %2, %1, %0|%0, %1, %2, %3}"
   [(set_attr "isa" "noavx,avx,vpclmulqdqvl")
    (set_attr "type" "sselog1")
-   (set_attr "gpr32" "0,1,1")
+   (set_attr "addr" "gpr16,*,*")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "orig,vex,evex")
@@ -26734,7 +26751,7 @@
    (set_attr "mode" "<sseinsnmode>")])
 
 ;; TODO (APX): vmovaps supports EGPR but not others, could split
-;; pattern to enable gpr32 for this one.
+;; pattern to enable rex2 address for this one.
 (define_insn "avx2_permv2ti"
   [(set (match_operand:V4DI 0 "register_operand" "=x")
 	(unspec:V4DI
@@ -26766,7 +26783,7 @@
     return "vperm2i128\t{%3, %2, %1, %0|%0, %1, %2, %3}";
   }
   [(set_attr "type" "sselog")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "OI")])
 
@@ -27100,7 +27117,10 @@
    vinsert<shuffletype>32x4\t{$1, %1, %0, %0|%0, %0, %1, 1}"
   [(set_attr "isa" "noavx512vl,*,*,avx512dq,avx512dq,avx512vl,avx512vl")
    (set_attr "type" "ssemov,sselog1,sselog1,ssemov,sselog1,ssemov,sselog1")
-   (set_attr "gpr32" "0,1,1,1,1,1,1")
+   (set (attr "addr")
+	(if_then_else (eq_attr "alternative" "0")
+		      (const_string "gpr16")
+		      (const_string "*")))
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "0,1,1,0,1,0,1")
    (set_attr "prefix" "vex,vex,vex,evex,evex,evex,evex")
@@ -27395,7 +27415,7 @@
   "TARGET_AVX"
   "vperm2<i128>\t{%3, %2, %1, %0|%0, %1, %2, %3}"
   [(set_attr "type" "sselog")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "vex")
@@ -27423,7 +27443,7 @@
   return "vperm2<i128>\t{%3, %2, %1, %0|%0, %1, %2, %3}";
 }
   [(set_attr "type" "sselog")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "vex")
@@ -27528,7 +27548,7 @@
     return "vinsert<i128>\t{$0x0, %2, %1, %0|%0, %1, %2, 0x0}";
 }
   [(set_attr "isa" "noavx512vl,avx512vl")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sselog")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -27573,7 +27593,7 @@
     return "vinsert<i128>\t{$0x0, %2, %1, %0|%0, %1, %2, 0x0}";
 }
   [(set_attr "isa" "noavx512vl,avx512vl")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sselog")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -27596,7 +27616,7 @@
     return "vinsert<i128>\t{$0x1, %2, %1, %0|%0, %1, %2, 0x1}";
 }
   [(set_attr "isa" "noavx512vl,avx512vl")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sselog")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -27618,7 +27638,7 @@
    vinsert%~128\t{$0x0, %2, %1, %0|%0, %1, %2, 0x0}
    vinserti32x4\t{$0x0, %2, %1, %0|%0, %1, %2, 0x0}"
   [(set_attr "isa" "noavx512vl,avx512vl")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sselog")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -27640,7 +27660,7 @@
    vinsert%~128\t{$0x1, %2, %1, %0|%0, %1, %2, 0x1}
    vinserti32x4\t{$0x1, %2, %1, %0|%0, %1, %2, 0x1}"
   [(set_attr "isa" "noavx512vl,avx512vl")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sselog")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -27667,7 +27687,7 @@
    vinserti32x4\t{$0x0, %2, %1, %0|%0, %1, %2, 0x0}"
   [(set_attr "isa" "noavx512vl,avx512vl")
    (set_attr "type" "sselog")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "vex,evex")
@@ -27692,7 +27712,7 @@
    vinsert%~128\t{$0x1, %2, %1, %0|%0, %1, %2, 0x1}
    vinserti32x4\t{$0x1, %2, %1, %0|%0, %1, %2, 0x1}"
   [(set_attr "isa" "noavx512vl,avx512vl")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "type" "sselog")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -27713,7 +27733,7 @@
     return "vmaskmov<ssefltmodesuffix>\t{%1, %2, %0|%0, %2, %1}";
 }
   [(set_attr "type" "sselog1")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "vex")
    (set_attr "btver2_decode" "vector")
@@ -27734,7 +27754,7 @@
     return "vmaskmov<ssefltmodesuffix>\t{%2, %1, %0|%0, %1, %2}";
 }
   [(set_attr "type" "sselog1")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "vex")
    (set_attr "btver2_decode" "vector") 
@@ -27840,14 +27860,14 @@
 
 (define_expand "cbranch<mode>4"
   [(set (reg:CC FLAGS_REG)
-	(compare:CC (match_operand:VI48_AVX 1 "register_operand")
-		    (match_operand:VI48_AVX 2 "nonimmediate_operand")))
+	(compare:CC (match_operand:VI48_AVX_AVX512F 1 "register_operand")
+		    (match_operand:VI48_AVX_AVX512F 2 "nonimmediate_operand")))
    (set (pc) (if_then_else
 	       (match_operator 0 "bt_comparison_operator"
 		[(reg:CC FLAGS_REG) (const_int 0)])
 	       (label_ref (match_operand 3))
 	       (pc)))]
-  "TARGET_SSE4_1"
+  "TARGET_SSE4_1 && (<MODE_SIZE> != 64 || !TARGET_PREFER_AVX256)"
 {
   ix86_expand_branch (GET_CODE (operands[0]),
 		      operands[1], operands[2], operands[3]);
@@ -28093,7 +28113,7 @@
     }
 }
   [(set_attr "isa" "noavx512f,avx512f,*,*")
-   (set_attr "gpr32" "0,1,1,1")
+   (set_attr "addr" "gpr16,*,*,*")
    (set_attr "type" "sselog,sselog,ssemov,ssemov")
    (set_attr "prefix_extra" "1,1,*,*")
    (set_attr "length_immediate" "1,1,*,*")
@@ -28343,7 +28363,7 @@
   "TARGET_AVX2"
   "%M3v<sseintprefix>gatherd<ssemodesuffix>\t{%1, %7, %0|%0, %7, %1}"
   [(set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "<sseinsnmode>")])
 
@@ -28364,7 +28384,7 @@
   "TARGET_AVX2"
   "%M2v<sseintprefix>gatherd<ssemodesuffix>\t{%1, %6, %0|%0, %6, %1}"
   [(set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "<sseinsnmode>")])
 
@@ -28406,7 +28426,7 @@
   "TARGET_AVX2"
   "%M3v<sseintprefix>gatherq<ssemodesuffix>\t{%5, %7, %2|%2, %7, %5}"
   [(set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "<sseinsnmode>")])
 
@@ -28431,7 +28451,7 @@
   return "%M2v<sseintprefix>gatherq<ssemodesuffix>\t{%4, %6, %0|%0, %6, %4}";
 }
   [(set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "<sseinsnmode>")])
 
@@ -28455,7 +28475,7 @@
   "TARGET_AVX2"
   "%M3v<sseintprefix>gatherq<ssemodesuffix>\t{%5, %7, %0|%0, %7, %5}"
   [(set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "<sseinsnmode>")])
 
@@ -28479,7 +28499,7 @@
   "TARGET_AVX2"
   "%M2v<sseintprefix>gatherq<ssemodesuffix>\t{%4, %6, %0|%0, %6, %4}"
   [(set_attr "type" "ssemov")
-   (set_attr "gpr32" "0")
+   (set_attr "addr" "gpr16")
    (set_attr "prefix" "vex")
    (set_attr "mode" "<sseinsnmode>")])
 
@@ -29679,7 +29699,7 @@
    gf2p8affineinvqb\t{%3, %2, %0| %0, %2, %3}
    vgf2p8affineinvqb\t{%3, %2, %1, %0<mask_operand4>| %0<mask_operand4>, %1, %2, %3}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,maybe_evex")
    (set_attr "mode" "<sseinsnmode>")])
@@ -29696,7 +29716,7 @@
    gf2p8affineqb\t{%3, %2, %0| %0, %2, %3}
    vgf2p8affineqb\t{%3, %2, %1, %0<mask_operand4>| %0<mask_operand4>, %1, %2, %3}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,maybe_evex")
    (set_attr "mode" "<sseinsnmode>")])
@@ -29712,7 +29732,7 @@
    gf2p8mulb\t{%2, %0| %0, %2}
    vgf2p8mulb\t{%2, %1, %0<mask_operand3>| %0<mask_operand3>, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,maybe_evex")
    (set_attr "mode" "<sseinsnmode>")])

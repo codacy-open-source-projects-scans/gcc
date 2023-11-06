@@ -55,17 +55,17 @@ using namespace riscv_vector;
 
 namespace riscv_vector {
 
-/* Return true if vlmax is constant value and can be used in vsetivl.  */
-static bool
-const_vlmax_p (machine_mode mode)
+/* Return true if NUNTIS <=31 so that we can use immediate AVL in vsetivli.  */
+bool
+imm_avl_p (machine_mode mode)
 {
-  poly_uint64 nuints = GET_MODE_NUNITS (mode);
+  poly_uint64 nunits = GET_MODE_NUNITS (mode);
 
-  return nuints.is_constant ()
-    /* The vsetivli can only hold register 0~31.  */
-    ? (IN_RANGE (nuints.to_constant (), 0, 31))
-    /* Only allowed in VLS-VLMAX mode.  */
-    : false;
+  return nunits.is_constant ()
+	   /* The vsetivli can only hold register 0~31.  */
+	   ? (IN_RANGE (nunits.to_constant (), 0, 31))
+	   /* Only allowed in VLS-VLMAX mode.  */
+	   : false;
 }
 
 /* Helper functions for insn_flags && insn_types */
@@ -298,14 +298,6 @@ public:
 	      len = force_reg (Pmode, len);
 	    vls_p = true;
 	  }
-	else if (const_vlmax_p (vtype_mode))
-	  {
-	    /* Optimize VLS-VLMAX code gen, we can use vsetivli instead of
-	       the vsetvli to obtain the value of vlmax.  */
-	    poly_uint64 nunits = GET_MODE_NUNITS (vtype_mode);
-	    len = gen_int_mode (nunits, Pmode);
-	    vls_p = true;
-	  }
 	else if (can_create_pseudo_p ())
 	  {
 	    len = gen_reg_rtx (Pmode);
@@ -370,7 +362,7 @@ void
 emit_vlmax_insn (unsigned icode, unsigned insn_flags, rtx *ops)
 {
   insn_expander<RVV_INSN_OPERANDS_MAX> e (insn_flags, true);
-  gcc_assert (can_create_pseudo_p () || const_vlmax_p (e.get_vtype_mode (ops)));
+  gcc_assert (can_create_pseudo_p () || imm_avl_p (e.get_vtype_mode (ops)));
 
   e.emit_insn ((enum insn_code) icode, ops);
 }
@@ -1641,7 +1633,7 @@ has_vi_variant_p (rtx_code code, rtx x)
 bool
 sew64_scalar_helper (rtx *operands, rtx *scalar_op, rtx vl,
 		     machine_mode vector_mode, bool has_vi_variant_p,
-		     void (*emit_vector_func) (rtx *, rtx))
+		     void (*emit_vector_func) (rtx *, rtx), enum avl_type type)
 {
   machine_mode scalar_mode = GET_MODE_INNER (vector_mode);
   if (has_vi_variant_p)
@@ -1671,7 +1663,11 @@ sew64_scalar_helper (rtx *operands, rtx *scalar_op, rtx vl,
 
   rtx tmp = gen_reg_rtx (vector_mode);
   rtx ops[] = {tmp, *scalar_op};
-  emit_nonvlmax_insn (code_for_pred_broadcast (vector_mode), UNARY_OP, ops, vl);
+  if (type == VLMAX)
+    emit_vlmax_insn (code_for_pred_broadcast (vector_mode), UNARY_OP, ops);
+  else
+    emit_nonvlmax_insn (code_for_pred_broadcast (vector_mode), UNARY_OP, ops,
+			vl);
   emit_vector_func (operands, tmp);
 
   return true;
@@ -1725,7 +1721,7 @@ force_vector_length_operand (rtx vl)
   return vl;
 }
 
-static rtx
+rtx
 gen_no_side_effects_vsetvl_rtx (machine_mode vmode, rtx vl, rtx avl)
 {
   unsigned int sew = get_sew (vmode);
@@ -2015,206 +2011,6 @@ expand_tuple_move (rtx *ops)
     }
 }
 
-/* Used by cpymemsi in riscv.md .  */
-
-bool
-expand_block_move (rtx dst_in, rtx src_in, rtx length_in)
-{
-  /*
-    memcpy:
-	mv a3, a0                       # Copy destination
-    loop:
-	vsetvli t0, a2, e8, m8, ta, ma  # Vectors of 8b
-	vle8.v v0, (a1)                 # Load bytes
-	add a1, a1, t0                  # Bump pointer
-	sub a2, a2, t0                  # Decrement count
-	vse8.v v0, (a3)                 # Store bytes
-	add a3, a3, t0                  # Bump pointer
-	bnez a2, loop                   # Any more?
-	ret                             # Return
-  */
-  if (!TARGET_VECTOR)
-    return false;
-  HOST_WIDE_INT potential_ew
-    = (MIN (MIN (MEM_ALIGN (src_in), MEM_ALIGN (dst_in)), BITS_PER_WORD)
-       / BITS_PER_UNIT);
-  machine_mode vmode = VOIDmode;
-  bool need_loop = true;
-  bool size_p = optimize_function_for_size_p (cfun);
-  rtx src, dst;
-  rtx end = gen_reg_rtx (Pmode);
-  rtx vec;
-  rtx length_rtx = length_in;
-
-  if (CONST_INT_P (length_in))
-    {
-      HOST_WIDE_INT length = INTVAL (length_in);
-
-    /* By using LMUL=8, we can copy as many bytes in one go as there
-       are bits in a vector register.  If the entire block thus fits,
-       we don't need a loop.  */
-    if (length <= TARGET_MIN_VLEN)
-      {
-	need_loop = false;
-
-	/* If a single scalar load / store pair can do the job, leave it
-	   to the scalar code to do that.  */
-	/* ??? If fast unaligned access is supported, the scalar code could
-	   use suitably sized scalars irrespective of alignemnt.  If that
-	   gets fixed, we have to adjust the test here.  */
-
-	if (pow2p_hwi (length) && length <= potential_ew)
-	  return false;
-      }
-
-      /* Find the vector mode to use.  Using the largest possible element
-	 size is likely to give smaller constants, and thus potentially
-	 reducing code size.  However, if we need a loop, we need to update
-	 the pointers, and that is more complicated with a larger element
-	 size, unless we use an immediate, which prevents us from dynamically
-	 using the targets transfer size that the hart supports.  And then,
-	 unless we know the *exact* vector size of the hart, we'd need
-	 multiple vsetvli / branch statements, so it's not even a size win.
-	 If, in the future, we find an RISCV-V implementation that is slower
-	 for small element widths, we might allow larger element widths for
-	 loops too.  */
-      if (need_loop)
-	potential_ew = 1;
-      for (; potential_ew; potential_ew >>= 1)
-	{
-	  scalar_int_mode elem_mode;
-	  unsigned HOST_WIDE_INT bits = potential_ew * BITS_PER_UNIT;
-	  unsigned HOST_WIDE_INT per_iter;
-	  HOST_WIDE_INT nunits;
-
-	  if (need_loop)
-	    per_iter = TARGET_MIN_VLEN;
-	  else
-	    per_iter = length;
-	  nunits = per_iter / potential_ew;
-
-	  /* Unless we get an implementation that's slow for small element
-	     size / non-word-aligned accesses, we assume that the hardware
-	     handles this well, and we don't want to complicate the code
-	     with shifting word contents around or handling extra bytes at
-	     the start and/or end.  So we want the total transfer size and
-	     alignment to fit with the element size.  */
-	  if (length % potential_ew != 0
-	      || !int_mode_for_size (bits, 0).exists (&elem_mode))
-	    continue;
-	  /* Find the mode to use for the copy inside the loop - or the
-	     sole copy, if there is no loop.  */
-	  if (!need_loop)
-	    {
-	      /* Try if we have an exact mode for the copy.  */
-	      if (get_vector_mode (elem_mode, nunits).exists (&vmode))
-		break;
-	      /* Since we don't have a mode that exactlty matches the transfer
-		 size, we'll need to use pred_store, which is not available
-		 for all vector modes, but only iE_RVV_M* modes, hence trying
-		 to find a vector mode for a merely rounded-up size is
-		 pointless.
-		 Still, by choosing a lower LMUL factor that still allows
-		 an entire transfer, we can reduce register pressure.  */
-	      for (unsigned lmul = 1; lmul <= 4; lmul <<= 1)
-		if (TARGET_MIN_VLEN * lmul <= nunits * BITS_PER_UNIT
-		    /* Avoid loosing the option of using vsetivli .  */
-		    && (nunits <= 31 * lmul || nunits > 31 * 8)
-		    && (get_vector_mode
-			 (elem_mode,
-			  exact_div (BYTES_PER_RISCV_VECTOR * lmul,
-				     potential_ew)
-			  ).exists (&vmode)))
-		  break;
-	    }
-
-	  /* The RVVM8?I modes are notionally 8 * BYTES_PER_RISCV_VECTOR bytes
-	     wide.  BYTES_PER_RISCV_VECTOR can't be eavenly divided by
-	     the sizes of larger element types; the LMUL factor of 8 can at
-	     the moment be divided by the SEW, with SEW of up to 8 bytes,
-	     but there are reserved encodings so there might be larger
-	     SEW in the future.  */
-	  if (get_vector_mode (elem_mode,
-			       exact_div (BYTES_PER_RISCV_VECTOR * 8,
-					  potential_ew)).exists (&vmode))
-	    break;
-
-	  /* We may get here if we tried an element size that's larger than
-	     the hardware supports, but we should at least find a suitable
-	     byte vector mode.  */
-	  gcc_assert (potential_ew > 1);
-	}
-      if (potential_ew > 1)
-	length_rtx = GEN_INT (length / potential_ew);
-    }
-  else
-    {
-      vmode = E_RVVM8QImode;
-    }
-
-  /* A memcpy libcall in the worst case takes 3 instructions to prepare the
-     arguments + 1 for the call.  When RVV should take 7 instructions and
-     we're optimizing for size a libcall may be preferable.  */
-  if (size_p && need_loop)
-    return false;
-
-  /* length_rtx holds the (remaining) length of the required copy.
-     cnt holds the length we copy with the current load/store pair.  */
-  rtx cnt = length_rtx;
-  rtx label = NULL_RTX;
-  rtx dst_addr = copy_addr_to_reg (XEXP (dst_in, 0));
-  rtx src_addr = copy_addr_to_reg (XEXP (src_in, 0));
-
-  if (need_loop)
-    {
-      length_rtx = copy_to_mode_reg (Pmode, length_rtx);
-      cnt = gen_reg_rtx (Pmode);
-      label = gen_label_rtx ();
-
-      emit_label (label);
-      emit_insn (gen_no_side_effects_vsetvl_rtx (vmode, cnt, length_rtx));
-    }
-
-  vec = gen_reg_rtx (vmode);
-  src = change_address (src_in, vmode, src_addr);
-  dst = change_address (dst_in, vmode, dst_addr);
-
-  /* If we don't need a loop and have a suitable mode to describe the size,
-     just do a load / store pair and leave it up to the later lazy code
-     motion pass to insert the appropriate vsetvli.  */
-  if (!need_loop && known_eq (GET_MODE_SIZE (vmode), INTVAL (length_in)))
-    {
-      emit_move_insn (vec, src);
-      emit_move_insn (dst, vec);
-    }
-  else
-    {
-      machine_mode mask_mode = get_vector_mode (BImode, GET_MODE_NUNITS (vmode)).require ();
-      rtx mask =  CONSTM1_RTX (mask_mode);
-      if (!satisfies_constraint_K (cnt))
-	cnt= force_reg (Pmode, cnt);
-      rtx m_ops[] = {vec, mask, src};
-      emit_nonvlmax_insn (code_for_pred_mov (vmode), UNARY_OP_TAMA,
-			  m_ops, cnt);
-      emit_insn (gen_pred_store (vmode, dst, mask, vec, cnt,
-				 get_avl_type_rtx (NONVLMAX)));
-    }
-
-  if (need_loop)
-    {
-      emit_insn (gen_rtx_SET (src_addr, gen_rtx_PLUS (Pmode, src_addr, cnt)));
-      emit_insn (gen_rtx_SET (dst_addr, gen_rtx_PLUS (Pmode, dst_addr, cnt)));
-      emit_insn (gen_rtx_SET (length_rtx, gen_rtx_MINUS (Pmode, length_rtx, cnt)));
-
-      /* Emit the loop condition.  */
-      rtx test = gen_rtx_NE (VOIDmode, end, const0_rtx);
-      emit_jump_insn (gen_cbranch4 (Pmode, test, length_rtx, const0_rtx, label));
-      emit_insn (gen_nop ());
-    }
-
-  return true;
-}
-
 /* Return the vectorization machine mode for RVV according to LMUL.  */
 machine_mode
 preferred_simd_mode (scalar_mode mode)
@@ -2228,16 +2024,15 @@ preferred_simd_mode (scalar_mode mode)
      vectorizer when we enable them in this target hook. Currently, we can
      support auto-vectorization in -march=rv32_zve32x_zvl128b. Wheras,
      -march=rv32_zve32x_zvl32b or -march=rv32_zve32x_zvl64b are disabled.  */
-  int lmul = riscv_autovec_lmul == RVV_DYNAMIC ? RVV_M8 : riscv_autovec_lmul;
   if (autovec_use_vlmax_p ())
     {
-      if (TARGET_MIN_VLEN < 128 && lmul < RVV_M2)
+      if (TARGET_MIN_VLEN < 128 && TARGET_MAX_LMUL < RVV_M2)
 	return word_mode;
       /* We use LMUL = 1 as base bytesize which is BYTES_PER_RISCV_VECTOR and
 	 riscv_autovec_lmul as multiply factor to calculate the the NUNITS to
 	 get the auto-vectorization mode.  */
       poly_uint64 nunits;
-      poly_uint64 vector_size = BYTES_PER_RISCV_VECTOR * lmul;
+      poly_uint64 vector_size = BYTES_PER_RISCV_VECTOR * TARGET_MAX_LMUL;
       poly_uint64 scalar_size = GET_MODE_SIZE (mode);
       gcc_assert (multiple_p (vector_size, scalar_size, &nunits));
       machine_mode rvv_mode;
@@ -2417,10 +2212,9 @@ get_cmp_insn_code (rtx_code code, machine_mode mode)
 unsigned int
 autovectorize_vector_modes (vector_modes *modes, bool)
 {
-  int lmul = riscv_autovec_lmul == RVV_DYNAMIC ? RVV_M8 : riscv_autovec_lmul;
   if (autovec_use_vlmax_p ())
     {
-      poly_uint64 full_size = BYTES_PER_RISCV_VECTOR * lmul;
+      poly_uint64 full_size = BYTES_PER_RISCV_VECTOR * TARGET_MAX_LMUL;
 
       /* Start with a RVV<LMUL>QImode where LMUL is the number of units that
 	 fit a whole vector.
@@ -2448,7 +2242,7 @@ autovectorize_vector_modes (vector_modes *modes, bool)
     }
     /* Push all VLSmodes according to TARGET_MIN_VLEN.  */
     unsigned int i = 0;
-    unsigned int base_size = TARGET_MIN_VLEN * lmul / 8;
+    unsigned int base_size = TARGET_MIN_VLEN * TARGET_MAX_LMUL / 8;
     unsigned int size = base_size;
     machine_mode mode;
     while (size > 0 && get_vector_mode (QImode, size).exists (&mode))
@@ -2470,14 +2264,13 @@ can_find_related_mode_p (machine_mode vector_mode, scalar_mode element_mode,
 {
   if (!autovec_use_vlmax_p ())
     return false;
-  int lmul = riscv_autovec_lmul == RVV_DYNAMIC ? RVV_M8 : riscv_autovec_lmul;
   if (riscv_v_ext_vector_mode_p (vector_mode)
-      && multiple_p (BYTES_PER_RISCV_VECTOR * lmul,
+      && multiple_p (BYTES_PER_RISCV_VECTOR * TARGET_MAX_LMUL,
 		     GET_MODE_SIZE (element_mode), nunits))
     return true;
   if (riscv_v_ext_vls_mode_p (vector_mode)
-      && multiple_p (TARGET_MIN_VLEN * lmul, GET_MODE_SIZE (element_mode),
-		     nunits))
+      && multiple_p (TARGET_MIN_VLEN * TARGET_MAX_LMUL,
+		     GET_MODE_SIZE (element_mode), nunits))
     return true;
   return false;
 }
@@ -3410,7 +3203,9 @@ needs_fp_rounding (unsigned icode, machine_mode mode)
     return false;
 
   return icode != maybe_code_for_pred (SMIN, mode)
+	 && icode != maybe_code_for_pred (UNSPEC_VFMIN, mode)
 	 && icode != maybe_code_for_pred (SMAX, mode)
+	 && icode != maybe_code_for_pred (UNSPEC_VFMAX, mode)
 	 && icode != maybe_code_for_pred (NEG, mode)
 	 && icode != maybe_code_for_pred (ABS, mode)
 	 /* narrower-FP -> FP */
@@ -4133,6 +3928,26 @@ emit_vec_cvt_x_f (rtx op_dest, rtx op_src, insn_type type,
 }
 
 static void
+emit_vec_narrow_cvt_x_f (rtx op_dest, rtx op_src, insn_type type,
+			 machine_mode vec_mode)
+{
+  rtx ops[] = {op_dest, op_src};
+  insn_code icode = code_for_pred_narrow_fcvt_x_f (UNSPEC_VFCVT, vec_mode);
+
+  emit_vlmax_insn (icode, type, ops);
+}
+
+static void
+emit_vec_widden_cvt_x_f (rtx op_dest, rtx op_src, insn_type type,
+			 machine_mode vec_mode)
+{
+  rtx ops[] = {op_dest, op_src};
+  insn_code icode = code_for_pred_widen_fcvt_x_f (UNSPEC_VFCVT, vec_mode);
+
+  emit_vlmax_insn (icode, type, ops);
+}
+
+static void
 emit_vec_cvt_f_x (rtx op_dest, rtx op_src, rtx mask,
 		  insn_type type, machine_mode vec_mode)
 {
@@ -4324,14 +4139,30 @@ expand_vec_roundeven (rtx op_0, rtx op_1, machine_mode vec_fp_mode,
   emit_vec_copysign (op_0, op_0, op_1, vec_fp_mode);
 }
 
+/* Handling the rounding from floating-point to int/long/long long.  */
+static void
+emit_vec_rounding_to_integer (rtx op_0, rtx op_1, machine_mode vec_fp_mode,
+			      machine_mode vec_int_mode, insn_type type)
+{
+  poly_uint16 vec_fp_size = GET_MODE_SIZE (vec_fp_mode);
+  poly_uint16 vec_int_size = GET_MODE_SIZE (vec_int_mode);
+
+  if (known_eq (vec_fp_size, vec_int_size)) /* SF => SI, DF => DI.  */
+    emit_vec_cvt_x_f (op_0, op_1, type, vec_fp_mode);
+  else if (maybe_eq (vec_fp_size, vec_int_size * 2)) /* DF => SI.  */
+    emit_vec_narrow_cvt_x_f (op_0, op_1, type, vec_fp_mode);
+  else if (maybe_eq (vec_fp_size * 2, vec_int_size)) /* SF => DI.  */
+    emit_vec_widden_cvt_x_f (op_0, op_1, type, vec_int_mode);
+  else /* HF requires additional middle-end support.  */
+    gcc_unreachable ();
+}
+
 void
 expand_vec_lrint (rtx op_0, rtx op_1, machine_mode vec_fp_mode,
-		  machine_mode vec_long_mode)
+		  machine_mode vec_int_mode)
 {
-  gcc_assert (known_eq (GET_MODE_SIZE (vec_fp_mode),
-			GET_MODE_SIZE (vec_long_mode)));
-
-  emit_vec_cvt_x_f (op_0, op_1, UNARY_OP_FRM_DYN, vec_fp_mode);
+  emit_vec_rounding_to_integer (op_0, op_1, vec_fp_mode, vec_int_mode,
+				UNARY_OP_FRM_DYN);
 }
 
 void

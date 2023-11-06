@@ -840,15 +840,20 @@ finish_goto_stmt (tree destination)
   return add_stmt (build_stmt (input_location, GOTO_EXPR, destination));
 }
 
-/* Returns true if CALL is a (possibly wrapped) CALL_EXPR or AGGR_INIT_EXPR
-   to operator= () that is written as an operator expression. */
+/* Returns true if T corresponds to an assignment operator expression.  */
+
 static bool
-is_assignment_op_expr_p (tree call)
+is_assignment_op_expr_p (tree t)
 {
-  if (call == NULL_TREE)
+  if (t == NULL_TREE)
     return false;
 
-  call = extract_call_expr (call);
+  if (TREE_CODE (t) == MODIFY_EXPR
+      || (TREE_CODE (t) == MODOP_EXPR
+	  && TREE_CODE (TREE_OPERAND (t, 1)) == NOP_EXPR))
+    return true;
+
+  tree call = extract_call_expr (t);
   if (call == NULL_TREE
       || call == error_mark_node
       || !CALL_EXPR_OPERATOR_SYNTAX (call))
@@ -858,6 +863,28 @@ is_assignment_op_expr_p (tree call)
   return fndecl != NULL_TREE
     && DECL_ASSIGNMENT_OPERATOR_P (fndecl)
     && DECL_OVERLOADED_OPERATOR_IS (fndecl, NOP_EXPR);
+}
+
+/* Maybe warn about an unparenthesized 'a = b' (appearing in a
+   boolean context where 'a == b' might have been intended).  */
+
+void
+maybe_warn_unparenthesized_assignment (tree t, tsubst_flags_t complain)
+{
+  if (REFERENCE_REF_P (t))
+    t = TREE_OPERAND (t, 0);
+
+  if ((complain & tf_warning)
+      && warn_parentheses
+      && is_assignment_op_expr_p (t)
+      /* A parenthesized expression would've had this warning
+	 suppressed by finish_parenthesized_expr.  */
+      && !warning_suppressed_p (t, OPT_Wparentheses))
+    {
+      warning_at (cp_expr_loc_or_input_loc (t), OPT_Wparentheses,
+		  "suggest parentheses around assignment used as truth value");
+      suppress_warning (t, OPT_Wparentheses);
+    }
 }
 
 /* COND is the condition-expression for an if, while, etc.,
@@ -878,21 +905,10 @@ maybe_convert_cond (tree cond)
   if (warn_sequence_point && !processing_template_decl)
     verify_sequence_points (cond);
 
+  maybe_warn_unparenthesized_assignment (cond, tf_warning_or_error);
+
   /* Do the conversion.  */
   cond = convert_from_reference (cond);
-
-  tree inner = REFERENCE_REF_P (cond) ? TREE_OPERAND (cond, 0) : cond;
-  if ((TREE_CODE (inner) == MODIFY_EXPR
-       || (TREE_CODE (inner) == MODOP_EXPR
-	   && TREE_CODE (TREE_OPERAND (inner, 1)) == NOP_EXPR)
-       || is_assignment_op_expr_p (inner))
-      && warn_parentheses
-      && !warning_suppressed_p (inner, OPT_Wparentheses)
-      && warning_at (cp_expr_loc_or_input_loc (inner),
-		     OPT_Wparentheses, "suggest parentheses around "
-				       "assignment used as truth value"))
-    suppress_warning (inner, OPT_Wparentheses);
-
   return condition_conversion (cond);
 }
 
@@ -2158,7 +2174,8 @@ finish_parenthesized_expr (cp_expr expr)
 {
   if (EXPR_P (expr))
     {
-      /* This inhibits warnings in c_common_truthvalue_conversion.  */
+      /* This inhibits warnings in maybe_warn_unparenthesized_assignment
+	 and c_common_truthvalue_conversion.  */
       tree inner = REFERENCE_REF_P (expr) ? TREE_OPERAND (expr, 0) : *expr;
       suppress_warning (inner, OPT_Wparentheses);
     }
@@ -4963,8 +4980,9 @@ public:
 
   tree var;
   tree result;
-  hash_table<nofree_ptr_hash <tree_node> > visited;
+  hash_set<tree> visited;
   bool simple;
+  bool in_nrv_cleanup;
 };
 
 /* Helper function for walk_tree, used by finalize_nrv below.  */
@@ -4973,14 +4991,24 @@ static tree
 finalize_nrv_r (tree* tp, int* walk_subtrees, void* data)
 {
   class nrv_data *dp = (class nrv_data *)data;
-  tree_node **slot;
 
   /* No need to walk into types.  There wouldn't be any need to walk into
      non-statements, except that we have to consider STMT_EXPRs.  */
   if (TYPE_P (*tp))
     *walk_subtrees = 0;
+
+  /* Replace all uses of the NRV with the RESULT_DECL.  */
+  else if (*tp == dp->var)
+    *tp = dp->result;
+
+  /* Avoid walking into the same tree more than once.  Unfortunately, we
+     can't just use walk_tree_without duplicates because it would only call
+     us for the first occurrence of dp->var in the function body.  */
+  else if (dp->visited.add (*tp))
+    *walk_subtrees = 0;
+
   /* If there's a label, we might need to destroy the NRV on goto (92407).  */
-  else if (TREE_CODE (*tp) == LABEL_EXPR)
+  else if (TREE_CODE (*tp) == LABEL_EXPR && !dp->in_nrv_cleanup)
     dp->simple = false;
   /* Change NRV returns to just refer to the RESULT_DECL; this is a nop,
      but differs from using NULL_TREE in that it indicates that we care
@@ -4999,16 +5027,59 @@ finalize_nrv_r (tree* tp, int* walk_subtrees, void* data)
   else if (TREE_CODE (*tp) == CLEANUP_STMT
 	   && CLEANUP_DECL (*tp) == dp->var)
     {
+      dp->in_nrv_cleanup = true;
+      cp_walk_tree (&CLEANUP_BODY (*tp), finalize_nrv_r, data, 0);
+      dp->in_nrv_cleanup = false;
+      cp_walk_tree (&CLEANUP_EXPR (*tp), finalize_nrv_r, data, 0);
+      *walk_subtrees = 0;
+
       if (dp->simple)
+	/* For a simple NRV, just run it on the EH path.  */
 	CLEANUP_EH_ONLY (*tp) = true;
       else
 	{
+	  /* Not simple, we need to check current_retval_sentinel to decide
+	     whether to run it.  If it's set, we're returning normally and
+	     don't want to destroy the NRV.  If the sentinel is not set, we're
+	     leaving scope some other way, either by flowing off the end of its
+	     scope or throwing an exception.  */
 	  tree cond = build3 (COND_EXPR, void_type_node,
 			      current_retval_sentinel,
 			      void_node, CLEANUP_EXPR (*tp));
 	  CLEANUP_EXPR (*tp) = cond;
 	}
+
+      /* If a cleanup might throw, we need to clear current_retval_sentinel on
+	 the exception path, both so the check above succeeds and so an outer
+	 cleanup added by maybe_splice_retval_cleanup doesn't run.  */
+      if (cp_function_chain->throwing_cleanup)
+	{
+	  tree clear = build2 (MODIFY_EXPR, boolean_type_node,
+			       current_retval_sentinel,
+			       boolean_false_node);
+	  if (dp->simple)
+	    {
+	      /* We're already only on the EH path, just prepend it.  */
+	      tree &exp = CLEANUP_EXPR (*tp);
+	      exp = build2 (COMPOUND_EXPR, void_type_node, clear, exp);
+	    }
+	  else
+	    {
+	      /* The cleanup runs on both normal and EH paths, we need another
+		 CLEANUP_STMT to clear the flag only on the EH path.  */
+	      tree &bod = CLEANUP_BODY (*tp);
+	      bod = build_stmt (EXPR_LOCATION (*tp), CLEANUP_STMT,
+				bod, clear, current_retval_sentinel);
+	      CLEANUP_EH_ONLY (bod) = true;
+	    }
+	}
     }
+  /* Disable maybe_splice_retval_cleanup within the NRV cleanup scope, we don't
+     want to destroy the retval before the variable goes out of scope.  */
+  else if (TREE_CODE (*tp) == CLEANUP_STMT
+	   && dp->in_nrv_cleanup
+	   && CLEANUP_DECL (*tp) == dp->result)
+    CLEANUP_EXPR (*tp) = void_node;
   /* Replace the DECL_EXPR for the NRV with an initialization of the
      RESULT_DECL, if needed.  */
   else if (TREE_CODE (*tp) == DECL_EXPR
@@ -5025,18 +5096,6 @@ finalize_nrv_r (tree* tp, int* walk_subtrees, void* data)
       SET_EXPR_LOCATION (init, EXPR_LOCATION (*tp));
       *tp = init;
     }
-  /* And replace all uses of the NRV with the RESULT_DECL.  */
-  else if (*tp == dp->var)
-    *tp = dp->result;
-
-  /* Avoid walking into the same tree more than once.  Unfortunately, we
-     can't just use walk_tree_without duplicates because it would only call
-     us for the first occurrence of dp->var in the function body.  */
-  slot = dp->visited.find_slot (*tp, INSERT);
-  if (*slot)
-    *walk_subtrees = 0;
-  else
-    *slot = *tp;
 
   /* Keep iterating.  */
   return NULL_TREE;
@@ -5065,6 +5124,7 @@ finalize_nrv (tree fndecl, tree var)
 
   data.var = var;
   data.result = result;
+  data.in_nrv_cleanup = false;
 
   /* This is simpler for variables declared in the outer scope of
      the function so we know that their lifetime always ends with a

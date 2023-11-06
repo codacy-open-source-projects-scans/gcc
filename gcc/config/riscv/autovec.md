@@ -977,14 +977,11 @@
 ;; This operation can be performed in the loop vectorizer but unfortunately
 ;; not applicable for now. We can remove this pattern after loop vectorizer
 ;; is able to take care of INT64 to FP16 conversion.
-(define_insn_and_split "<float_cvt><mode><vnnconvert>2"
+(define_expand "<float_cvt><mode><vnnconvert>2"
   [(set (match_operand:<VNNCONVERT>  0 "register_operand")
 	(any_float:<VNNCONVERT>
 	  (match_operand:VWWCONVERTI 1 "register_operand")))]
   "TARGET_VECTOR && TARGET_ZVFH && can_create_pseudo_p () && !flag_trapping_math"
-  "#"
-  "&& 1"
-  [(const_int 0)]
   {
     rtx single = gen_reg_rtx (<VNCONVERT>mode); /* Get vector SF mode.  */
 
@@ -994,9 +991,7 @@
     emit_insn (gen_trunc<vnconvert><vnnconvert>2 (operands[0], single));
 
     DONE;
-  }
-  [(set_attr "type" "vfncvtitof")]
-)
+  })
 
 ;; =========================================================================
 ;; == Unary arithmetic
@@ -1441,6 +1436,22 @@
 }
 [(set_attr "type" "vfminmax")])
 
+(define_insn_and_split "<ieee_fmaxmin_op><mode>3"
+  [(set (match_operand:V_VLSF 0 "register_operand")
+      (unspec:V_VLSF
+	[(match_operand:V_VLSF 1 "register_operand")
+	 (match_operand:V_VLSF 2 "register_operand")] UNSPEC_VFMAXMIN))]
+  "TARGET_VECTOR && !HONOR_SNANS (<MODE>mode) && can_create_pseudo_p ()"
+  "#"
+  "&& 1"
+  [(const_int 0)]
+{
+  riscv_vector::emit_vlmax_insn (code_for_pred (<IEEE_FMAXMIN_OP>, <MODE>mode),
+				 riscv_vector::BINARY_OP, operands);
+  DONE;
+}
+[(set_attr "type" "vfminmax")])
+
 ;; -------------------------------------------------------------------------------
 ;; ---- [FP] Sign copying
 ;; -------------------------------------------------------------------------------
@@ -1737,6 +1748,36 @@
   "TARGET_VECTOR"
 {
   insn_code icode = code_for_pred (<CODE>, <MODE>mode);
+  riscv_vector::expand_cond_len_binop (icode, operands);
+  DONE;
+})
+
+(define_expand "cond_<ieee_fmaxmin_op><mode>"
+  [(match_operand:V_VLSF 0 "register_operand")
+   (match_operand:<VM> 1 "vector_mask_operand")
+   (unspec:V_VLSF
+     [(match_operand:V_VLSF 2 "register_operand")
+      (match_operand:V_VLSF 3 "register_operand")] UNSPEC_VFMAXMIN)
+   (match_operand:V_VLSF 4 "autovec_else_operand")]
+  "TARGET_VECTOR && !HONOR_SNANS (<MODE>mode)"
+{
+  insn_code icode = code_for_pred (<IEEE_FMAXMIN_OP>, <MODE>mode);
+  riscv_vector::expand_cond_binop (icode, operands);
+  DONE;
+})
+
+(define_expand "cond_len_<ieee_fmaxmin_op><mode>"
+  [(match_operand:VF 0 "register_operand")
+   (match_operand:<VM> 1 "vector_mask_operand")
+   (unspec:VF
+     [(match_operand:VF 2 "register_operand")
+      (match_operand:VF 3 "register_operand")] UNSPEC_VFMAXMIN)
+   (match_operand:VF 4 "autovec_else_operand")
+   (match_operand 5 "autovec_length_operand")
+   (match_operand 6 "const_0_operand")]
+  "TARGET_VECTOR && !HONOR_SNANS (<MODE>mode)"
+{
+  insn_code icode = code_for_pred (<IEEE_FMAXMIN_OP>, <MODE>mode);
   riscv_vector::expand_cond_len_binop (icode, operands);
   DONE;
 })
@@ -2097,6 +2138,32 @@
   DONE;
 })
 
+(define_expand "reduc_fmax_scal_<mode>"
+  [(match_operand:<VEL> 0 "register_operand")
+   (match_operand:V_VLSF 1 "register_operand")]
+  "TARGET_VECTOR && !HONOR_SNANS (<MODE>mode)"
+{
+  REAL_VALUE_TYPE rv;
+  real_inf (&rv, true);
+  rtx f = const_double_from_real_value (rv, <VEL>mode);
+  riscv_vector::expand_reduction (UNSPEC_REDUC_MAX, riscv_vector::REDUCE_OP,
+                                  operands, f);
+  DONE;
+})
+
+(define_expand "reduc_fmin_scal_<mode>"
+  [(match_operand:<VEL> 0 "register_operand")
+   (match_operand:V_VLSF 1 "register_operand")]
+  "TARGET_VECTOR && !HONOR_SNANS (<MODE>mode)"
+{
+  REAL_VALUE_TYPE rv;
+  real_inf (&rv, false);
+  rtx f = const_double_from_real_value (rv, <VEL>mode);
+  riscv_vector::expand_reduction (UNSPEC_REDUC_MIN, riscv_vector::REDUCE_OP,
+                                  operands, f);
+  DONE;
+})
+
 ;; -------------------------------------------------------------------------
 ;; ---- [FP] Left-to-right reductions
 ;; -------------------------------------------------------------------------
@@ -2328,42 +2395,103 @@
   }
 )
 
-(define_expand "lrint<mode><v_i_l_ll_convert>2"
-  [(match_operand:<V_I_L_LL_CONVERT>    0 "register_operand")
-   (match_operand:V_VLS_FCONVERT_I_L_LL 1 "register_operand")]
+;; Add mode_size equal check as we opened the modes for different sizes.
+;; The check will be removed soon after related codegen implemented
+(define_expand "lrint<mode><v_f2si_convert>2"
+  [(match_operand:<V_F2SI_CONVERT>   0 "register_operand")
+   (match_operand:V_VLS_F_CONVERT_SI 1 "register_operand")]
   "TARGET_VECTOR && !flag_trapping_math && !flag_rounding_math"
   {
-    riscv_vector::expand_vec_lrint (operands[0], operands[1], <MODE>mode, <V_I_L_LL_CONVERT>mode);
+    riscv_vector::expand_vec_lrint (operands[0], operands[1], <MODE>mode, <V_F2SI_CONVERT>mode);
     DONE;
   }
 )
 
-(define_expand "lround<mode><v_i_l_ll_convert>2"
-  [(match_operand:<V_I_L_LL_CONVERT>    0 "register_operand")
-   (match_operand:V_VLS_FCONVERT_I_L_LL 1 "register_operand")]
+(define_expand "lrint<mode><v_f2di_convert>2"
+  [(match_operand:<V_F2DI_CONVERT>   0 "register_operand")
+   (match_operand:V_VLS_F_CONVERT_DI 1 "register_operand")]
   "TARGET_VECTOR && !flag_trapping_math && !flag_rounding_math"
   {
-    riscv_vector::expand_vec_lround (operands[0], operands[1], <MODE>mode, <V_I_L_LL_CONVERT>mode);
+    riscv_vector::expand_vec_lrint (operands[0], operands[1], <MODE>mode, <V_F2DI_CONVERT>mode);
     DONE;
   }
 )
 
-(define_expand "lceil<mode><v_i_l_ll_convert>2"
-  [(match_operand:<V_I_L_LL_CONVERT>    0 "register_operand")
-   (match_operand:V_VLS_FCONVERT_I_L_LL 1 "register_operand")]
-  "TARGET_VECTOR && !flag_trapping_math && !flag_rounding_math"
+(define_expand "lround<mode><v_f2si_convert>2"
+  [(match_operand:<V_F2SI_CONVERT>   0 "register_operand")
+   (match_operand:V_VLS_F_CONVERT_SI 1 "register_operand")]
+  "TARGET_VECTOR && !flag_trapping_math && !flag_rounding_math
+    && known_eq (GET_MODE_SIZE (<MODE>mode), GET_MODE_SIZE (<V_F2SI_CONVERT>mode))"
   {
-    riscv_vector::expand_vec_lceil (operands[0], operands[1], <MODE>mode, <V_I_L_LL_CONVERT>mode);
+    riscv_vector::expand_vec_lround (operands[0], operands[1], <MODE>mode, <V_F2SI_CONVERT>mode);
     DONE;
   }
 )
 
-(define_expand "lfloor<mode><v_i_l_ll_convert>2"
-  [(match_operand:<V_I_L_LL_CONVERT>    0 "register_operand")
-   (match_operand:V_VLS_FCONVERT_I_L_LL 1 "register_operand")]
-  "TARGET_VECTOR && !flag_trapping_math && !flag_rounding_math"
+(define_expand "lround<mode><v_f2di_convert>2"
+  [(match_operand:<V_F2DI_CONVERT>   0 "register_operand")
+   (match_operand:V_VLS_F_CONVERT_DI 1 "register_operand")]
+  "TARGET_VECTOR && !flag_trapping_math && !flag_rounding_math
+    && known_eq (GET_MODE_SIZE (<MODE>mode), GET_MODE_SIZE (<V_F2DI_CONVERT>mode))"
   {
-    riscv_vector::expand_vec_lfloor (operands[0], operands[1], <MODE>mode, <V_I_L_LL_CONVERT>mode);
+    riscv_vector::expand_vec_lround (operands[0], operands[1], <MODE>mode, <V_F2DI_CONVERT>mode);
+    DONE;
+  }
+)
+
+(define_expand "lceil<mode><v_f2si_convert>2"
+  [(match_operand:<V_F2SI_CONVERT>   0 "register_operand")
+   (match_operand:V_VLS_F_CONVERT_SI 1 "register_operand")]
+  "TARGET_VECTOR && !flag_trapping_math && !flag_rounding_math
+    && known_eq (GET_MODE_SIZE (<MODE>mode), GET_MODE_SIZE (<V_F2SI_CONVERT>mode))"
+  {
+    riscv_vector::expand_vec_lceil (operands[0], operands[1], <MODE>mode, <V_F2SI_CONVERT>mode);
+    DONE;
+  }
+)
+
+(define_expand "lceil<mode><v_f2di_convert>2"
+  [(match_operand:<V_F2DI_CONVERT>   0 "register_operand")
+   (match_operand:V_VLS_F_CONVERT_DI 1 "register_operand")]
+  "TARGET_VECTOR && !flag_trapping_math && !flag_rounding_math
+    && known_eq (GET_MODE_SIZE (<MODE>mode), GET_MODE_SIZE (<V_F2DI_CONVERT>mode))"
+  {
+    riscv_vector::expand_vec_lceil (operands[0], operands[1], <MODE>mode, <V_F2DI_CONVERT>mode);
+    DONE;
+  }
+)
+
+(define_expand "lfloor<mode><v_f2si_convert>2"
+  [(match_operand:<V_F2SI_CONVERT>   0 "register_operand")
+   (match_operand:V_VLS_F_CONVERT_SI 1 "register_operand")]
+  "TARGET_VECTOR && !flag_trapping_math && !flag_rounding_math
+    && known_eq (GET_MODE_SIZE (<MODE>mode), GET_MODE_SIZE (<V_F2SI_CONVERT>mode))"
+  {
+    riscv_vector::expand_vec_lfloor (operands[0], operands[1], <MODE>mode, <V_F2SI_CONVERT>mode);
+    DONE;
+  }
+)
+
+(define_expand "lfloor<mode><v_f2di_convert>2"
+  [(match_operand:<V_F2DI_CONVERT>   0 "register_operand")
+   (match_operand:V_VLS_F_CONVERT_DI 1 "register_operand")]
+  "TARGET_VECTOR && !flag_trapping_math && !flag_rounding_math
+    && known_eq (GET_MODE_SIZE (<MODE>mode), GET_MODE_SIZE (<V_F2DI_CONVERT>mode))"
+  {
+    riscv_vector::expand_vec_lfloor (operands[0], operands[1], <MODE>mode, <V_F2DI_CONVERT>mode);
+    DONE;
+  }
+)
+
+;; Implement rawmemchr[qi|si|hi].
+(define_expand "rawmemchr<ANYI:mode>"
+  [(match_operand      0 "register_operand")
+   (match_operand      1 "memory_operand")
+   (match_operand:ANYI 2 "const_int_operand")]
+  "TARGET_VECTOR"
+  {
+    riscv_vector::expand_rawmemchr(<MODE>mode, operands[0], operands[1],
+				   operands[2]);
     DONE;
   }
 )

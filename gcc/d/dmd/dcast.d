@@ -20,6 +20,7 @@ import dmd.arraytypes;
 import dmd.astenums;
 import dmd.dclass;
 import dmd.declaration;
+import dmd.dinterpret;
 import dmd.dscope;
 import dmd.dstruct;
 import dmd.dsymbol;
@@ -232,7 +233,7 @@ Expression implicitCastTo(Expression e, Scope* sc, Type t)
  * Returns:
  *   The `MATCH` level between `e.type` and `t`.
  */
-MATCH implicitConvTo(Expression e, Type t)
+extern(C++) MATCH implicitConvTo(Expression e, Type t)
 {
     MATCH visit(Expression e)
     {
@@ -3684,7 +3685,7 @@ void fix16997(Scope* sc, UnaExp ue)
  * This is to enable comparing things like an immutable
  * array with a mutable one.
  */
-extern (C++) bool arrayTypeCompatibleWithoutCasting(Type t1, Type t2)
+extern (D) bool arrayTypeCompatibleWithoutCasting(Type t1, Type t2)
 {
     t1 = t1.toBasetype();
     t2 = t2.toBasetype();

@@ -18,6 +18,7 @@ import dmd.arraytypes;
 import dmd.astenums;
 import dmd.ast_node;
 import dmd.dcast;
+import dmd.dinterpret;
 import dmd.dmodule;
 import dmd.dscope;
 import dmd.dsymbol;
@@ -133,7 +134,7 @@ extern (C++) final class StaticForeach : RootObject
         this.rangefe = rangefe;
     }
 
-    StaticForeach syntaxCopy()
+    extern (D) StaticForeach syntaxCopy()
     {
         return new StaticForeach(
             loc,

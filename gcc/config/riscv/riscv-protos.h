@@ -43,6 +43,15 @@ enum riscv_symbol_type {
        A natural register + offset address.  The register satisfies
        riscv_valid_base_register_p and the offset is a const_arith_operand.
 
+   ADDRESS_REG_REG
+       A base register indexed by (optionally scaled) register.
+
+   ADDRESS_REG_UREG
+       A base register indexed by (optionally scaled) zero-extended register.
+
+   ADDRESS_REG_WB
+       A base register indexed by immediate offset with writeback.
+
    ADDRESS_LO_SUM
        A LO_SUM rtx.  The first operand is a valid base register and
        the second operand is a symbolic address.
@@ -54,6 +63,9 @@ enum riscv_symbol_type {
        A constant symbolic address.  */
 enum riscv_address_type {
   ADDRESS_REG,
+  ADDRESS_REG_REG,
+  ADDRESS_REG_UREG,
+  ADDRESS_REG_WB,
   ADDRESS_LO_SUM,
   ADDRESS_CONST_INT,
   ADDRESS_SYMBOLIC
@@ -67,6 +79,13 @@ enum riscv_address_type {
    ADDRESS_REG
        REG is the base register and OFFSET is the constant offset.
 
+   ADDRESS_REG_REG and ADDRESS_REG_UREG
+       REG is the base register and OFFSET is the index register.
+
+   ADDRESS_REG_WB
+       REG is the base register, OFFSET is the constant offset, and
+       shift is the shift amount for the offset.
+
    ADDRESS_LO_SUM
        REG and OFFSET are the operands to the LO_SUM and SYMBOL_TYPE
        is the type of symbol it references.
@@ -78,6 +97,7 @@ struct riscv_address_info {
   rtx reg;
   rtx offset;
   enum riscv_symbol_type symbol_type;
+  int shift;
 };
 
 /* Routines implemented in riscv.cc.  */
@@ -85,6 +105,7 @@ extern enum riscv_symbol_type riscv_classify_symbolic_expression (rtx);
 extern bool riscv_symbolic_constant_p (rtx, enum riscv_symbol_type *);
 extern int riscv_float_const_rtx_index_for_fli (rtx);
 extern int riscv_regno_mode_ok_for_base_p (int, machine_mode, bool);
+extern bool riscv_valid_base_register_p (rtx, machine_mode, bool);
 extern enum reg_class riscv_index_reg_class ();
 extern int riscv_regno_ok_for_index_p (int);
 extern int riscv_address_insns (rtx, machine_mode, bool);
@@ -156,6 +177,7 @@ extern void riscv_parse_arch_string (const char *, struct gcc_options *, locatio
 extern bool riscv_hard_regno_rename_ok (unsigned, unsigned);
 
 rtl_opt_pass * make_pass_shorten_memrefs (gcc::context *ctxt);
+rtl_opt_pass * make_pass_avlprop (gcc::context *ctxt);
 rtl_opt_pass * make_pass_vsetvl (gcc::context *ctxt);
 
 /* Routines implemented in riscv-string.c.  */
@@ -429,6 +451,7 @@ gimple *gimple_fold_builtin (unsigned int, gimple_stmt_iterator *, gcall *);
 rtx expand_builtin (unsigned int, tree, rtx);
 bool check_builtin_call (location_t, vec<location_t>, unsigned int,
 			   tree, unsigned int, tree *);
+tree resolve_overloaded_builtin (unsigned int, vec<tree, va_gc> *);
 bool const_vec_all_same_in_range_p (rtx, HOST_WIDE_INT, HOST_WIDE_INT);
 bool legitimize_move (rtx, rtx *);
 void emit_vlmax_vsetvl (machine_mode, rtx);
@@ -489,8 +512,9 @@ void expand_vec_lceil (rtx, rtx, machine_mode, machine_mode);
 void expand_vec_lfloor (rtx, rtx, machine_mode, machine_mode);
 #endif
 bool sew64_scalar_helper (rtx *, rtx *, rtx, machine_mode,
-			  bool, void (*)(rtx *, rtx));
+			  bool, void (*)(rtx *, rtx), enum avl_type);
 rtx gen_scalar_move_mask (machine_mode);
+rtx gen_no_side_effects_vsetvl_rtx (machine_mode, rtx, rtx);
 
 /* RVV vector register sizes.
    TODO: Currently, we only add RVV_32/RVV_64/RVV_128, we may need to
@@ -522,6 +546,7 @@ void expand_cond_unop (unsigned, rtx *);
 void expand_cond_binop (unsigned, rtx *);
 void expand_cond_ternop (unsigned, rtx *);
 void expand_popcount (rtx *);
+void expand_rawmemchr (machine_mode, rtx, rtx, rtx);
 
 /* Rounding mode bitfield for fixed point VXRM.  */
 enum fixed_point_rounding_mode
@@ -568,6 +593,7 @@ bool vlmax_avl_p (rtx);
 uint8_t get_sew (rtx_insn *);
 enum vlmul_type get_vlmul (rtx_insn *);
 int count_regno_occurrences (rtx_insn *, unsigned int);
+bool imm_avl_p (machine_mode);
 }
 
 /* We classify builtin types into two classes:
@@ -600,6 +626,14 @@ extern void th_mempair_save_restore_regs (rtx[4], bool, machine_mode);
 #ifdef RTX_CODE
 extern const char*
 th_mempair_output_move (rtx[4], bool, machine_mode, RTX_CODE);
+extern bool th_memidx_legitimate_modify_p (rtx);
+extern bool th_memidx_legitimate_modify_p (rtx, bool);
+extern bool th_memidx_legitimate_index_p (rtx);
+extern bool th_memidx_legitimate_index_p (rtx, bool);
+extern bool th_classify_address (struct riscv_address_info *,
+					rtx, machine_mode, bool);
+extern const char *th_output_move (rtx, rtx);
+extern bool th_print_operand_address (FILE *, machine_mode, rtx);
 #endif
 
 extern bool riscv_use_divmod_expander (void);

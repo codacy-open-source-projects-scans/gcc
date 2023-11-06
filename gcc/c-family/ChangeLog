@@ -1,3 +1,48 @@
+2023-11-05  Jakub Jelinek  <jakub@redhat.com>
+
+	* c-lex.cc (c_common_has_attribute): Return 1 for omp::directive
+	and omp::sequence with -fopenmp or -fopenmp-simd also for C, not
+	just for C++.  Return 1 for omp::decl with -fopenmp or -fopenmp-simd
+	for both C and C++.
+
+2023-11-04  David Malcolm  <dmalcolm@redhat.com>
+
+	* c-pragma.cc:: (handle_pragma_push_options): Fix missing "GCC" in
+	name of pragma in "junk" message.
+	(handle_pragma_pop_options): Likewise.
+
+2023-11-04  David Malcolm  <dmalcolm@redhat.com>
+
+	* c-common.cc: Update for changes to diagnostic_context.
+	* c-indentation.cc: Likewise.
+	* c-opts.cc: Likewise.
+	* c-warn.cc: Likewise.
+
+2023-11-01  Martin Uecker  <uecker@tugraz.at>
+
+	PR c/71219
+	* c.opt (Walloc-size): New option.
+
+2023-10-31  David Malcolm  <dmalcolm@redhat.com>
+
+	* c-warn.cc (warn_for_multistatement_macros): Update for removal
+	of MACRO_MAP_EXPANSION_POINT_LOCATION.
+
+2023-10-27  Lewis Hyatt  <lhyatt@gmail.com>
+
+	PR preprocessor/87299
+	* c-pragma.cc (init_pragma): Register `#pragma GCC target' and
+	related pragmas in preprocess-only mode, and enable early handling.
+	(c_reset_target_pragmas): New function refactoring code from...
+	(handle_pragma_reset_options): ...here.
+	* c-pragma.h (c_reset_target_pragmas): Declare.
+
+2023-10-26  David Malcolm  <dmalcolm@redhat.com>
+
+	* c-attribs.cc (c_common_attribute_table): Add
+	"null_terminated_string_arg".
+	(handle_null_terminated_string_arg_attribute): New.
+
 2023-10-23  Lewis Hyatt  <lhyatt@gmail.com>
 
 	PR preprocessor/36887

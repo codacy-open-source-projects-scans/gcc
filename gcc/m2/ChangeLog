@@ -1,3 +1,34 @@
+2023-11-01  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	PR modula2/102989
+	* gm2-compiler/SymbolTable.mod (OverflowZType): Import from m2expr.
+	(ConstantStringExceedsZType): Remove import.
+	(GetConstLitType): Replace ConstantStringExceedsZType with OverflowZType.
+	* gm2-gcc/m2decl.cc (m2decl_ConstantStringExceedsZType): Remove.
+	(m2decl_BuildConstLiteralNumber): Re-write.
+	* gm2-gcc/m2decl.def (ConstantStringExceedsZType): Remove.
+	* gm2-gcc/m2decl.h (m2decl_ConstantStringExceedsZType): Remove.
+	* gm2-gcc/m2expr.cc (m2expr_StrToWideInt): Rewrite to check overflow.
+	(m2expr_OverflowZType): New function.
+	(ToWideInt): New function.
+	* gm2-gcc/m2expr.def (OverflowZType): New procedure function declaration.
+	* gm2-gcc/m2expr.h (m2expr_OverflowZType): New prototype.
+
+2023-10-27  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	PR modula2/111530
+	* gm2-libs-ch/cgetopt.c (cgetopt_cgetopt_long): Re-format.
+	(cgetopt_cgetopt_long_only): Re-format.
+	(cgetopt_SetOption):  Re-format and assign flag to NULL
+	if name is also NULL.
+	* gm2-libs/GetOpt.def (AddLongOption): Add index parameter
+	and change flag to be a VAR parameter rather than a pointer.
+	(GetOptLong): Re-format.
+	(GetOpt): Correct comment.
+	* gm2-libs/GetOpt.mod: Re-write to rely on cgetopt rather
+	than implement long option creation in GetOpt.
+	* gm2-libs/cgetopt.def (SetOption): has_arg type is INTEGER.
+
 2023-10-25  Gaius Mulley  <gaiusmod2@gmail.com>
 
 	PR modula2/111955

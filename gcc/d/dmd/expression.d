@@ -24,24 +24,18 @@ import dmd.arraytypes;
 import dmd.astenums;
 import dmd.ast_node;
 import dmd.gluelayer;
-import dmd.constfold;
 import dmd.ctfeexpr;
 import dmd.ctorflow;
-import dmd.dcast;
 import dmd.dclass;
 import dmd.declaration;
-import dmd.delegatize;
 import dmd.dimport;
-import dmd.dinterpret;
 import dmd.dmodule;
 import dmd.dscope;
 import dmd.dstruct;
 import dmd.dsymbol;
-import dmd.dsymbolsem;
 import dmd.dtemplate;
 import dmd.errors;
 import dmd.errorsink;
-import dmd.escape;
 import dmd.expressionsem;
 import dmd.func;
 import dmd.globals;
@@ -49,11 +43,8 @@ import dmd.hdrgen;
 import dmd.id;
 import dmd.identifier;
 import dmd.init;
-import dmd.inline;
 import dmd.location;
 import dmd.mtype;
-import dmd.nspace;
-import dmd.objc;
 import dmd.opover;
 import dmd.optimize;
 import dmd.root.complex;
@@ -66,10 +57,8 @@ import dmd.rootobject;
 import dmd.root.string;
 import dmd.root.utf;
 import dmd.safe;
-import dmd.sideeffect;
 import dmd.target;
 import dmd.tokens;
-import dmd.typesem;
 import dmd.visitor;
 
 enum LOGSEMANTIC = false;
@@ -331,7 +320,7 @@ TemplateDeclaration getFuncTemplateDecl(Dsymbol s) @safe
  * to serve essentially as a Variant that will sit on the stack
  * during CTFE to reduce memory consumption.
  */
-extern (C++) struct UnionExp
+extern (D) struct UnionExp
 {
     // yes, default constructor does nothing
     extern (D) this(Expression e)
@@ -341,14 +330,14 @@ extern (C++) struct UnionExp
 
     /* Extract pointer to Expression
      */
-    extern (C++) Expression exp() return
+    extern (D) Expression exp() return
     {
         return cast(Expression)&u;
     }
 
     /* Convert to an allocated Expression
      */
-    extern (C++) Expression copy()
+    extern (D) Expression copy()
     {
         Expression e = exp();
         //if (e.size > sizeof(u)) printf("%s\n", EXPtoString(e.op).ptr);
@@ -526,7 +515,7 @@ extern (C++) abstract class Expression : ASTNode
     /*********************************
      * Does *not* do a deep copy.
      */
-    final Expression copy()
+    extern (D) final Expression copy()
     {
         Expression e;
         if (!size)
@@ -745,21 +734,6 @@ extern (C++) abstract class Expression : ASTNode
         return toLvalue(sc, e);
     }
 
-    final Expression implicitCastTo(Scope* sc, Type t)
-    {
-        return .implicitCastTo(this, sc, t);
-    }
-
-    final MATCH implicitConvTo(Type t)
-    {
-        return .implicitConvTo(this, t);
-    }
-
-    final Expression castTo(Scope* sc, Type t)
-    {
-        return .castTo(this, sc, t);
-    }
-
     /****************************************
      * Resolve __FILE__, __LINE__, __MODULE__, __FUNCTION__, __PRETTY_FUNCTION__, __FILE_FULL_PATH__ to loc.
      */
@@ -861,7 +835,7 @@ extern (C++) abstract class Expression : ASTNode
         return checkValue();
     }
 
-    final bool checkDeprecated(Scope* sc, Dsymbol s)
+    extern (D) final bool checkDeprecated(Scope* sc, Dsymbol s)
     {
         return s.checkDeprecated(loc, sc);
     }
@@ -1205,10 +1179,11 @@ extern (C++) abstract class Expression : ASTNode
             return false;
         if (sc.flags & (SCOPE.ctfe | SCOPE.debug_))
             return false;
-        /* The original expression (`new S(...)`) will be verified instead. This
-         * is to keep errors related to the original code and not the lowering.
+        /* The original expressions (`new S(...)` or `new S[...]``) will be
+         * verified instead. This is to keep errors related to the original code
+         * and not the lowering.
          */
-        if (f.ident == Id._d_newitemT)
+        if (f.ident == Id._d_newitemT || f.ident == Id._d_newarrayT)
             return false;
 
         if (!f.isNogc())
@@ -1303,16 +1278,6 @@ extern (C++) abstract class Expression : ASTNode
         return true;
     }
 
-    /************************************************
-     * Destructors are attached to VarDeclarations.
-     * Hence, if expression returns a temp that needs a destructor,
-     * make sure and create a VarDeclaration for that temp.
-     */
-    Expression addDtorHook(Scope* sc)
-    {
-        return this;
-    }
-
     /******************************
      * Take address of expression.
      */
@@ -1348,16 +1313,23 @@ extern (C++) abstract class Expression : ASTNode
         return Expression_optimize(this, result, keepLvalue);
     }
 
-    // Entry point for CTFE.
-    // A compile-time result is required. Give an error if not possible
-    final Expression ctfeInterpret()
-    {
-        return .ctfeInterpret(this);
-    }
-
     final int isConst()
     {
-        return .isConst(this);
+        //printf("Expression::isConst(): %s\n", e.toChars());
+        switch (op)
+        {
+        case EXP.int64:
+        case EXP.float64:
+        case EXP.complex80:
+            return 1;
+        case EXP.null_:
+            return 0;
+        case EXP.symbolOffset:
+            return 2;
+        default:
+            return 0;
+        }
+        assert(0);
     }
 
     /******
@@ -1568,12 +1540,6 @@ extern (C++) final class IntegerExp : Expression
         return new IntegerExp(loc, value, type);
     }
 
-    // Same as create, but doesn't allocate memory.
-    static void emplace(UnionExp* pue, const ref Loc loc, dinteger_t value, Type type)
-    {
-        emplaceExp!(IntegerExp)(pue, loc, value, type);
-    }
-
     override bool equals(const RootObject o) const
     {
         if (this == o)
@@ -1641,7 +1607,7 @@ extern (C++) final class IntegerExp : Expression
         return value;
     }
 
-    void setInteger(dinteger_t value)
+    extern (D) void setInteger(dinteger_t value)
     {
         this.value = normalize(type.toBasetype().ty, value);
     }
@@ -1838,12 +1804,6 @@ extern (C++) final class RealExp : Expression
         return new RealExp(loc, value, type);
     }
 
-    // Same as create, but doesn't allocate memory.
-    static void emplace(UnionExp* pue, const ref Loc loc, real_t value, Type type)
-    {
-        emplaceExp!(RealExp)(pue, loc, value, type);
-    }
-
     /********************************
      * Test to see if two reals are the same.
      * Regard NaN's as equivalent.
@@ -1934,12 +1894,6 @@ extern (C++) final class ComplexExp : Expression
     static ComplexExp create(const ref Loc loc, complex_t value, Type type) @safe
     {
         return new ComplexExp(loc, value, type);
-    }
-
-    // Same as create, but doesn't allocate memory.
-    static void emplace(UnionExp* pue, const ref Loc loc, complex_t value, Type type)
-    {
-        emplaceExp!(ComplexExp)(pue, loc, value, type);
     }
 
     override bool equals(const RootObject o) const
@@ -2127,13 +2081,19 @@ extern (C++) class ThisExp : Expression
         return typeof(return)(true);
     }
 
-    override bool isLvalue()
+    override final bool isLvalue()
     {
-        return true;
+        // Class `this` should be an rvalue; struct `this` should be an lvalue.
+        return type.toBasetype().ty != Tclass;
     }
 
-    override Expression toLvalue(Scope* sc, Expression e)
+    override final Expression toLvalue(Scope* sc, Expression e)
     {
+        if (type.toBasetype().ty == Tclass)
+        {
+            // Class `this` is an rvalue; struct `this` is an lvalue.
+            return Expression.toLvalue(sc, e);
+        }
         return this;
     }
 
@@ -2151,18 +2111,6 @@ extern (C++) final class SuperExp : ThisExp
     extern (D) this(const ref Loc loc) @safe
     {
         super(loc, EXP.super_);
-    }
-
-    override bool isLvalue()
-    {
-        // Class `super` should be an rvalue
-        return false;
-    }
-
-    override Expression toLvalue(Scope* sc, Expression e)
-    {
-        // Class `super` is an rvalue
-        return Expression.toLvalue(sc, e);
     }
 
     override void accept(Visitor v)
@@ -2204,12 +2152,13 @@ extern (C++) final class NullExp : Expression
 
     override StringExp toStringExp()
     {
-        if (implicitConvTo(Type.tstring))
+        if (this.type.implicitConvTo(Type.tstring))
         {
             auto se = new StringExp(loc, (cast(char*)mem.xcalloc(1, 1))[0 .. 0]);
             se.type = Type.tstring;
             return se;
         }
+
         return null;
     }
 
@@ -2275,22 +2224,6 @@ extern (C++) final class StringExp : Expression
     static StringExp create(const ref Loc loc, const(void)* string, size_t len)
     {
         return new StringExp(loc, string[0 .. len]);
-    }
-
-    // Same as create, but doesn't allocate memory.
-    static void emplace(UnionExp* pue, const ref Loc loc, const(char)* s)
-    {
-        emplaceExp!(StringExp)(pue, loc, s.toDString());
-    }
-
-    extern (D) static void emplace(UnionExp* pue, const ref Loc loc, const(void)[] string)
-    {
-        emplaceExp!(StringExp)(pue, loc, string);
-    }
-
-    extern (D) static void emplace(UnionExp* pue, const ref Loc loc, const(void)[] string, size_t len, ubyte sz, char postfix)
-    {
-        emplaceExp!(StringExp)(pue, loc, string, len, sz, postfix);
     }
 
     override bool equals(const RootObject o) const
@@ -2428,7 +2361,7 @@ extern (C++) final class StringExp : Expression
      *  i = index
      *  c = code unit to set it to
      */
-    void setCodeUnit(size_t i, dchar c)
+    extern (D) void setCodeUnit(size_t i, dchar c)
     {
         assert(i < len);
         final switch (sz)
@@ -2450,23 +2383,6 @@ extern (C++) final class StringExp : Expression
         return this;
     }
 
-    /****************************************
-     * Convert string to char[].
-     */
-    StringExp toUTF8(Scope* sc)
-    {
-        if (sz != 1)
-        {
-            // Convert to UTF-8 string
-            committed = false;
-            Expression e = castTo(sc, Type.tchar.arrayOf());
-            e = e.optimize(WANTvalue);
-            auto se = e.isStringExp();
-            assert(se.sz == 1);
-            return se;
-        }
-        return this;
-    }
 
     /**
      * Compare two `StringExp` by length, then value
@@ -2778,12 +2694,6 @@ extern (C++) final class ArrayLiteralExp : Expression
         return new ArrayLiteralExp(loc, null, elements);
     }
 
-    // Same as create, but doesn't allocate memory.
-    static void emplace(UnionExp* pue, const ref Loc loc, Expressions* elements)
-    {
-        emplaceExp!(ArrayLiteralExp)(pue, loc, null, elements);
-    }
-
     override ArrayLiteralExp syntaxCopy()
     {
         return new ArrayLiteralExp(loc,
@@ -2822,12 +2732,12 @@ extern (C++) final class ArrayLiteralExp : Expression
         return false;
     }
 
-    Expression getElement(size_t i)
+    Expression getElement(size_t i) // use opIndex instead
     {
         return this[i];
     }
 
-    Expression opIndex(size_t i)
+    extern (D) Expression opIndex(size_t i)
     {
         auto el = (*elements)[i];
         return el ? el : basis;
@@ -3063,7 +2973,7 @@ extern (C++) final class StructLiteralExp : Expression
      * Gets expression at offset of type.
      * Returns NULL if not found.
      */
-    Expression getField(Type type, uint offset)
+    extern (D) Expression getField(Type type, uint offset)
     {
         //printf("StructLiteralExp::getField(this = %s, type = %s, offset = %u)\n",
         //  /*toChars()*/"", type.toChars(), offset);
@@ -3113,7 +3023,7 @@ extern (C++) final class StructLiteralExp : Expression
      * Get index of field.
      * Returns -1 if not found.
      */
-    int getFieldIndex(Type type, uint offset)
+    extern (D) int getFieldIndex(Type type, uint offset)
     {
         /* Find which field offset is by looking at the field offsets
          */
@@ -3138,34 +3048,6 @@ extern (C++) final class StructLiteralExp : Expression
             }
         }
         return -1;
-    }
-
-    override Expression addDtorHook(Scope* sc)
-    {
-        /* If struct requires a destructor, rewrite as:
-         *    (S tmp = S()),tmp
-         * so that the destructor can be hung on tmp.
-         */
-        if (sd.dtor && sc.func)
-        {
-            /* Make an identifier for the temporary of the form:
-             *   __sl%s%d, where %s is the struct name
-             */
-            char[10] buf = void;
-            const prefix = "__sl";
-            const ident = sd.ident.toString;
-            const fullLen = prefix.length + ident.length;
-            const len = fullLen < buf.length ? fullLen : buf.length;
-            buf[0 .. prefix.length] = prefix;
-            buf[prefix.length .. len] = ident[0 .. len - prefix.length];
-
-            auto tmp = copyToTemp(0, buf[0 .. len], this);
-            Expression ae = new DeclarationExp(loc, tmp);
-            Expression e = new CommaExp(loc, ae, new VarExp(loc, tmp));
-            e = e.expressionSemantic(sc);
-            return e;
-        }
-        return this;
     }
 
     override Expression toLvalue(Scope* sc, Expression e)
@@ -3697,173 +3579,6 @@ extern (C++) final class FuncExp : Expression
             return new FuncExp(loc, fd);
     }
 
-    extern (D) MATCH matchType(Type to, Scope* sc, FuncExp* presult, ErrorSink eSink)
-    {
-        MATCH cannotInfer()
-        {
-            eSink.error(loc, "cannot infer parameter types from `%s`", to.toChars());
-            return MATCH.nomatch;
-        }
-
-        //printf("FuncExp::matchType('%s'), to=%s\n", type ? type.toChars() : "null", to.toChars());
-        if (presult)
-            *presult = null;
-
-        TypeFunction tof = null;
-        if (to.ty == Tdelegate)
-        {
-            if (tok == TOK.function_)
-            {
-                eSink.error(loc, "cannot match function literal to delegate type `%s`", to.toChars());
-                return MATCH.nomatch;
-            }
-            tof = cast(TypeFunction)to.nextOf();
-        }
-        else if (to.ty == Tpointer && (tof = to.nextOf().isTypeFunction()) !is null)
-        {
-            if (tok == TOK.delegate_)
-            {
-                eSink.error(loc, "cannot match delegate literal to function pointer type `%s`", to.toChars());
-                return MATCH.nomatch;
-            }
-        }
-
-        if (td)
-        {
-            if (!tof)
-            {
-                return cannotInfer();
-            }
-
-            // Parameter types inference from 'tof'
-            assert(td._scope);
-            TypeFunction tf = fd.type.isTypeFunction();
-            //printf("\ttof = %s\n", tof.toChars());
-            //printf("\ttf  = %s\n", tf.toChars());
-            const dim = tf.parameterList.length;
-
-            if (tof.parameterList.length != dim || tof.parameterList.varargs != tf.parameterList.varargs)
-                return cannotInfer();
-
-            auto tiargs = new Objects();
-            tiargs.reserve(td.parameters.length);
-
-            foreach (tp; *td.parameters)
-            {
-                size_t u = 0;
-                foreach (i, p; tf.parameterList)
-                {
-                    if (auto ti = p.type.isTypeIdentifier())
-                        if (ti && ti.ident == tp.ident)
-                            break;
-
-                    ++u;
-                }
-                assert(u < dim);
-                Parameter pto = tof.parameterList[u];
-                Type t = pto.type;
-                if (t.ty == Terror)
-                    return cannotInfer();
-                tf.parameterList[u].storageClass = tof.parameterList[u].storageClass;
-                tiargs.push(t);
-            }
-
-            // Set target of return type inference
-            if (!tf.next && tof.next)
-                fd.treq = to;
-
-            auto ti = new TemplateInstance(loc, td, tiargs);
-            Expression ex = (new ScopeExp(loc, ti)).expressionSemantic(td._scope);
-
-            // Reset inference target for the later re-semantic
-            fd.treq = null;
-
-            if (ex.op == EXP.error)
-                return MATCH.nomatch;
-            if (auto ef = ex.isFuncExp())
-                return ef.matchType(to, sc, presult, eSink);
-            else
-                return cannotInfer();
-        }
-
-        if (!tof || !tof.next)
-            return MATCH.nomatch;
-
-        assert(type && type != Type.tvoid);
-        if (fd.type.ty == Terror)
-            return MATCH.nomatch;
-        auto tfx = fd.type.isTypeFunction();
-        bool convertMatch = (type.ty != to.ty);
-
-        if (fd.inferRetType && tfx.next.implicitConvTo(tof.next) == MATCH.convert)
-        {
-            /* If return type is inferred and covariant return,
-             * tweak return statements to required return type.
-             *
-             * interface I {}
-             * class C : Object, I{}
-             *
-             * I delegate() dg = delegate() { return new class C(); }
-             */
-            convertMatch = true;
-
-            auto tfy = new TypeFunction(tfx.parameterList, tof.next,
-                        tfx.linkage, STC.undefined_);
-            tfy.mod = tfx.mod;
-            tfy.trust = tfx.trust;
-            tfy.isnothrow = tfx.isnothrow;
-            tfy.isnogc = tfx.isnogc;
-            tfy.purity = tfx.purity;
-            tfy.isproperty = tfx.isproperty;
-            tfy.isref = tfx.isref;
-            tfy.isInOutParam = tfx.isInOutParam;
-            tfy.isInOutQual = tfx.isInOutQual;
-            tfy.deco = tfy.merge().deco;
-
-            tfx = tfy;
-        }
-        Type tx;
-        if (tok == TOK.delegate_ ||
-            tok == TOK.reserved && (type.ty == Tdelegate || type.ty == Tpointer && to.ty == Tdelegate))
-        {
-            // Allow conversion from implicit function pointer to delegate
-            tx = new TypeDelegate(tfx);
-            tx.deco = tx.merge().deco;
-        }
-        else
-        {
-            assert(tok == TOK.function_ || tok == TOK.reserved && type.ty == Tpointer || fd.errors);
-            tx = tfx.pointerTo();
-        }
-        //printf("\ttx = %s, to = %s\n", tx.toChars(), to.toChars());
-
-        MATCH m = tx.implicitConvTo(to);
-        if (m > MATCH.nomatch)
-        {
-            // MATCH.exact:      exact type match
-            // MATCH.constant:      covairiant type match (eg. attributes difference)
-            // MATCH.convert:    context conversion
-            m = convertMatch ? MATCH.convert : tx.equals(to) ? MATCH.exact : MATCH.constant;
-
-            if (presult)
-            {
-                (*presult) = cast(FuncExp)copy();
-                (*presult).type = to;
-
-                // https://issues.dlang.org/show_bug.cgi?id=12508
-                // Tweak function body for covariant returns.
-                (*presult).fd.modifyReturns(sc, tof.next);
-            }
-        }
-        else if (!cast(ErrorSinkNull)eSink)
-        {
-            auto ts = toAutoQualChars(tx, to);
-            eSink.error(loc, "cannot implicitly convert expression `%s` of type `%s` to `%s`",
-                toChars(), ts[0], ts[1]);
-        }
-        return m;
-    }
-
     override const(char)* toChars() const
     {
         return fd.toChars();
@@ -4072,7 +3787,7 @@ extern (C++) abstract class UnaExp : Expression
      * Returns:
      *  ErrorExp
      */
-    final Expression incompatibleTypes()
+    extern (D) final Expression incompatibleTypes()
     {
         if (e1.type.toBasetype() == Type.terror)
             return e1;
@@ -4112,9 +3827,6 @@ extern (C++) abstract class UnaExp : Expression
     }
 }
 
-alias fp_t = UnionExp function(const ref Loc loc, Type, Expression, Expression);
-alias fp2_t = bool function(const ref Loc loc, EXP, Expression, Expression);
-
 /***********************************************************
  * Base class for binary operators
  */
@@ -4147,7 +3859,7 @@ extern (C++) abstract class BinExp : Expression
      * Returns:
      *  ErrorExp
      */
-    final Expression incompatibleTypes()
+    extern (D) final Expression incompatibleTypes()
     {
         if (e1.type.toBasetype() == Type.terror)
             return e1;
@@ -4175,153 +3887,6 @@ extern (C++) abstract class BinExp : Expression
         return ErrorExp.get();
     }
 
-    extern (D) final Expression checkOpAssignTypes(Scope* sc)
-    {
-        // At that point t1 and t2 are the merged types. type is the original type of the lhs.
-        Type t1 = e1.type;
-        Type t2 = e2.type;
-
-        // T opAssign floating yields a floating. Prevent truncating conversions (float to int).
-        // See https://issues.dlang.org/show_bug.cgi?id=3841.
-        // Should we also prevent double to float (type.isfloating() && type.size() < t2.size()) ?
-        if (op == EXP.addAssign || op == EXP.minAssign ||
-            op == EXP.mulAssign || op == EXP.divAssign || op == EXP.modAssign ||
-            op == EXP.powAssign)
-        {
-            if ((type.isintegral() && t2.isfloating()))
-            {
-                warning(loc, "`%s %s %s` is performing truncating conversion", type.toChars(), EXPtoString(op).ptr, t2.toChars());
-            }
-        }
-
-        // generate an error if this is a nonsensical *=,/=, or %=, eg real *= imaginary
-        if (op == EXP.mulAssign || op == EXP.divAssign || op == EXP.modAssign)
-        {
-            // Any multiplication by an imaginary or complex number yields a complex result.
-            // r *= c, i*=c, r*=i, i*=i are all forbidden operations.
-            const(char)* opstr = EXPtoString(op).ptr;
-            if (t1.isreal() && t2.iscomplex())
-            {
-                error(loc, "`%s %s %s` is undefined. Did you mean `%s %s %s.re`?", t1.toChars(), opstr, t2.toChars(), t1.toChars(), opstr, t2.toChars());
-                return ErrorExp.get();
-            }
-            else if (t1.isimaginary() && t2.iscomplex())
-            {
-                error(loc, "`%s %s %s` is undefined. Did you mean `%s %s %s.im`?", t1.toChars(), opstr, t2.toChars(), t1.toChars(), opstr, t2.toChars());
-                return ErrorExp.get();
-            }
-            else if ((t1.isreal() || t1.isimaginary()) && t2.isimaginary())
-            {
-                error(loc, "`%s %s %s` is an undefined operation", t1.toChars(), opstr, t2.toChars());
-                return ErrorExp.get();
-            }
-        }
-
-        // generate an error if this is a nonsensical += or -=, eg real += imaginary
-        if (op == EXP.addAssign || op == EXP.minAssign)
-        {
-            // Addition or subtraction of a real and an imaginary is a complex result.
-            // Thus, r+=i, r+=c, i+=r, i+=c are all forbidden operations.
-            if ((t1.isreal() && (t2.isimaginary() || t2.iscomplex())) || (t1.isimaginary() && (t2.isreal() || t2.iscomplex())))
-            {
-                error(loc, "`%s %s %s` is undefined (result is complex)", t1.toChars(), EXPtoString(op).ptr, t2.toChars());
-                return ErrorExp.get();
-            }
-            if (type.isreal() || type.isimaginary())
-            {
-                assert(global.errors || t2.isfloating());
-                e2 = e2.castTo(sc, t1);
-            }
-        }
-        if (op == EXP.mulAssign)
-        {
-            if (t2.isfloating())
-            {
-                if (t1.isreal())
-                {
-                    if (t2.isimaginary() || t2.iscomplex())
-                    {
-                        e2 = e2.castTo(sc, t1);
-                    }
-                }
-                else if (t1.isimaginary())
-                {
-                    if (t2.isimaginary() || t2.iscomplex())
-                    {
-                        switch (t1.ty)
-                        {
-                        case Timaginary32:
-                            t2 = Type.tfloat32;
-                            break;
-
-                        case Timaginary64:
-                            t2 = Type.tfloat64;
-                            break;
-
-                        case Timaginary80:
-                            t2 = Type.tfloat80;
-                            break;
-
-                        default:
-                            assert(0);
-                        }
-                        e2 = e2.castTo(sc, t2);
-                    }
-                }
-            }
-        }
-        else if (op == EXP.divAssign)
-        {
-            if (t2.isimaginary())
-            {
-                if (t1.isreal())
-                {
-                    // x/iv = i(-x/v)
-                    // Therefore, the result is 0
-                    e2 = new CommaExp(loc, e2, new RealExp(loc, CTFloat.zero, t1));
-                    e2.type = t1;
-                    Expression e = new AssignExp(loc, e1, e2);
-                    e.type = t1;
-                    return e;
-                }
-                else if (t1.isimaginary())
-                {
-                    Type t3;
-                    switch (t1.ty)
-                    {
-                    case Timaginary32:
-                        t3 = Type.tfloat32;
-                        break;
-
-                    case Timaginary64:
-                        t3 = Type.tfloat64;
-                        break;
-
-                    case Timaginary80:
-                        t3 = Type.tfloat80;
-                        break;
-
-                    default:
-                        assert(0);
-                    }
-                    e2 = e2.castTo(sc, t3);
-                    Expression e = new AssignExp(loc, e1, e2);
-                    e.type = t1;
-                    return e;
-                }
-            }
-        }
-        else if (op == EXP.modAssign)
-        {
-            if (t2.iscomplex())
-            {
-                error(loc, "cannot perform modulo complex arithmetic");
-                return ErrorExp.get();
-            }
-        }
-        return this;
-    }
-
     extern (D) final bool checkIntegralBin()
     {
         bool r1 = e1.checkIntegral();
@@ -4333,13 +3898,6 @@ extern (C++) abstract class BinExp : Expression
     {
         bool r1 = e1.checkArithmetic(this.op);
         bool r2 = e2.checkArithmetic(this.op);
-        return (r1 || r2);
-    }
-
-    extern (D) final bool checkSharedAccessBin(Scope* sc)
-    {
-        const r1 = e1.checkSharedAccess(sc);
-        const r2 = e2.checkSharedAccess(sc);
         return (r1 || r2);
     }
 
@@ -4355,54 +3913,6 @@ extern (C++) abstract class BinExp : Expression
         if (auto edi = e2.isDotIdExp())
             edi.noderef = true;
 
-    }
-
-    final Expression reorderSettingAAElem(Scope* sc)
-    {
-        BinExp be = this;
-
-        auto ie = be.e1.isIndexExp();
-        if (!ie)
-            return be;
-        if (ie.e1.type.toBasetype().ty != Taarray)
-            return be;
-
-        /* Fix evaluation order of setting AA element
-         * https://issues.dlang.org/show_bug.cgi?id=3825
-         * Rewrite:
-         *     aa[k1][k2][k3] op= val;
-         * as:
-         *     auto ref __aatmp = aa;
-         *     auto ref __aakey3 = k1, __aakey2 = k2, __aakey1 = k3;
-         *     auto ref __aaval = val;
-         *     __aatmp[__aakey3][__aakey2][__aakey1] op= __aaval;  // assignment
-         */
-
-        Expression e0;
-        while (1)
-        {
-            Expression de;
-            ie.e2 = extractSideEffect(sc, "__aakey", de, ie.e2);
-            e0 = Expression.combine(de, e0);
-
-            auto ie1 = ie.e1.isIndexExp();
-            if (!ie1 ||
-                ie1.e1.type.toBasetype().ty != Taarray)
-            {
-                break;
-            }
-            ie = ie1;
-        }
-        assert(ie.e1.type.toBasetype().ty == Taarray);
-
-        Expression de;
-        ie.e1 = extractSideEffect(sc, "__aatmp", de, ie.e1);
-        e0 = Expression.combine(de, e0);
-
-        be.e2 = extractSideEffect(sc, "__aaval", e0, be.e2, true);
-
-        //printf("-e0 = %s, be = %s\n", e0.toChars(), be.toChars());
-        return Expression.combine(e0, be);
     }
 
     override void accept(Visitor v)
@@ -4729,7 +4239,7 @@ extern (C++) final class DotTemplateInstanceExp : UnaExp
         return new DotTemplateInstanceExp(loc, e1.syntaxCopy(), ti.name, TemplateInstance.arraySyntaxCopy(ti.tiargs));
     }
 
-    bool findTempDecl(Scope* sc)
+    extern (D) bool findTempDecl(Scope* sc)
     {
         static if (LOGSEMANTIC)
         {
@@ -4981,38 +4491,6 @@ extern (C++) final class CallExp : UnaExp
         if (isLvalue())
             return this;
         return Expression.toLvalue(sc, e);
-    }
-
-    override Expression addDtorHook(Scope* sc)
-    {
-        /* Only need to add dtor hook if it's a type that needs destruction.
-         * Use same logic as VarDeclaration::callScopeDtor()
-         */
-
-        if (auto tf = e1.type.isTypeFunction())
-        {
-            if (tf.isref)
-                return this;
-        }
-
-        Type tv = type.baseElemOf();
-        if (auto ts = tv.isTypeStruct())
-        {
-            StructDeclaration sd = ts.sym;
-            if (sd.dtor)
-            {
-                /* Type needs destruction, so declare a tmp
-                 * which the back end will recognize and call dtor on
-                 */
-                auto tmp = copyToTemp(0, Id.__tmpfordtor.toString(), this);
-                auto de = new DeclarationExp(loc, tmp);
-                auto ve = new VarExp(loc, tmp);
-                Expression e = new CommaExp(loc, de, ve);
-                e = e.expressionSemantic(sc);
-                return e;
-            }
-        }
-        return this;
     }
 
     override void accept(Visitor v)
@@ -5290,13 +4768,6 @@ extern (C++) final class CastExp : UnaExp
         return Expression.toLvalue(sc, e);
     }
 
-    override Expression addDtorHook(Scope* sc)
-    {
-        if (to.toBasetype().ty == Tvoid)        // look past the cast(void)
-            e1 = e1.addDtorHook(sc);
-        return this;
-    }
-
     override void accept(Visitor v)
     {
         v.visit(this);
@@ -5321,12 +4792,6 @@ extern (C++) final class VectorExp : UnaExp
     static VectorExp create(const ref Loc loc, Expression e, Type t) @safe
     {
         return new VectorExp(loc, e, t);
-    }
-
-    // Same as create, but doesn't allocate memory.
-    static void emplace(UnionExp* pue, const ref Loc loc, Expression e, Type type)
-    {
-        emplaceExp!(VectorExp)(pue, loc, e, type);
     }
 
     override VectorExp syntaxCopy()
@@ -5568,12 +5033,6 @@ extern (C++) final class CommaExp : BinExp
     override Optional!bool toBool()
     {
         return e2.toBool();
-    }
-
-    override Expression addDtorHook(Scope* sc)
-    {
-        e2 = e2.addDtorHook(sc);
-        return this;
     }
 
     override void accept(Visitor v)
@@ -6833,7 +6292,6 @@ extern (C++) final class ObjcClassReferenceExp : Expression
     {
         super(loc, EXP.objcClassReference);
         this.classDeclaration = classDeclaration;
-        type = objc.getRuntimeMetaclass(classDeclaration).getType();
     }
 
     override void accept(Visitor v)

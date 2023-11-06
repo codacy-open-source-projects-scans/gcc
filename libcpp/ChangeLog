@@ -1,3 +1,27 @@
+2023-11-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/110342
+	* include/cpplib.h (TTYPE_TABLE): Add CPP_UNEVAL_STRING literal
+	entry.  Use C++11 instead of C++-0x in comments.
+	* charset.cc (convert_escape): Add UNEVAL argument, if true,
+	pedantically diagnose numeric escape sequences.
+	(cpp_interpret_string_1): Formatting fix.  Adjust convert_escape
+	caller.
+	(cpp_interpret_string): Formatting string.
+	(cpp_interpret_string_notranslate): Pass type through to
+	cpp_interpret_string if it is CPP_UNEVAL_STRING.
+
+2023-10-31  David Malcolm  <dmalcolm@redhat.com>
+
+	* include/line-map.h
+	(line_map_macro::get_expansion_point_location): New accessor.
+	(line_map_macro::expansion): Rename field to...
+	(line_map_macro::mexpansion): Rename field to...
+	(MACRO_MAP_EXPANSION_POINT_LOCATION): Delete this function.
+	* line-map.cc (linemap_enter_macro): Update for renaming of field.
+	(linemap_macro_map_loc_to_exp_point): Update for removal of
+	MACRO_MAP_EXPANSION_POINT_LOCATION.
+
 2023-10-23  Lewis Hyatt  <lhyatt@gmail.com>
 
 	PR preprocessor/36887

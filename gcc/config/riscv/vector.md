@@ -708,6 +708,32 @@
 	       (const_int 5)]
 	(const_int INVALID_ATTRIBUTE)))
 
+;; The index of operand[] represents the machine mode of the instruction.
+(define_attr "mode_idx" ""
+	(cond [(eq_attr "type" "vlde,vste,vldm,vstm,vlds,vsts,vldux,vldox,vldff,vldr,vstr,\
+				vlsegde,vlsegds,vlsegdux,vlsegdox,vlsegdff,vialu,vext,vicalu,\
+				vshift,vicmp,viminmax,vimul,vidiv,vimuladd,vimerge,vimov,\
+				vsalu,vaalu,vsmul,vsshift,vfalu,vfmul,vfdiv,vfmuladd,vfsqrt,vfrecp,\
+				vfcmp,vfminmax,vfsgnj,vfclass,vfmerge,vfmov,\
+				vfcvtitof,vfncvtitof,vfncvtftoi,vfncvtftof,vmalu,vmiota,vmidx,\
+				vimovxv,vfmovfv,vslideup,vslidedown,vislide1up,vislide1down,vfslide1up,vfslide1down,\
+				vgather,vcompress,vmov,vnclip,vnshift")
+	       (const_int 0)
+
+	       (eq_attr "type" "vimovvx,vfmovvf")
+	       (const_int 1)
+
+	       (eq_attr "type" "vssegte,vmpop,vmffs")
+	       (const_int 2)       
+
+	       (eq_attr "type" "vstux,vstox,vssegts,vssegtux,vssegtox,vfcvtftoi,vfwcvtitof,vfwcvtftoi,
+				vfwcvtftof,vmsfs,vired,viwred,vfredu,vfredo,vfwredu,vfwredo")
+	       (const_int 3)
+
+	       (eq_attr "type" "viwalu,viwmul,viwmuladd,vfwalu,vfwmul,vfwmuladd")
+	       (const_int 4)]
+	(const_int INVALID_ATTRIBUTE)))
+
 ;; The index of operand[] to get the avl op.
 (define_attr "vl_op_idx" ""
   (cond [(eq_attr "type" "vlde,vste,vimov,vfmov,vldm,vstm,vmalu,vsts,vstux,\
@@ -801,20 +827,20 @@
 
 ;; The avl type value.
 (define_attr "avl_type_idx" ""
-  (cond [(eq_attr "type" "vlde,vldff,vste,vimov,vimov,vimov,vfmov,vext,vimerge,\
+  (cond [(eq_attr "type" "vlde,vldff,vste,vimov,vfmov,vext,vimerge,\
 			  vfsqrt,vfrecp,vfmerge,vfcvtitof,vfcvtftoi,vfwcvtitof,\
 			  vfwcvtftoi,vfwcvtftof,vfncvtitof,vfncvtftoi,vfncvtftof,\
 			  vfclass,vired,viwred,vfredu,vfredo,vfwredu,vfwredo,\
 			  vimovxv,vfmovfv,vlsegde,vlsegdff")
 	   (const_int 7)
-	 (eq_attr "type" "vldm,vstm,vimov,vmalu,vmalu")
+	 (eq_attr "type" "vldm,vstm,vmalu,vmalu")
 	   (const_int 5)
 
 	 ;; If operands[3] of "vlds" is not vector mode, it is pred_broadcast.
 	 ;; wheras it is pred_strided_load if operands[3] is vector mode.
 	 (eq_attr "type" "vlds")
 	   (if_then_else (match_test "VECTOR_MODE_P (GET_MODE (operands[3]))")
-	     (const_int INVALID_ATTRIBUTE)
+	     (const_int 8)
 	     (const_int 7))
 
 	 (eq_attr "type" "vldux,vldox,vialu,vshift,viminmax,vimul,vidiv,vsalu,\
@@ -876,6 +902,13 @@
 (define_insn "@vundefined<mode>"
   [(set (match_operand:VB 0 "register_operand" "=vr")
 	(unspec:VB [(reg:SI X0_REGNUM)] UNSPEC_VUNDEF))]
+  "TARGET_VECTOR"
+  ""
+  [(set_attr "type" "vector")])
+
+(define_insn "@vundefined<mode>"
+  [(set (match_operand:VT 0 "register_operand" "=vr")
+	(unspec:VT [(reg:SI X0_REGNUM)] UNSPEC_VUNDEF))]
   "TARGET_VECTOR"
   ""
   [(set_attr "type" "vector")])
@@ -1200,7 +1233,8 @@
   }
   [(set_attr "type" "vmov,vlde,vste")
    (set_attr "mode" "<VT:MODE>")
-   (set (attr "avl_type_idx") (const_int INVALID_ATTRIBUTE))])
+   (set (attr "avl_type_idx") (const_int INVALID_ATTRIBUTE))
+   (set (attr "mode_idx") (const_int INVALID_ATTRIBUTE))])
 
 ;; -----------------------------------------------------------------
 ;; ---- VLS Moves Operations
@@ -1779,7 +1813,8 @@
 	  emit_insn (gen_pred_merge<mode> (operands[0], operands[1],
 	       operands[2], boardcast_scalar, operands[4], operands[5],
 	       operands[6], operands[7]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[7])))
     DONE;
 })
 
@@ -2537,7 +2572,8 @@
 	  emit_insn (gen_pred_<optab><mode> (operands[0], operands[1],
 	       operands[2], operands[3], boardcast_scalar, operands[5],
 	       operands[6], operands[7], operands[8]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[8])))
     DONE;
 })
 
@@ -2612,7 +2648,8 @@
 	  emit_insn (gen_pred_<optab><mode> (operands[0], operands[1],
 	       operands[2], operands[3], boardcast_scalar, operands[5],
 	       operands[6], operands[7], operands[8]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[8])))
     DONE;
 })
 
@@ -2687,7 +2724,8 @@
 	  emit_insn (gen_pred_sub<mode> (operands[0], operands[1],
 	       operands[2], boardcast_scalar, operands[3], operands[5],
 	       operands[6], operands[7], operands[8]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[8])))
     DONE;
 })
 
@@ -2804,7 +2842,8 @@
 	  emit_insn (gen_pred_mulh<v_su><mode> (operands[0], operands[1],
 	       operands[2], operands[3], boardcast_scalar, operands[5],
 	       operands[6], operands[7], operands[8]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[8])))
     DONE;
 })
 
@@ -2978,7 +3017,8 @@
 	  emit_insn (gen_pred_adc<mode> (operands[0], operands[1],
 	       operands[2], boardcast_scalar, operands[4], operands[5],
 	       operands[6], operands[7]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[7])))
     DONE;
 })
 
@@ -3061,7 +3101,8 @@
 	  emit_insn (gen_pred_sbc<mode> (operands[0], operands[1],
 	       operands[2], boardcast_scalar, operands[4], operands[5],
 	       operands[6], operands[7]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[7])))
     DONE;
 })
 
@@ -3218,7 +3259,8 @@
 	[] (rtx *operands, rtx boardcast_scalar) {
 	  emit_insn (gen_pred_madc<mode> (operands[0], operands[1],
 	       boardcast_scalar, operands[3], operands[4], operands[5]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[5])))
     DONE;
 })
 
@@ -3287,7 +3329,8 @@
 	[] (rtx *operands, rtx boardcast_scalar) {
 	  emit_insn (gen_pred_msbc<mode> (operands[0], operands[1],
 	       boardcast_scalar, operands[3], operands[4], operands[5]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[5])))
     DONE;
 })
 
@@ -3429,7 +3472,8 @@
 	[] (rtx *operands, rtx boardcast_scalar) {
 	  emit_insn (gen_pred_madc<mode>_overflow (operands[0], operands[1],
 	       boardcast_scalar, operands[3], operands[4]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[4])))
     DONE;
 })
 
@@ -3495,7 +3539,8 @@
 	[] (rtx *operands, rtx boardcast_scalar) {
 	  emit_insn (gen_pred_msbc<mode>_overflow (operands[0], operands[1],
 	       boardcast_scalar, operands[3], operands[4]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[4])))
     DONE;
 })
 
@@ -4006,7 +4051,8 @@
 	  emit_insn (gen_pred_<optab><mode> (operands[0], operands[1],
 	       operands[2], operands[3], boardcast_scalar, operands[5],
 	       operands[6], operands[7], operands[8]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[8])))
     DONE;
 })
 
@@ -4081,7 +4127,8 @@
 	  emit_insn (gen_pred_<optab><mode> (operands[0], operands[1],
 	       operands[2], operands[3], boardcast_scalar, operands[5],
 	       operands[6], operands[7], operands[8]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[8])))
     DONE;
 })
 
@@ -4226,7 +4273,8 @@
 	  emit_insn (gen_pred_<sat_op><mode> (operands[0], operands[1],
 	       operands[2], operands[3], boardcast_scalar, operands[5],
 	       operands[6], operands[7], operands[8], operands[9]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[8])))
     DONE;
 })
 
@@ -4692,7 +4740,8 @@
 	    emit_insn (gen_pred_cmp<mode> (operands[0], operands[1],
 	    	operands[2], operands[3], operands[4], boardcast_scalar,
 	  	operands[6], operands[7], operands[8]));
-          }))
+          },
+	(riscv_vector::avl_type) INTVAL (operands[8])))
     DONE;
 })
 
@@ -4724,7 +4773,8 @@
 	  emit_insn (gen_pred_cmp<mode> (operands[0], operands[1],
 	  	operands[2], operands[3], operands[4], boardcast_scalar,
 		operands[6], operands[7], operands[8]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[8])))
     DONE;
 })
 
@@ -5347,7 +5397,8 @@
 	  emit_insn (gen_pred_mul_plus<mode> (operands[0], operands[1],
 	       boardcast_scalar, operands[3], operands[4], operands[5],
 	       operands[6], operands[7], operands[8], operands[9]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[9])))
     DONE;
 })
 
@@ -5644,7 +5695,8 @@
 	  emit_insn (gen_pred_minus_mul<mode> (operands[0], operands[1],
 	       boardcast_scalar, operands[3], operands[4], operands[5],
 	       operands[6], operands[7], operands[8], operands[9]));
-        }))
+        },
+	(riscv_vector::avl_type) INTVAL (operands[9])))
     DONE;
 })
 
@@ -6085,6 +6137,27 @@
   [(set_attr "type" "<float_insn_type>")
    (set_attr "mode" "<MODE>")])
 
+(define_insn "@pred_<ieee_fmaxmin_op><mode>"
+  [(set (match_operand:V_VLSF 0 "register_operand"           "=vd, vd, vr, vr")
+	(if_then_else:V_VLSF
+	  (unspec:<VM>
+	    [(match_operand:<VM> 1 "vector_mask_operand" " vm, vm,Wc1,Wc1")
+	     (match_operand 5 "vector_length_operand"    " rK, rK, rK, rK")
+	     (match_operand 6 "const_int_operand"        "  i,  i,  i,  i")
+	     (match_operand 7 "const_int_operand"        "  i,  i,  i,  i")
+	     (match_operand 8 "const_int_operand"        "  i,  i,  i,  i")
+	     (reg:SI VL_REGNUM)
+	     (reg:SI VTYPE_REGNUM)] UNSPEC_VPREDICATE)
+	  (unspec:V_VLSF
+	    [(match_operand:V_VLSF 3 "register_operand"      " vr, vr, vr, vr")
+	    (match_operand:V_VLSF 4 "register_operand"       " vr, vr, vr, vr")]
+	    UNSPEC_VFMAXMIN)
+	  (match_operand:V_VLSF 2 "vector_merge_operand"     " vu,  0, vu,  0")))]
+  "TARGET_VECTOR"
+  "v<ieee_fmaxmin_op>.vv\t%0,%3,%4%p1"
+  [(set_attr "type" "vfminmax")
+   (set_attr "mode" "<MODE>")])
+
 (define_insn "@pred_<optab><mode>_scalar"
   [(set (match_operand:VF 0 "register_operand"           "=vd, vd, vr, vr")
 	(if_then_else:VF
@@ -6129,6 +6202,28 @@
   "TARGET_VECTOR"
   "vf<insn>.vf\t%0,%3,%4%p1"
   [(set_attr "type" "<float_insn_type>")
+   (set_attr "mode" "<MODE>")])
+
+(define_insn "@pred_<ieee_fmaxmin_op><mode>_scalar"
+  [(set (match_operand:VF 0 "register_operand"           "=vd, vd, vr, vr")
+	(if_then_else:VF
+	  (unspec:<VM>
+	    [(match_operand:<VM> 1 "vector_mask_operand" " vm, vm,Wc1,Wc1")
+	     (match_operand 5 "vector_length_operand"    " rK, rK, rK, rK")
+	     (match_operand 6 "const_int_operand"        "  i,  i,  i,  i")
+	     (match_operand 7 "const_int_operand"        "  i,  i,  i,  i")
+	     (match_operand 8 "const_int_operand"        "  i,  i,  i,  i")
+	     (reg:SI VL_REGNUM)
+	     (reg:SI VTYPE_REGNUM)] UNSPEC_VPREDICATE)
+	  (unspec:VF
+	    [(match_operand:VF 3 "register_operand"        " vr, vr, vr, vr")
+	      (vec_duplicate:VF
+		(match_operand:<VEL> 4 "register_operand"  "  f,  f,  f,  f"))]
+	      UNSPEC_VFMAXMIN)
+	  (match_operand:VF 2 "vector_merge_operand"     " vu,  0, vu,  0")))]
+  "TARGET_VECTOR"
+  "v<ieee_fmaxmin_op>.vf\t%0,%3,%4%p1"
+  [(set_attr "type" "vfminmax")
    (set_attr "mode" "<MODE>")])
 
 (define_insn "@pred_<optab><mode>_scalar"
@@ -7566,7 +7661,7 @@
 	     (reg:SI VTYPE_REGNUM)
 	     (reg:SI FRM_REGNUM)] UNSPEC_VPREDICATE)
 	  (unspec:<VNCONVERT>
-	     [(match_operand:VF 3 "register_operand"           "  0,  0,  0,  0,   vr,   vr")] VFCVTS)
+	     [(match_operand:V_VLSF 3 "register_operand"       "  0,  0,  0,  0,   vr,   vr")] VFCVTS)
 	  (match_operand:<VNCONVERT> 2 "vector_merge_operand"  " vu,  0, vu,  0,   vu,    0")))]
   "TARGET_VECTOR"
   "vfncvt.x<v_su>.f.w\t%0,%3%p1"
@@ -7704,7 +7799,7 @@
 	     (reg:SI VTYPE_REGNUM)] UNSPEC_VPREDICATE)
            (unspec:<V_EXT_LMUL1> [
 	     (match_operand:VI_QHS         3 "register_operand"      "   vr,   vr")
-	     (match_operand:<V_EXT_LMUL1>  4 "register_operand"      "   vr,   vr")
+	     (match_operand:<V_EXT_LMUL1>  4 "register_operand"      "  vr0,  vr0")
            ] ANY_WREDUC)
 	   (match_operand:<V_EXT_LMUL1>    2 "vector_merge_operand"  "   vu,    0")] UNSPEC_REDUC))]
   "TARGET_VECTOR"
@@ -7773,7 +7868,7 @@
 	     (reg:SI FRM_REGNUM)] UNSPEC_VPREDICATE)
            (unspec:<V_EXT_LMUL1> [
 	     (match_operand:VF_HS          3 "register_operand"      "   vr,   vr")
-	     (match_operand:<V_EXT_LMUL1>  4 "register_operand"      "   vr,   vr")
+	     (match_operand:<V_EXT_LMUL1>  4 "register_operand"      "  vr0,  vr0")
            ] ANY_FWREDUC_SUM)
 	   (match_operand:<V_EXT_LMUL1>    2 "vector_merge_operand"  "   vu,    0")] UNSPEC_REDUC))]
   "TARGET_VECTOR"

@@ -4256,6 +4256,17 @@ arc_split_ashl (rtx *operands)
 	    }
 	  return;
 	}
+      else if (n >= 16 && n <= 22 && TARGET_SWAP && TARGET_V2)
+	{
+	  emit_insn (gen_ashlsi2_cnt16 (operands[0], operands[1]));
+	  if (n > 16)
+	    {
+	      operands[1] = operands[0];
+	      operands[2] = GEN_INT (n - 16);
+	      arc_split_ashl (operands);
+	    }
+	  return;
+	}
       else if (n >= 29)
 	{
 	  if (n < 31)
@@ -4300,6 +4311,15 @@ arc_split_ashr (rtx *operands)
 	    emit_move_insn (operands[0], operands[1]);
 	  return;
 	}
+      else if (n >= 16 && n <= 18 && TARGET_SWAP)
+	{
+	  emit_insn (gen_rotrsi2_cnt16 (operands[0], operands[1]));
+	  emit_insn (gen_extendhisi2 (operands[0],
+				      gen_lowpart (HImode, operands[0])));
+	  while (--n >= 16)
+	    emit_insn (gen_ashrsi3_cnt1 (operands[0], operands[0]));
+	  return;
+	}
       else if (n == 30)
 	{
 	  rtx tmp = gen_reg_rtx (SImode);
@@ -4337,6 +4357,13 @@ arc_split_lshr (rtx *operands)
 	    }
 	  else
 	    emit_move_insn (operands[0], operands[1]);
+	  return;
+	}
+      else if (n >= 16 && n <= 19 && TARGET_SWAP && TARGET_V2)
+	{
+	  emit_insn (gen_lshrsi2_cnt16 (operands[0], operands[1]));
+	  while (--n >= 16)
+	    emit_insn (gen_lshrsi3_cnt1 (operands[0], operands[0]));
 	  return;
 	}
       else if (n == 30)
@@ -4385,6 +4412,19 @@ arc_split_rotl (rtx *operands)
 	    emit_insn (gen_rotrsi3_cnt1 (operands[0], operands[0]));
 	  return;
 	}
+      else if (n >= 13 && n <= 16 && TARGET_SWAP)
+	{
+	  emit_insn (gen_rotlsi2_cnt16 (operands[0], operands[1]));
+	  while (++n <= 16)
+	    emit_insn (gen_rotrsi3_cnt1 (operands[0], operands[0]));
+	  return;
+	}
+      else if (n == 17 && TARGET_SWAP)
+	{
+	  emit_insn (gen_rotlsi2_cnt16 (operands[0], operands[1]));
+	  emit_insn (gen_rotlsi3_cnt1 (operands[0], operands[0]));
+	  return;
+	}
       else if (n >= 16 || n == 12 || n == 14)
 	{
 	  emit_insn (gen_rotrsi3_loop (operands[0], operands[1],
@@ -4413,6 +4453,19 @@ arc_split_rotr (rtx *operands)
 	    }
 	  else
 	    emit_move_insn (operands[0], operands[1]);
+	  return;
+	}
+      else if (n == 15 && TARGET_SWAP)
+	{
+	  emit_insn (gen_rotrsi2_cnt16 (operands[0], operands[1]));
+	  emit_insn (gen_rotlsi3_cnt1 (operands[0], operands[0]));
+	  return;
+	}
+      else if (n >= 16 && n <= 19 && TARGET_SWAP)
+	{
+	  emit_insn (gen_rotrsi2_cnt16 (operands[0], operands[1]));
+	  while (--n >= 16)
+	    emit_insn (gen_rotrsi3_cnt1 (operands[0], operands[0]));
 	  return;
 	}
       else if (n >= 30)
@@ -5492,7 +5545,7 @@ arc_rtx_costs (rtx x, machine_mode mode, int outer_code,
     case CONST:
     case LABEL_REF:
     case SYMBOL_REF:
-      *total = speed ? COSTS_N_INSNS (1) : COSTS_N_INSNS (4);
+      *total = speed ? COSTS_N_INSNS (1) : COSTS_N_BYTES (4);
       return true;
 
     case CONST_DOUBLE:
@@ -5516,26 +5569,32 @@ arc_rtx_costs (rtx x, machine_mode mode, int outer_code,
     case ASHIFT:
     case ASHIFTRT:
     case LSHIFTRT:
+    case ROTATE:
+    case ROTATERT:
+      if (mode == DImode)
+	return false;
       if (TARGET_BARREL_SHIFTER)
 	{
-	  if (CONSTANT_P (XEXP (x, 0)))
+	  *total = COSTS_N_INSNS (1);
+	  if (CONSTANT_P (XEXP (x, 1)))
 	    {
-	      *total += rtx_cost (XEXP (x, 1), mode, (enum rtx_code) code,
+	      *total += rtx_cost (XEXP (x, 0), mode, (enum rtx_code) code,
 				  0, speed);
 	      return true;
 	    }
-	  *total = COSTS_N_INSNS (1);
 	}
       else if (GET_CODE (XEXP (x, 1)) != CONST_INT)
-	*total = COSTS_N_INSNS (16);
+	*total = speed ? COSTS_N_INSNS (16) : COSTS_N_INSNS (4);
       else
 	{
-	  *total = COSTS_N_INSNS (INTVAL (XEXP ((x), 1)));
-	  /* ??? want_to_gcse_p can throw negative shift counts at us,
-	     and then panics when it gets a negative cost as result.
-	     Seen for gcc.c-torture/compile/20020710-1.c -Os .  */
-	  if (*total < 0)
-	    *total = 0;
+	  int n = INTVAL (XEXP (x, 1)) & 31;
+	  if (n < 4)
+	    *total = COSTS_N_INSNS (n);
+	  else
+	    *total = speed ? COSTS_N_INSNS (n + 2) : COSTS_N_INSNS (4);
+	  *total += rtx_cost (XEXP (x, 0), mode, (enum rtx_code) code,
+			      0, speed);
+	  return true;
 	}
       return false;
 
@@ -5567,6 +5626,8 @@ arc_rtx_costs (rtx x, machine_mode mode, int outer_code,
       return false;
 
     case PLUS:
+      if (mode == DImode)
+	return false;
       if (outer_code == MEM && CONST_INT_P (XEXP (x, 1))
 	  && RTX_OK_FOR_OFFSET_P (mode, XEXP (x, 1)))
 	{
@@ -11101,35 +11162,37 @@ static int
 arc_insn_cost (rtx_insn *insn, bool speed)
 {
   int cost;
-  if (recog_memoized (insn) < 0)
-    return 0;
-
-  /* If optimizing for size, we want the insn size.  */
-  if (!speed)
-    return get_attr_length (insn);
-
-  /* Use cost if provided.  */
-  cost = get_attr_cost (insn);
-  if (cost > 0)
-    return cost;
-
-  /* For speed make a simple cost model: memory access is more
-     expensive than any other instruction.  */
-  enum attr_type type = get_attr_type (insn);
-
-  switch (type)
+  enum attr_type type;
+  if (recog_memoized (insn) >= 0)
     {
-    case TYPE_LOAD:
-    case TYPE_STORE:
-      cost = COSTS_N_INSNS (2);
-      break;
-
-    default:
-      cost = COSTS_N_INSNS (1);
-      break;
+      if (speed)
+	{
+	  /* Use cost if provided.  */
+	  cost = get_attr_cost (insn);
+	  if (cost > 0)
+	    return cost;
+	  /* For speed make a simple cost model: memory access is more
+	     expensive than any other instruction.  */
+	  type = get_attr_type (insn);
+	  if (type == TYPE_LOAD || type == TYPE_STORE)
+	    return COSTS_N_INSNS (2);
+	}
+      else
+	{
+	  /* If optimizing for size, we want the insn size.  */
+	  type = get_attr_type (insn);
+	  if (type != TYPE_MULTI)
+	    return get_attr_length (insn);
+	}
     }
 
-  return cost;
+  if (rtx set = single_set (insn))
+    cost = set_rtx_cost (set, speed);
+  else
+    cost = pattern_cost (PATTERN (insn), speed);
+  /* If the cost is zero, then it's likely a complex insn.  We don't
+     want the cost of these to be less than something we know about.  */
+  return cost ? cost : COSTS_N_INSNS (2);
 }
 
 static unsigned

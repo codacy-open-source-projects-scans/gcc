@@ -1420,8 +1420,17 @@ vectorizable_internal_function (combined_fn cfn, tree fndecl,
       const direct_internal_fn_info &info = direct_internal_fn (ifn);
       if (info.vectorizable)
 	{
+	  bool same_size_p = TYPE_SIZE (vectype_in) == TYPE_SIZE (vectype_out);
 	  tree type0 = (info.type0 < 0 ? vectype_out : vectype_in);
 	  tree type1 = (info.type1 < 0 ? vectype_out : vectype_in);
+
+	  /* The type size of both the vectype_in and vectype_out should be
+	     exactly the same when vectype_out isn't participating the optab.
+	     While there is no restriction for type size when vectype_out
+	     is part of the optab query.  */
+	  if (type0 != vectype_out && type1 != vectype_out && !same_size_p)
+	    return IFN_LAST;
+
 	  if (direct_internal_fn_supported_p (ifn, tree_pair (type0, type1),
 					      OPTIMIZE_FOR_SPEED))
 	    return ifn;
@@ -3361,19 +3370,6 @@ vectorizable_call (vec_info *vinfo,
 
       return false;
     }
-  /* FORNOW: we don't yet support mixtures of vector sizes for calls,
-     just mixtures of nunits.  E.g. DI->SI versions of __builtin_ctz*
-     are traditionally vectorized as two VnDI->VnDI IFN_CTZs followed
-     by a pack of the two vectors into an SI vector.  We would need
-     separate code to handle direct VnDI->VnSI IFN_CTZs.  */
-  if (TYPE_SIZE (vectype_in) != TYPE_SIZE (vectype_out))
-    {
-      if (dump_enabled_p ())
-	dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-			 "mismatched vector sizes %T and %T\n",
-			 vectype_in, vectype_out);
-      return false;
-    }
 
   if (VECTOR_BOOLEAN_TYPE_P (vectype_out)
       != VECTOR_BOOLEAN_TYPE_P (vectype_in))
@@ -4153,10 +4149,19 @@ vectorizable_simd_clone_call (vec_info *vinfo, stmt_vec_info stmt_info,
       {
 	unsigned int this_badness = 0;
 	unsigned int num_calls;
+	/* The number of arguments in the call and the number of parameters in
+	   the simdclone should match.  However, when the simdclone is
+	   'inbranch', it could have one more paramater than nargs when using
+	   an inbranch simdclone to call a non-inbranch call, either in a
+	   non-masked loop using a all true constant mask, or inside a masked
+	   loop using it's mask.  */
+	size_t simd_nargs = n->simdclone->nargs;
+	if (!masked_call_offset && n->simdclone->inbranch)
+	  simd_nargs--;
 	if (!constant_multiple_p (vf * group_size, n->simdclone->simdlen,
 				  &num_calls)
 	    || (!n->simdclone->inbranch && (masked_call_offset > 0))
-	    || nargs != n->simdclone->nargs)
+	    || (nargs != simd_nargs))
 	  continue;
 	if (num_calls != 1)
 	  this_badness += exact_log2 (num_calls) * 4096;
@@ -9809,6 +9814,7 @@ vectorizable_load (vec_info *vinfo,
 
   tree mask = NULL_TREE, mask_vectype = NULL_TREE;
   int mask_index = -1;
+  slp_tree slp_op = NULL;
   if (gassign *assign = dyn_cast <gassign *> (stmt_info->stmt))
     {
       scalar_dest = gimple_assign_lhs (assign);
@@ -9845,7 +9851,7 @@ vectorizable_load (vec_info *vinfo,
 	mask_index = vect_slp_child_index_for_operand (call, mask_index);
       if (mask_index >= 0
 	  && !vect_check_scalar_mask (vinfo, stmt_info, slp_node, mask_index,
-				      &mask, NULL, &mask_dt, &mask_vectype))
+				      &mask, &slp_op, &mask_dt, &mask_vectype))
 	return false;
     }
 
@@ -10030,7 +10036,7 @@ vectorizable_load (vec_info *vinfo,
     {
       if (slp_node
 	  && mask
-	  && !vect_maybe_update_slp_op_vectype (SLP_TREE_CHILDREN (slp_node)[0],
+	  && !vect_maybe_update_slp_op_vectype (slp_op,
 						mask_vectype))
 	{
 	  if (dump_enabled_p ())

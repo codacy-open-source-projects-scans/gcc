@@ -1307,9 +1307,13 @@ enum reg_class
   Q_REGS,			/* %eax %ebx %ecx %edx */
   NON_Q_REGS,			/* %esi %edi %ebp %esp */
   TLS_GOTBASE_REGS,		/* %ebx %ecx %edx %esi %edi %ebp */
-  INDEX_REGS,			/* %eax %ebx %ecx %edx %esi %edi %ebp */
-  LEGACY_REGS,			/* %eax %ebx %ecx %edx %esi %edi %ebp %esp */
+  LEGACY_GENERAL_REGS,		/* %eax %ebx %ecx %edx %esi %edi %ebp %esp */
+  LEGACY_INDEX_REGS,		/* %eax %ebx %ecx %edx %esi %edi %ebp */
   GENERAL_REGS,			/* %eax %ebx %ecx %edx %esi %edi %ebp %esp
+				   %r8 %r9 %r10 %r11 %r12 %r13 %r14 %r15
+				   %r16 %r17 %r18 %r19 %r20 %r21 %r22 %r23
+				   %r24 %r25 %r26 %r27 %r28 %r29 %r30 %r31 */
+  INDEX_REGS,			/* %eax %ebx %ecx %edx %esi %edi %ebp
 				   %r8 %r9 %r10 %r11 %r12 %r13 %r14 %r15
 				   %r16 %r17 %r18 %r19 %r20 %r21 %r22 %r23
 				   %r24 %r25 %r26 %r27 %r28 %r29 %r30 %r31 */
@@ -1376,9 +1380,10 @@ enum reg_class
    "CLOBBERED_REGS",			\
    "Q_REGS", "NON_Q_REGS",		\
    "TLS_GOTBASE_REGS",			\
-   "INDEX_REGS",			\
-   "LEGACY_REGS",			\
+   "LEGACY_GENERAL_REGS",		\
+   "LEGACY_INDEX_REGS",			\
    "GENERAL_REGS",			\
+   "INDEX_REGS",			\
    "GENERAL_GPR16",			\
    "INDEX_GPR16",			\
    "FP_TOP_REG", "FP_SECOND_REG",	\
@@ -1416,11 +1421,12 @@ enum reg_class
       { 0x0f,        0x0,   0x0 },	/* Q_REGS */			\
    { 0x900f0,        0x0,   0x0 },	/* NON_Q_REGS */		\
       { 0x7e,      0xff0,   0x0 },	/* TLS_GOTBASE_REGS */		\
-      { 0x7f,      0xff0,   0xffff000 },	/* INDEX_REGS */		\
-   { 0x900ff,        0x0,   0x0 },	/* LEGACY_REGS */		\
-   { 0x900ff,      0xff0,   0xffff000 },	/* GENERAL_REGS */		\
+   { 0x900ff,        0x0,   0x0 },	/* LEGACY_GENERAL_REGS */	\
+      { 0x7f,        0x0,   0x0 },	/* LEGACY_INDEX_REGS */		\
+   { 0x900ff,      0xff0,   0xffff000 }, /* GENERAL_REGS */		\
+      { 0x7f,      0xff0,   0xffff000 }, /* INDEX_REGS */		\
    { 0x900ff,      0xff0,   0x0 },	/* GENERAL_GPR16 */		\
-   { 0x0007f,      0xff0,   0x0 },	/* INDEX_GPR16 */		\
+      { 0x7f,      0xff0,   0x0 },	/* INDEX_GPR16 */		\
      { 0x100,        0x0,   0x0 },	/* FP_TOP_REG */		\
      { 0x200,        0x0,   0x0 },	/* FP_SECOND_REG */		\
     { 0xff00,        0x0,   0x0 },	/* FLOAT_REGS */		\
@@ -1430,13 +1436,13 @@ enum reg_class
  { 0xff00000, 0xfffff000,   0xf },	/* ALL_SSE_REGS */		\
 { 0xf0000000,        0xf,   0x0 },	/* MMX_REGS */			\
  { 0xff0ff00, 0xfffff000,   0xf },	/* FLOAT_SSE_REGS */		\
- {   0x9ffff,      0xff0,   0xffff000 },	/* FLOAT_INT_REGS */		\
- { 0xff900ff, 0xfffffff0,   0xffff00f },	/* INT_SSE_REGS */		\
- { 0xff9ffff, 0xfffffff0,   0xffff00f },	/* FLOAT_INT_SSE_REGS */	\
-       { 0x0,        0x0, 0xfe0 },	/* MASK_REGS */			\
-       { 0x0,        0x0, 0xff0 },	/* ALL_MASK_REGS */		\
-   { 0x900ff,      0xff0, 0xffffff0 },	/* INT_MASK_REGS */	\
-{ 0xffffffff, 0xffffffff, 0xfffffff }	/* ALL_REGS  */			\
+ {   0x9ffff,      0xff0,   0xffff000 }, /* FLOAT_INT_REGS */		\
+ { 0xff900ff, 0xfffffff0,   0xffff00f }, /* INT_SSE_REGS */		\
+ { 0xff9ffff, 0xfffffff0,   0xffff00f }, /* FLOAT_INT_SSE_REGS */	\
+       { 0x0,        0x0,   0xfe0 },	/* MASK_REGS */			\
+       { 0x0,        0x0,   0xff0 },	/* ALL_MASK_REGS */		\
+   { 0x900ff,      0xff0,   0xffffff0 }, /* INT_MASK_REGS */		\
+{ 0xffffffff, 0xffffffff,   0xfffffff }	 /* ALL_REGS  */		\
 }
 
 /* The same information, inverted:
@@ -2297,6 +2303,7 @@ enum processor_type
   PROCESSOR_PANTHERLAKE,
   PROCESSOR_INTEL,
   PROCESSOR_LUJIAZUI,
+  PROCESSOR_YONGFENG,
   PROCESSOR_GEODE,
   PROCESSOR_K6,
   PROCESSOR_ATHLON,
@@ -2434,6 +2441,14 @@ constexpr wide_int_bitmask PTA_ZNVER4 = PTA_ZNVER3 | PTA_AVX512F | PTA_AVX512DQ
   | PTA_AVX512IFMA | PTA_AVX512CD | PTA_AVX512BW | PTA_AVX512VL
   | PTA_AVX512BF16 | PTA_AVX512VBMI | PTA_AVX512VBMI2 | PTA_GFNI
   | PTA_AVX512VNNI | PTA_AVX512BITALG | PTA_AVX512VPOPCNTDQ;
+
+constexpr wide_int_bitmask PTA_LUJIAZUI = PTA_64BIT | PTA_MMX | PTA_SSE | PTA_SSE2
+  | PTA_SSE3 | PTA_CX16 | PTA_ABM | PTA_SSSE3 | PTA_SSE4_1 | PTA_SSE4_2 | PTA_AES
+  | PTA_PCLMUL | PTA_BMI | PTA_BMI2 | PTA_PRFCHW | PTA_FXSR | PTA_XSAVE | PTA_XSAVEOPT
+  | PTA_FSGSBASE | PTA_RDRND | PTA_MOVBE | PTA_ADX | PTA_RDSEED | PTA_POPCNT;
+
+constexpr wide_int_bitmask PTA_YONGFENG = PTA_LUJIAZUI | PTA_AVX | PTA_AVX2 | PTA_F16C
+  | PTA_FMA | PTA_SHA | PTA_LZCNT;
 
 #ifndef GENERATOR_FILE
 

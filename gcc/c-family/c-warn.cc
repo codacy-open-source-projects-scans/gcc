@@ -1350,9 +1350,9 @@ conversion_warning (location_t loc, tree type, tree expr, tree result)
 	  break;
 
 	if (arith_ops
-	    && global_dc->option_enabled (warnopt,
-					  global_dc->lang_mask,
-					  global_dc->option_state))
+	    && global_dc->m_option_enabled (warnopt,
+					    global_dc->m_lang_mask,
+					    global_dc->m_option_state))
 	  {
 	    for (int i = 0; i < arith_ops; ++i)
 	      {
@@ -2951,7 +2951,7 @@ warn_for_multistatement_macros (location_t body_loc, location_t next_loc,
   while (linemap_macro_expansion_map_p (guard_map))
     {
       const line_map_macro *mm = linemap_check_macro (guard_map);
-      guard_loc_exp = MACRO_MAP_EXPANSION_POINT_LOCATION (mm);
+      guard_loc_exp = mm->get_expansion_point_location ();
       guard_map = linemap_lookup (line_table, guard_loc_exp);
       if (guard_map == body_map)
 	return;

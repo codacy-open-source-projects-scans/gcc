@@ -61,6 +61,9 @@
 (define_mode_iterator V_32 [V4QI V2HI V1SI V2HF V2BF])
 
 (define_mode_iterator V2FI_32 [V2HF V2BF V2HI])
+(define_mode_iterator V4FI_64 [V4HF V4BF V4HI])
+(define_mode_iterator V4F_64 [V4HF V4BF])
+(define_mode_iterator V2F_32 [V2HF V2BF])
 ;; 4-byte integer vector modes
 (define_mode_iterator VI_32 [V4QI V2HI])
 
@@ -464,10 +467,10 @@
 		  (const_string "avx")
 	       ]
 	       (const_string "*")))
-   (set (attr "gpr32")
+   (set (attr "addr")
 	(if_then_else (eq_attr "alternative" "7")
-		      (const_string "0")
-		      (const_string "1")))
+		      (const_string "gpr16")
+		      (const_string "*")))
    (set (attr "type")
      (cond [(eq_attr "alternative" "6,7,8")
 	      (if_then_else (match_test "TARGET_AVX512FP16")
@@ -1202,7 +1205,7 @@
     }
 }
   [(set_attr "isa" "noavx,noavx,avx")
-   (set_attr "gpr32" "0,0,1")
+   (set_attr "addr" "*,*,gpr16")
    (set_attr "type" "sselog")
    (set_attr "prefix_data16" "1,1,*")
    (set_attr "prefix_extra" "1")
@@ -1972,10 +1975,12 @@
   [(V2HF "d") (V4HF "q") (V2HI "d") (V4HI "q")])
 
 (define_mode_attr mmxxmmmode
-  [(V2HF "V8HF") (V2HI "V8HI") (V2BF "V8BF")])
+  [(V2HF "V8HF") (V2HI "V8HI") (V2BF "V8BF")
+   (V4HF "V8HF") (V4HI "V8HI") (V4BF "V8BF")])
 
 (define_mode_attr mmxxmmmodelower
-  [(V2HF "v8hf") (V2HI "v8hi") (V2BF "v8bf")])
+  [(V2HF "v8hf") (V2HI "v8hi") (V2BF "v8bf")
+   (V4HF "v8hf") (V4HI "v8hi") (V4BF "v8bf")])
 
 (define_expand "movd_<mode>_to_sse"
   [(set (match_operand:<mmxxmmmode> 0 "register_operand")
@@ -2113,6 +2118,110 @@
   "&& reload_completed"
   [(set (match_dup 0)
 	(ior:<MODE> (match_dup 1) (match_dup 2)))])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Parallel half-precision floating point comparisons
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define_expand "vec_cmpv4hfqi"
+  [(set (match_operand:QI 0 "register_operand")
+	(match_operator:QI 1 ""
+	  [(match_operand:V4HF 2 "nonimmediate_operand")
+	   (match_operand:V4HF 3 "nonimmediate_operand")]))]
+  "TARGET_MMX_WITH_SSE && TARGET_AVX512FP16 && TARGET_AVX512VL
+   && ix86_partial_vec_fp_math"
+{
+  rtx ops[4];
+  ops[3] = gen_reg_rtx (V8HFmode);
+  ops[2] = gen_reg_rtx (V8HFmode);
+
+  emit_insn (gen_movq_v4hf_to_sse (ops[3], operands[3]));
+  emit_insn (gen_movq_v4hf_to_sse (ops[2], operands[2]));
+  emit_insn (gen_vec_cmpv8hfqi (operands[0], operands[1], ops[2], ops[3]));
+  DONE;
+})
+
+(define_expand "vcond_mask_<mode>v4hi"
+  [(set (match_operand:V4F_64 0 "register_operand")
+	(vec_merge:V4F_64
+	  (match_operand:V4F_64 1 "register_operand")
+	  (match_operand:V4F_64 2 "register_operand")
+	  (match_operand:V4HI 3  "register_operand")))]
+  "TARGET_MMX_WITH_SSE && TARGET_SSE4_1"
+{
+  ix86_expand_sse_movcc (operands[0], operands[3],
+			 operands[1], operands[2]);
+  DONE;
+})
+
+(define_expand "vcond_mask_<mode>qi"
+  [(set (match_operand:V4FI_64 0 "register_operand")
+	(vec_merge:V4FI_64
+	  (match_operand:V4FI_64 1 "register_operand")
+	  (match_operand:V4FI_64 2 "register_operand")
+	  (match_operand:QI 3 "register_operand")))]
+  "TARGET_MMX_WITH_SSE && TARGET_AVX512BW && TARGET_AVX512VL"
+{
+  rtx op0 = gen_reg_rtx (<mmxxmmmode>mode);
+  operands[1] = lowpart_subreg (<mmxxmmmode>mode, operands[1], <MODE>mode);
+  operands[2] = lowpart_subreg (<mmxxmmmode>mode, operands[2], <MODE>mode);
+  emit_insn (gen_vcond_mask_<mmxxmmmodelower>qi (op0, operands[1],
+						 operands[2], operands[3]));
+  emit_move_insn (operands[0],
+		  lowpart_subreg (<MODE>mode, op0, <mmxxmmmode>mode));
+  DONE;
+})
+
+(define_expand "vec_cmpv2hfqi"
+  [(set (match_operand:QI 0 "register_operand")
+	(match_operator:QI 1 ""
+	  [(match_operand:V2HF 2 "nonimmediate_operand")
+	   (match_operand:V2HF 3 "nonimmediate_operand")]))]
+  "TARGET_AVX512FP16 && TARGET_AVX512VL
+   && ix86_partial_vec_fp_math"
+{
+  rtx ops[4];
+  ops[3] = gen_reg_rtx (V8HFmode);
+  ops[2] = gen_reg_rtx (V8HFmode);
+
+  emit_insn (gen_movd_v2hf_to_sse (ops[3], operands[3]));
+  emit_insn (gen_movd_v2hf_to_sse (ops[2], operands[2]));
+  emit_insn (gen_vec_cmpv8hfqi (operands[0], operands[1], ops[2], ops[3]));
+  DONE;
+})
+
+(define_expand "vcond_mask_<mode>v2hi"
+  [(set (match_operand:V2F_32 0 "register_operand")
+	(vec_merge:V2F_32
+	  (match_operand:V2F_32 1 "register_operand")
+	  (match_operand:V2F_32 2 "register_operand")
+	  (match_operand:V2HI 3 "register_operand")))]
+  "TARGET_SSE4_1"
+{
+  ix86_expand_sse_movcc (operands[0], operands[3],
+			 operands[1], operands[2]);
+  DONE;
+})
+
+(define_expand "vcond_mask_<mode>qi"
+  [(set (match_operand:V2FI_32 0 "register_operand")
+	(vec_merge:V2FI_32
+	  (match_operand:V2FI_32 1 "register_operand")
+	  (match_operand:V2FI_32 2 "register_operand")
+	  (match_operand:QI 3 "register_operand")))]
+  "TARGET_AVX512BW && TARGET_AVX512VL"
+{
+  rtx op0 = gen_reg_rtx (<mmxxmmmode>mode);
+  operands[1] = lowpart_subreg (<mmxxmmmode>mode, operands[1], <MODE>mode);
+  operands[2] = lowpart_subreg (<mmxxmmmode>mode, operands[2], <MODE>mode);
+  emit_insn (gen_vcond_mask_<mmxxmmmodelower>qi (op0, operands[1],
+						 operands[2], operands[3]));
+  emit_move_insn (operands[0],
+		  lowpart_subreg (<MODE>mode, op0, <mmxxmmmode>mode));
+  DONE;
+})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -2509,6 +2618,92 @@
 
   emit_insn (gen_vec_fmsubaddv8hf4 (op0, op1, op2, op3));
 
+  emit_move_insn (operands[0], lowpart_subreg (V4HFmode, op0, V8HFmode));
+  DONE;
+})
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Parallel half-precision floating point complex type operations
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define_expand "cmlav4hf4"
+  [(match_operand:V4HF 0 "register_operand")
+   (match_operand:V4HF 1 "vector_operand")
+   (match_operand:V4HF 2 "vector_operand")
+   (match_operand:V4HF 3 "vector_operand")]
+  "TARGET_AVX512FP16 && TARGET_AVX512VL"
+{
+  rtx op3 = gen_reg_rtx (V8HFmode);
+  rtx op2 = gen_reg_rtx (V8HFmode);
+  rtx op1 = gen_reg_rtx (V8HFmode);
+  rtx op0 = gen_reg_rtx (V8HFmode);
+
+  emit_insn (gen_movq_v4hf_to_sse (op3, operands[3]));
+  emit_insn (gen_movq_v4hf_to_sse (op2, operands[2]));
+  emit_insn (gen_movq_v4hf_to_sse (op1, operands[1]));
+
+  emit_insn (gen_cmlav8hf4 (op0, op1, op2, op3));
+
+  emit_move_insn (operands[0], lowpart_subreg (V4HFmode, op0, V8HFmode));
+  DONE;
+})
+
+(define_expand "cmla_conjv4hf4"
+  [(match_operand:V4HF 0 "register_operand")
+   (match_operand:V4HF 1 "vector_operand")
+   (match_operand:V4HF 2 "vector_operand")
+   (match_operand:V4HF 3 "vector_operand")]
+  "TARGET_AVX512FP16 && TARGET_AVX512VL"
+{
+  rtx op3 = gen_reg_rtx (V8HFmode);
+  rtx op2 = gen_reg_rtx (V8HFmode);
+  rtx op1 = gen_reg_rtx (V8HFmode);
+  rtx op0 = gen_reg_rtx (V8HFmode);
+
+  emit_insn (gen_movq_v4hf_to_sse (op3, operands[3]));
+  emit_insn (gen_movq_v4hf_to_sse (op2, operands[2]));
+  emit_insn (gen_movq_v4hf_to_sse (op1, operands[1]));
+
+  emit_insn (gen_cmla_conjv8hf4 (op0, op1, op2, op3));
+
+  emit_move_insn (operands[0], lowpart_subreg (V4HFmode, op0, V8HFmode));
+  DONE;
+})
+
+(define_expand "cmulv4hf3"
+  [(match_operand:V4HF 0 "register_operand")
+   (match_operand:V4HF 1 "vector_operand")
+   (match_operand:V4HF 2 "vector_operand")]
+  "TARGET_AVX512FP16 && TARGET_AVX512VL"
+{
+  rtx op2 = gen_reg_rtx (V8HFmode);
+  rtx op1 = gen_reg_rtx (V8HFmode);
+  rtx op0 = gen_reg_rtx (V8HFmode);
+
+  emit_insn (gen_movq_v4hf_to_sse (op2, operands[2]));
+  emit_insn (gen_movq_v4hf_to_sse (op1, operands[1]));
+
+  emit_insn (gen_cmulv8hf3 (op0, op1, op2));
+  emit_move_insn (operands[0], lowpart_subreg (V4HFmode, op0, V8HFmode));
+  DONE;
+})
+
+(define_expand "cmul_conjv4hf3"
+  [(match_operand:V4HF 0 "register_operand")
+   (match_operand:V4HF 1 "vector_operand")
+   (match_operand:V4HF 2 "vector_operand")]
+  "TARGET_AVX512FP16 && TARGET_AVX512VL"
+{
+  rtx op2 = gen_reg_rtx (V8HFmode);
+  rtx op1 = gen_reg_rtx (V8HFmode);
+  rtx op0 = gen_reg_rtx (V8HFmode);
+
+  emit_insn (gen_movq_v4hf_to_sse (op2, operands[2]));
+  emit_insn (gen_movq_v4hf_to_sse (op1, operands[1]));
+
+  emit_insn (gen_cmul_conjv8hf3 (op0, op1, op2));
   emit_move_insn (operands[0], lowpart_subreg (V4HFmode, op0, V8HFmode));
   DONE;
 })
@@ -3785,6 +3980,62 @@
    (set_attr "btver2_decode" "vector")
    (set_attr "mode" "TI")])
 
+(define_insn_and_split "*mmx_pblendvb_v8qi_1"
+  [(set (match_operand:V8QI 0 "register_operand")
+       (unspec:V8QI
+	  [(match_operand:V8QI 1 "register_operand")
+	   (match_operand:V8QI 2 "register_operand")
+	   (eq:V8QI
+	     (eq:V8QI
+		(match_operand:V8QI 3 "register_operand")
+		(match_operand:V8QI 4 "nonmemory_operand"))
+	     (match_operand:V8QI 5 "const0_operand"))]
+	   UNSPEC_BLENDV))]
+  "TARGET_MMX_WITH_SSE && ix86_pre_reload_split ()"
+  "#"
+  "&& 1"
+  [(set (match_dup 6)
+	(eq:V8QI (match_dup 3) (match_dup 7)))
+   (set (match_dup 0)
+	(unspec:V8QI
+	  [(match_dup 2)
+	   (match_dup 1)
+	   (match_dup 6)]
+	  UNSPEC_BLENDV))]
+{
+  operands[6] = gen_reg_rtx (V8QImode);
+  operands[7] = force_reg (V8QImode, operands[4]);
+})
+
+(define_insn_and_split "*mmx_pblendvb_v8qi_2"
+  [(set (match_operand:V8QI 0 "register_operand")
+       (unspec:V8QI
+	  [(match_operand:V8QI 1 "register_operand")
+	   (match_operand:V8QI 2 "register_operand")
+	   (subreg:V8QI
+	     (eq:MMXMODE24
+	       (eq:MMXMODE24
+		 (match_operand:MMXMODE24 3 "register_operand")
+		 (match_operand:MMXMODE24 4 "nonmemory_operand"))
+	     (match_operand:MMXMODE24 5 "const0_operand")) 0)]
+	   UNSPEC_BLENDV))]
+  "TARGET_MMX_WITH_SSE && ix86_pre_reload_split ()"
+  "#"
+  "&& 1"
+  [(set (match_dup 6)
+	(eq:MMXMODE24 (match_dup 3) (match_dup 8)))
+   (set (match_dup 0)
+	(unspec:V8QI
+	  [(match_dup 2)
+	   (match_dup 1)
+	   (match_dup 7)]
+	  UNSPEC_BLENDV))]
+{
+  operands[6] = gen_reg_rtx (<MODE>mode);
+  operands[7] = lowpart_subreg (V8QImode, operands[6], <MODE>mode);
+  operands[8] = force_reg (<MODE>mode, operands[4]);
+})
+
 (define_insn "mmx_pblendvb_<mode>"
   [(set (match_operand:VI_16_32 0 "register_operand" "=Yr,*x,x")
 	(unspec:VI_16_32
@@ -3804,6 +4055,62 @@
    (set_attr "prefix" "orig,orig,vex")
    (set_attr "btver2_decode" "vector")
    (set_attr "mode" "TI")])
+
+(define_insn_and_split "*mmx_pblendvb_<mode>_1"
+  [(set (match_operand:VI_16_32 0 "register_operand")
+	(unspec:VI_16_32
+	  [(match_operand:VI_16_32 1 "register_operand")
+	   (match_operand:VI_16_32 2 "register_operand")
+	   (eq:VI_16_32
+	     (eq:VI_16_32
+		(match_operand:VI_16_32 3 "register_operand")
+		(match_operand:VI_16_32 4 "nonmemory_operand"))
+	     (match_operand:VI_16_32 5 "const0_operand"))]
+	   UNSPEC_BLENDV))]
+  "TARGET_SSE2 && ix86_pre_reload_split ()"
+  "#"
+  "&& 1"
+  [(set (match_dup 6)
+	(eq:VI_16_32 (match_dup 3) (match_dup 7)))
+   (set (match_dup 0)
+	(unspec:VI_16_32
+	  [(match_dup 2)
+	   (match_dup 1)
+	   (match_dup 6)]
+	  UNSPEC_BLENDV))]
+{
+  operands[6] = gen_reg_rtx (<MODE>mode);
+  operands[7] = force_reg (<MODE>mode, operands[4]);
+})
+
+(define_insn_and_split "*mmx_pblendvb_v4qi_2"
+  [(set (match_operand:V4QI 0 "register_operand")
+       (unspec:V4QI
+	  [(match_operand:V4QI 1 "register_operand")
+	   (match_operand:V4QI 2 "register_operand")
+	   (subreg:V4QI
+	     (eq:V2HI
+	       (eq:V2HI
+		 (match_operand:V2HI 3 "register_operand")
+		 (match_operand:V2HI 4 "nonmemory_operand"))
+	     (match_operand:V2HI 5 "const0_operand")) 0)]
+	   UNSPEC_BLENDV))]
+  "TARGET_SSE2 && ix86_pre_reload_split ()"
+  "#"
+  "&& 1"
+  [(set (match_dup 6)
+	(eq:V2HI (match_dup 3) (match_dup 8)))
+   (set (match_dup 0)
+	(unspec:V4QI
+	  [(match_dup 2)
+	   (match_dup 1)
+	   (match_dup 7)]
+	  UNSPEC_BLENDV))]
+{
+  operands[6] = gen_reg_rtx (V2HImode);
+  operands[7] = lowpart_subreg (V4QImode, operands[6], V2HImode);
+  operands[8] = force_reg (V2HImode, operands[4]);
+})
 
 ;; XOP parallel XMM conditional moves
 (define_insn "*xop_pcmov_<mode>"
@@ -4567,7 +4874,7 @@
     }
 }
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix_extra" "1")
    (set_attr "type" "sselog")
    (set_attr "length_immediate" "1")
@@ -4640,7 +4947,7 @@
 }
   [(set_attr "isa" "noavx,avx")
    (set_attr "type" "sselog")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "orig,vex")
@@ -4659,7 +4966,7 @@
    pextrw\t{%2, %1, %0|%0, %1, %2}
    vpextrw\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "*,sse2,sse4_noavx,avx")
-   (set_attr "gpr32" "1,1,0,1")
+   (set_attr "addr" "*,*,gpr16,*")
    (set_attr "mmx_isa" "native,*,*,*")
    (set_attr "type" "mmxcvt,sselog1,sselog1,sselog1")
    (set_attr "length_immediate" "1")
@@ -4696,7 +5003,7 @@
    vpextrb\t{%2, %1, %k0|%k0, %1, %2}
    vpextrb\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,noavx,avx,avx")
-   (set_attr "gpr32" "1,0,1,1")
+   (set_attr "addr" "*,gpr16,*,*")
    (set_attr "type" "sselog1")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -4729,7 +5036,7 @@
    pshufb\t{%2, %0|%0, %2}
    vpshufb\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sselog1")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,maybe_evex")
@@ -4747,7 +5054,7 @@
    pshufb\t{%2, %0|%0, %2}
    vpshufb\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sselog1")
    (set_attr "prefix_extra" "1")
    (set_attr "prefix" "orig,maybe_evex")
@@ -5023,7 +5330,10 @@
    #
    #"
   [(set_attr "isa" "*,sse4_noavx,avx,sse2,noavx,*,*,*")
-   (set_attr "gpr32" "1,0,1,1,1,1,1,1")
+   (set (attr "addr")
+	(if_then_else (eq_attr "alternative" "1")
+		      (const_string "gpr16")
+		      (const_string "*")))
    (set_attr "mmx_isa" "native,*,*,*,*,native,*,*")
    (set_attr "type" "mmxcvt,ssemov,ssemov,sseshuf1,sseshuf1,mmxmov,ssemov,imov")
    (set (attr "length_immediate")
@@ -5227,7 +5537,7 @@
     }
 }
   [(set_attr "isa" "noavx,avx")
-   (set_attr "gpr32" "0,1")
+   (set_attr "addr" "gpr16,*")
    (set_attr "type" "sselog")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
@@ -5245,7 +5555,7 @@
    pextrw\t{%2, %1, %0|%0, %1, %2}
    vpextrw\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "*,sse4_noavx,avx")
-   (set_attr "gpr32" "1,0,1")
+   (set_attr "addr" "*,gpr16,*")
    (set_attr "type" "sselog1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "maybe_vex")
@@ -5276,7 +5586,7 @@
    vpextrb\t{%2, %1, %k0|%k0, %1, %2}
    vpextrb\t{%2, %1, %0|%0, %1, %2}"
   [(set_attr "isa" "noavx,noavx,avx,avx")
-   (set_attr "gpr32" "1,0,1,1")
+   (set_attr "addr" "*,gpr16,*,*")
    (set_attr "type" "sselog1")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
