@@ -1462,7 +1462,10 @@ vect_verify_full_masking_avx512 (loop_vec_info loop_vinfo)
       if (!mask_type)
 	continue;
 
-      if (TYPE_PRECISION (TREE_TYPE (mask_type)) != 1)
+      /* For now vect_get_loop_mask only supports integer mode masks
+	 when we need to split it.  */
+      if (GET_MODE_CLASS (TYPE_MODE (mask_type)) != MODE_INT
+	  || TYPE_PRECISION (TREE_TYPE (mask_type)) != 1)
 	{
 	  ok = false;
 	  break;
@@ -2943,17 +2946,19 @@ start_over:
 		   != IFN_LAST)
 	    {
 	      FOR_EACH_VEC_ELT (SLP_INSTANCE_LOADS (instance), i, load_node)
-		{
-		  stmt_vec_info stmt_vinfo = DR_GROUP_FIRST_ELEMENT
-		      (SLP_TREE_SCALAR_STMTS (load_node)[0]);
-		  /* Use SLP for strided accesses (or if we can't
-		     load-lanes).  */
-		  if (STMT_VINFO_STRIDED_P (stmt_vinfo)
-		      || vect_load_lanes_supported
-			    (STMT_VINFO_VECTYPE (stmt_vinfo),
-			     DR_GROUP_SIZE (stmt_vinfo), false) == IFN_LAST)
-		    break;
-		}
+		if (STMT_VINFO_GROUPED_ACCESS
+		      (SLP_TREE_REPRESENTATIVE (load_node)))
+		  {
+		    stmt_vec_info stmt_vinfo = DR_GROUP_FIRST_ELEMENT
+			(SLP_TREE_REPRESENTATIVE (load_node));
+		    /* Use SLP for strided accesses (or if we can't
+		       load-lanes).  */
+		    if (STMT_VINFO_STRIDED_P (stmt_vinfo)
+			|| vect_load_lanes_supported
+			     (STMT_VINFO_VECTYPE (stmt_vinfo),
+			      DR_GROUP_SIZE (stmt_vinfo), false) == IFN_LAST)
+		      break;
+		  }
 
 	      can_use_lanes
 		= can_use_lanes && i == SLP_INSTANCE_LOADS (instance).length ();
@@ -3261,16 +3266,19 @@ again:
 				       "unsupported grouped store\n");
       FOR_EACH_VEC_ELT (SLP_INSTANCE_LOADS (instance), j, node)
 	{
-	  vinfo = SLP_TREE_SCALAR_STMTS (node)[0];
-	  vinfo = DR_GROUP_FIRST_ELEMENT (vinfo);
-	  bool single_element_p = !DR_GROUP_NEXT_ELEMENT (vinfo);
-	  size = DR_GROUP_SIZE (vinfo);
-	  vectype = STMT_VINFO_VECTYPE (vinfo);
-	  if (vect_load_lanes_supported (vectype, size, false) == IFN_LAST
-	      && ! vect_grouped_load_supported (vectype, single_element_p,
-						size))
-	    return opt_result::failure_at (vinfo->stmt,
-					   "unsupported grouped load\n");
+	  vinfo = SLP_TREE_REPRESENTATIVE (node);
+	  if (STMT_VINFO_GROUPED_ACCESS (vinfo))
+	    {
+	      vinfo = DR_GROUP_FIRST_ELEMENT (vinfo);
+	      bool single_element_p = !DR_GROUP_NEXT_ELEMENT (vinfo);
+	      size = DR_GROUP_SIZE (vinfo);
+	      vectype = STMT_VINFO_VECTYPE (vinfo);
+	      if (vect_load_lanes_supported (vectype, size, false) == IFN_LAST
+		  && ! vect_grouped_load_supported (vectype, single_element_p,
+						    size))
+		return opt_result::failure_at (vinfo->stmt,
+					       "unsupported grouped load\n");
+	    }
 	}
     }
 
@@ -6903,17 +6911,34 @@ merge_with_identity (gimple_stmt_iterator *gsi, tree mask, tree vectype,
 /* Successively apply CODE to each element of VECTOR_RHS, in left-to-right
    order, starting with LHS.  Insert the extraction statements before GSI and
    associate the new scalar SSA names with variable SCALAR_DEST.
+   If MASK is nonzero mask the input and then operate on it unconditionally.
    Return the SSA name for the result.  */
 
 static tree
 vect_expand_fold_left (gimple_stmt_iterator *gsi, tree scalar_dest,
-		       tree_code code, tree lhs, tree vector_rhs)
+		       tree_code code, tree lhs, tree vector_rhs,
+		       tree mask)
 {
   tree vectype = TREE_TYPE (vector_rhs);
   tree scalar_type = TREE_TYPE (vectype);
   tree bitsize = TYPE_SIZE (scalar_type);
   unsigned HOST_WIDE_INT vec_size_in_bits = tree_to_uhwi (TYPE_SIZE (vectype));
   unsigned HOST_WIDE_INT element_bitsize = tree_to_uhwi (bitsize);
+
+  /* Re-create a VEC_COND_EXPR to mask the input here in order to be able
+     to perform an unconditional element-wise reduction of it.  */
+  if (mask)
+    {
+      tree masked_vector_rhs = make_temp_ssa_name (vectype, NULL,
+						   "masked_vector_rhs");
+      tree neutral_op = neutral_op_for_reduction (scalar_type, code, NULL_TREE,
+						  false);
+      tree vector_identity = build_vector_from_val (vectype, neutral_op);
+      gassign *select = gimple_build_assign (masked_vector_rhs, VEC_COND_EXPR,
+					     mask, vector_rhs, vector_identity);
+      gsi_insert_before (gsi, select, GSI_SAME_STMT);
+      vector_rhs = masked_vector_rhs;
+    }
 
   for (unsigned HOST_WIDE_INT bit_offset = 0;
        bit_offset < vec_size_in_bits;
@@ -7062,7 +7087,7 @@ vectorize_fold_left_reduction (loop_vec_info loop_vinfo,
 					 opmask, &vec_opmask);
     }
 
-  gimple *sdef = scalar_dest_def_info->stmt;
+  gimple *sdef = vect_orig_stmt (scalar_dest_def_info)->stmt;
   tree scalar_dest = gimple_get_lhs (sdef);
   tree scalar_type = TREE_TYPE (scalar_dest);
   tree reduc_var = gimple_phi_result (reduc_def_stmt);
@@ -7151,7 +7176,8 @@ vectorize_fold_left_reduction (loop_vec_info loop_vinfo,
       else
 	{
 	  reduc_var = vect_expand_fold_left (gsi, scalar_dest_var,
-					     tree_code (code), reduc_var, def0);
+					     tree_code (code), reduc_var, def0,
+					     mask);
 	  new_stmt = SSA_NAME_DEF_STMT (reduc_var);
 	  /* Remove the statement, so that we can use the same code paths
 	     as for statements that we've just created.  */
@@ -10280,10 +10306,36 @@ vectorizable_induction (loop_vec_info loop_vinfo,
 
 
   /* Create the vector that holds the step of the induction.  */
+  gimple_stmt_iterator *step_iv_si = NULL;
   if (nested_in_vect_loop)
     /* iv_loop is nested in the loop to be vectorized. Generate:
        vec_step = [S, S, S, S]  */
     new_name = step_expr;
+  else if (LOOP_VINFO_USING_SELECT_VL_P (loop_vinfo))
+    {
+      /* When we're using loop_len produced by SELEC_VL, the non-final
+	 iterations are not always processing VF elements.  So vectorize
+	 induction variable instead of
+
+	   _21 = vect_vec_iv_.6_22 + { VF, ... };
+
+	 We should generate:
+
+	   _35 = .SELECT_VL (ivtmp_33, VF);
+	   vect_cst__22 = [vec_duplicate_expr] _35;
+	   _21 = vect_vec_iv_.6_22 + vect_cst__22;  */
+      gcc_assert (!slp_node);
+      gimple_seq seq = NULL;
+      vec_loop_lens *lens = &LOOP_VINFO_LENS (loop_vinfo);
+      tree len = vect_get_loop_len (loop_vinfo, NULL, lens, 1, vectype, 0, 0);
+      expr = force_gimple_operand (fold_convert (TREE_TYPE (step_expr),
+						 unshare_expr (len)),
+				   &seq, true, NULL_TREE);
+      new_name = gimple_build (&seq, MULT_EXPR, TREE_TYPE (step_expr), expr,
+			       step_expr);
+      gsi_insert_seq_before (&si, seq, GSI_SAME_STMT);
+      step_iv_si = &si;
+    }
   else
     {
       /* iv_loop is the loop to be vectorized. Generate:
@@ -10310,7 +10362,7 @@ vectorizable_induction (loop_vec_info loop_vinfo,
 	      || TREE_CODE (new_name) == SSA_NAME);
   new_vec = build_vector_from_val (step_vectype, t);
   vec_step = vect_init_vector (loop_vinfo, stmt_info,
-			       new_vec, step_vectype, NULL);
+			       new_vec, step_vectype, step_iv_si);
 
 
   /* Create the following def-use cycle:
@@ -10356,6 +10408,8 @@ vectorizable_induction (loop_vec_info loop_vinfo,
       gimple_seq seq = NULL;
       /* FORNOW. This restriction should be relaxed.  */
       gcc_assert (!nested_in_vect_loop);
+      /* We expect LOOP_VINFO_USING_SELECT_VL_P to be false if ncopies > 1.  */
+      gcc_assert (!LOOP_VINFO_USING_SELECT_VL_P (loop_vinfo));
 
       /* Create the vector that holds the step of the induction.  */
       if (SCALAR_FLOAT_TYPE_P (TREE_TYPE (step_expr)))

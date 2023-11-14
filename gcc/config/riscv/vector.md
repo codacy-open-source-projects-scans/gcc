@@ -1370,11 +1370,29 @@
 ;; ---- Duplicate Operations
 ;; -----------------------------------------------------------------
 
+(define_expand "vec_duplicate<mode>"
+  [(set (match_operand:V_VLS 0 "register_operand")
+        (vec_duplicate:V_VLS
+          (match_operand:<VEL> 1 "direct_broadcast_operand")))]
+  "TARGET_VECTOR"
+  {
+    /* Early expand DImode broadcast in RV32 system to avoid RA reload
+       generate (set (reg) (vec_duplicate:DI)).  */
+    if (maybe_gt (GET_MODE_SIZE (<VEL>mode), GET_MODE_SIZE (Pmode)))
+      {
+        riscv_vector::emit_vlmax_insn (code_for_pred_broadcast (<MODE>mode),
+				       riscv_vector::UNARY_OP, operands);
+	DONE;
+      }
+    /* Otherwise, allow it fall into general vec_duplicate pattern
+       which allow us to have vv->vx combine optimization in later pass.  */
+  })
+
 ;; According to GCC internal:
 ;; This pattern only handles duplicates of non-constant inputs.
 ;; Constant vectors go through the movm pattern instead.
 ;; So "direct_broadcast_operand" can only be mem or reg, no CONSTANT.
-(define_insn_and_split "vec_duplicate<mode>"
+(define_insn_and_split "*vec_duplicate<mode>"
   [(set (match_operand:V_VLS 0 "register_operand")
         (vec_duplicate:V_VLS
           (match_operand:<VEL> 1 "direct_broadcast_operand")))]
@@ -1582,6 +1600,47 @@
      (set (reg:SI VTYPE_REGNUM)
 	  (unspec:SI [(match_dup 2) (match_dup 3) (match_dup 4)
 		      (match_dup 5)] UNSPEC_VSETVL))])]
+  ""
+  [(set_attr "type" "vsetvl")
+   (set_attr "mode" "SI")])
+
+;; This pattern use to combine bellow two insns and then further remove
+;; unnecessary sign_extend operations:
+;;   (set (reg:DI 134 [ _1 ])
+;;        (unspec:DI [
+;;                (const_int 19 [0x13])
+;;                (const_int 8 [0x8])
+;;                (const_int 5 [0x5])
+;;                (const_int 2 [0x2]) repeated x2
+;;            ] UNSPEC_VSETVL))
+;;   (set (reg/v:DI 135 [ <retval> ])
+;;           (sign_extend:DI (subreg:SI (reg:DI 134 [ _1 ]) 0)))
+;;
+;; The reason we can remove signe_extend is because currently the vl value
+;; returned by the vsetvl instruction ranges from 0 to 65536 (uint16_t), and
+;; bits 17 to 63 (including 31) are always 0, so there is no change after
+;; sign_extend. Note that for HI and QI modes we cannot do this.
+;; Of course, if the range of instructions returned by vsetvl later expands
+;; to 32bits, then this combine pattern needs to be removed. But that could be
+;; a long time from now.
+(define_insn_and_split "*vsetvldi_no_side_effects_si_extend"
+  [(set (match_operand:DI 0 "register_operand")
+        (sign_extend:DI
+          (subreg:SI
+	    (unspec:DI [(match_operand:P 1 "csr_operand")
+		        (match_operand 2 "const_int_operand")
+		        (match_operand 3 "const_int_operand")
+		        (match_operand 4 "const_int_operand")
+		        (match_operand 5 "const_int_operand")] UNSPEC_VSETVL) 0)))]
+  "TARGET_VECTOR && TARGET_64BIT"
+  "#"
+  "&& 1"
+  [(set (match_dup 0)
+        (unspec:DI [(match_dup 1)
+                    (match_dup 2)
+                    (match_dup 3)
+                    (match_dup 4)
+                    (match_dup 5)] UNSPEC_VSETVL))]
   ""
   [(set_attr "type" "vsetvl")
    (set_attr "mode" "SI")])
