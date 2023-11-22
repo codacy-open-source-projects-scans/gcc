@@ -3010,6 +3010,18 @@ gnat_to_gnu_entity (Entity_Id gnat_entity, tree gnu_expr, bool definition)
 		    TREE_TYPE (TYPE_FIELDS (gnu_type)) = gnu_inner;
 		}
 	    }
+
+	  /* Otherwise, if an alignment is specified, use it if valid and, if
+	     the alignment was requested with an explicit clause, state so.  */
+	  else if (Known_Alignment (gnat_entity))
+	    {
+	      SET_TYPE_ALIGN (gnu_type,
+			      validate_alignment (Alignment (gnat_entity),
+						  gnat_entity,
+						  TYPE_ALIGN (gnu_type)));
+	      if (Present (Alignment_Clause (gnat_entity)))
+		TYPE_USER_ALIGN (gnu_type) = 1;
+	    }
 	}
       break;
 
@@ -6329,6 +6341,12 @@ gnat_to_gnu_subprog_type (Entity_Id gnat_subprog, bool definition,
 
 	  if (debug_info_p)
 	    rest_of_record_type_compilation (gnu_cico_return_type);
+
+	  /* Declare it now since it will never be declared otherwise.  This
+	     is necessary to ensure that its subtrees are properly marked.  */
+	  create_type_decl (TYPE_NAME (gnu_cico_return_type),
+			    gnu_cico_return_type,
+			    true, debug_info_p, gnat_subprog);
 	}
 
       gnu_return_type = gnu_cico_return_type;

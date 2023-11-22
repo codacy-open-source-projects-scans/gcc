@@ -46,6 +46,10 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef LOONGARCH_DEF_H
 #define LOONGARCH_DEF_H
 
+#if !defined(IN_LIBGCC2) && !defined(IN_TARGET_LIBS) && !defined(IN_RTS)
+#include <stdint.h>
+#endif
+
 #include "loongarch-tune.h"
 
 #ifdef __cplusplus
@@ -54,8 +58,18 @@ extern "C" {
 
 /* enum isa_base */
 extern const char* loongarch_isa_base_strings[];
+
+/* LoongArch V1.00.  */
 #define ISA_BASE_LA64V100     0
-#define N_ISA_BASE_TYPES      1
+/* LoongArch V1.10.  */
+#define ISA_BASE_LA64V110     1
+#define N_ISA_BASE_TYPES      2
+
+#if !defined(IN_LIBGCC2) && !defined(IN_TARGET_LIBS) && !defined(IN_RTS)
+/* Unlike other arrays, this is defined in loongarch-cpu.cc.  The problem is
+   we cannot use the C++ header options.h in loongarch-def.c.  */
+extern int64_t loongarch_isa_base_features[];
+#endif
 
 /* enum isa_ext_* */
 extern const char* loongarch_isa_ext_strings[];
@@ -112,12 +126,19 @@ extern const char* loongarch_cmodel_strings[];
 #define M_OPT_ABSENT(opt_enum)  ((opt_enum) == M_OPT_UNSET)
 
 
+#if !defined(IN_LIBGCC2) && !defined(IN_TARGET_LIBS) && !defined(IN_RTS)
 /* Internal representation of the target.  */
 struct loongarch_isa
 {
   int base;	    /* ISA_BASE_ */
   int fpu;	    /* ISA_EXT_FPU_ */
   int simd;	    /* ISA_EXT_SIMD_ */
+
+  /* ISA evolution features implied by -march=, for -march=native probed
+     via CPUCFG.  The features implied by base may be not included here.
+
+     Using int64_t instead of HOST_WIDE_INT for C compatibility.  */
+  int64_t evolution;
 };
 
 struct loongarch_abi
@@ -135,18 +156,21 @@ struct loongarch_target
   int cmodel;	    /* CMODEL_ */
 };
 
+extern struct loongarch_isa loongarch_cpu_default_isa[];
+#endif
+
 /* CPU properties.  */
 /* index */
 #define CPU_NATIVE	  0
 #define CPU_ABI_DEFAULT   1
 #define CPU_LOONGARCH64	  2
 #define CPU_LA464	  3
-#define N_ARCH_TYPES	  4
-#define N_TUNE_TYPES	  4
+#define CPU_LA664	  4
+#define N_ARCH_TYPES	  5
+#define N_TUNE_TYPES	  5
 
 /* parallel tables.  */
 extern const char* loongarch_cpu_strings[];
-extern struct loongarch_isa loongarch_cpu_default_isa[];
 extern int loongarch_cpu_issue_rate[];
 extern int loongarch_cpu_multipass_dfa_lookahead[];
 

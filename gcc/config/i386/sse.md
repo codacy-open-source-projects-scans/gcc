@@ -3417,7 +3417,9 @@
 
 (define_mode_iterator REDUC_SSE_PLUS_MODE
  [(V2DF "TARGET_SSE") (V4SF "TARGET_SSE")
-  (V8HF "TARGET_AVX512FP16 && TARGET_AVX512VL")])
+  (V8HF "TARGET_AVX512FP16 && TARGET_AVX512VL")
+  (V8HI "TARGET_SSE2") (V4SI "TARGET_SSE2")
+  (V2DI "TARGET_SSE2")])
 
 (define_expand "reduc_plus_scal_<mode>"
  [(plus:REDUC_SSE_PLUS_MODE
@@ -3458,8 +3460,12 @@
   (V8DF "TARGET_AVX512F && TARGET_EVEX512")
   (V16SF "TARGET_AVX512F && TARGET_EVEX512")
   (V32HF "TARGET_AVX512FP16 && TARGET_AVX512VL && TARGET_EVEX512")
-  (V32QI "TARGET_AVX")
-  (V64QI "TARGET_AVX512F && TARGET_EVEX512")])
+  (V32QI "TARGET_AVX") (V16HI "TARGET_AVX")
+  (V8SI "TARGET_AVX")  (V4DI "TARGET_AVX")
+  (V64QI "TARGET_AVX512F && TARGET_EVEX512")
+  (V32HI "TARGET_AVX512F && TARGET_EVEX512")
+  (V16SI "TARGET_AVX512F && TARGET_EVEX512")
+  (V8DI "TARGET_AVX512F && TARGET_EVEX512")])
 
 (define_expand "reduc_plus_scal_<mode>"
  [(plus:REDUC_PLUS_MODE
@@ -3596,6 +3602,42 @@
   [(set_attr "type" "sse")
    (set_attr "prefix" "evex")
    (set_attr "mode" "<MODE>")])
+
+(define_expand "reduc_<code>_scal_<mode>"
+ [(any_logic:VI_128
+    (match_operand:<ssescalarmode> 0 "register_operand")
+    (match_operand:VI_128 1 "register_operand"))]
+ "TARGET_SSE2"
+{
+  rtx tmp = gen_reg_rtx (<MODE>mode);
+  ix86_expand_reduc (gen_<code><mode>3, tmp, operands[1]);
+  emit_insn (gen_vec_extract<mode><ssescalarmodelower> (operands[0],
+						       tmp, const0_rtx));
+  DONE;
+})
+
+(define_mode_iterator REDUC_ANY_LOGIC_MODE
+ [(V32QI "TARGET_AVX") (V16HI "TARGET_AVX")
+  (V8SI "TARGET_AVX")  (V4DI "TARGET_AVX")
+  (V64QI "TARGET_AVX512F && TARGET_EVEX512")
+  (V32HI "TARGET_AVX512F && TARGET_EVEX512")
+  (V16SI "TARGET_AVX512F && TARGET_EVEX512")
+  (V8DI "TARGET_AVX512F && TARGET_EVEX512")])
+
+(define_expand "reduc_<code>_scal_<mode>"
+ [(any_logic:REDUC_ANY_LOGIC_MODE
+   (match_operand:<ssescalarmode> 0 "register_operand")
+   (match_operand:REDUC_ANY_LOGIC_MODE 1 "register_operand"))]
+ ""
+{
+  rtx tmp = gen_reg_rtx (<ssehalfvecmode>mode);
+  emit_insn (gen_vec_extract_hi_<mode> (tmp, operands[1]));
+  rtx tmp2 = gen_reg_rtx (<ssehalfvecmode>mode);
+  rtx tmp3 = gen_lowpart (<ssehalfvecmode>mode, operands[1]);
+  emit_insn (gen_<code><ssehalfvecmodelower>3 (tmp2, tmp, tmp3));
+  emit_insn (gen_reduc_<code>_scal_<ssehalfvecmodelower> (operands[0], tmp2));
+  DONE;
+})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -12049,9 +12091,9 @@
    (set_attr "mode" "<sseinsnmode>")])
 
 (define_insn "vec_extract_hi_<mode>"
-  [(set (match_operand:<ssehalfvecmode> 0 "nonimmediate_operand" "=vm")
+  [(set (match_operand:<ssehalfvecmode> 0 "nonimmediate_operand" "=xjm,vm")
 	(vec_select:<ssehalfvecmode>
-	  (match_operand:VI8F_256 1 "register_operand" "v")
+	  (match_operand:VI8F_256 1 "register_operand" "x,v")
 	  (parallel [(const_int 2) (const_int 3)])))]
   "TARGET_AVX"
 {
@@ -12065,7 +12107,9 @@
   else
     return "vextract<i128>\t{$0x1, %1, %0|%0, %1, 0x1}";
 }
-  [(set_attr "type" "sselog1")
+  [(set_attr "isa" "noavx512vl,avx512vl")
+   (set_attr "addr" "gpr16,*")
+   (set_attr "type" "sselog1")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "vex")
@@ -12132,7 +12176,7 @@
    (set_attr "mode" "<sseinsnmode>")])
 
 (define_insn "vec_extract_hi_<mode>"
-  [(set (match_operand:<ssehalfvecmode> 0 "nonimmediate_operand" "=xm, vm")
+  [(set (match_operand:<ssehalfvecmode> 0 "nonimmediate_operand" "=xjm, vm")
 	(vec_select:<ssehalfvecmode>
 	  (match_operand:VI4F_256 1 "register_operand" "x, v")
 	  (parallel [(const_int 4) (const_int 5)
@@ -12141,7 +12185,8 @@
   "@
     vextract<i128>\t{$0x1, %1, %0|%0, %1, 0x1}
     vextract<shuffletype>32x4\t{$0x1, %1, %0|%0, %1, 0x1}"
-  [(set_attr "isa" "*, avx512vl")
+  [(set_attr "isa" "noavx512vl, avx512vl")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix" "vex, evex")
    (set_attr "type" "sselog1")
    (set_attr "length_immediate" "1")
@@ -12222,7 +12267,7 @@
   "operands[1] = gen_lowpart (<ssehalfvecmode>mode, operands[1]);")
 
 (define_insn "@vec_extract_hi_<mode>"
-  [(set (match_operand:<ssehalfvecmode> 0 "nonimmediate_operand" "=xm,vm")
+  [(set (match_operand:<ssehalfvecmode> 0 "nonimmediate_operand" "=xjm,vm")
 	(vec_select:<ssehalfvecmode>
 	  (match_operand:V16_256 1 "register_operand" "x,v")
 	  (parallel [(const_int 8) (const_int 9)
@@ -12236,7 +12281,8 @@
   [(set_attr "type" "sselog1")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
-   (set_attr "isa" "*,avx512vl")
+   (set_attr "isa" "noavx512vl,avx512vl")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix" "vex,evex")
    (set_attr "mode" "OI")])
 
@@ -20465,7 +20511,7 @@
 })
 
 (define_insn "*vec_extractv2ti"
-  [(set (match_operand:TI 0 "nonimmediate_operand" "=xm,vm")
+  [(set (match_operand:TI 0 "nonimmediate_operand" "=xjm,vm")
 	(vec_select:TI
 	  (match_operand:V2TI 1 "register_operand" "x,v")
 	  (parallel
@@ -20477,6 +20523,8 @@
   [(set_attr "type" "sselog")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
+   (set_attr "isa" "noavx512vl,avx512vl")
+   (set_attr "addr" "gpr16,*")
    (set_attr "prefix" "vex,evex")
    (set_attr "mode" "OI")])
 
@@ -27556,12 +27604,12 @@
    (set_attr "mode" "<sseinsnmode>")])
 
 (define_insn "vec_set_hi_<mode><mask_name>"
-  [(set (match_operand:VI8F_256 0 "register_operand" "=v")
+  [(set (match_operand:VI8F_256 0 "register_operand" "=x,v")
 	(vec_concat:VI8F_256
 	  (vec_select:<ssehalfvecmode>
-	    (match_operand:VI8F_256 1 "register_operand" "v")
+	    (match_operand:VI8F_256 1 "register_operand" "x,v")
 	    (parallel [(const_int 0) (const_int 1)]))
-	  (match_operand:<ssehalfvecmode> 2 "nonimmediate_operand" "vm")))]
+	  (match_operand:<ssehalfvecmode> 2 "nonimmediate_operand" "xjm,vm")))]
   "TARGET_AVX && <mask_avx512dq_condition>"
 {
   if (TARGET_AVX512DQ)
@@ -27571,7 +27619,9 @@
   else
     return "vinsert<i128>\t{$0x1, %2, %1, %0|%0, %1, %2, 0x1}";
 }
-  [(set_attr "type" "sselog")
+  [(set_attr "isa" "noavx512vl,avx512vl")
+   (set_attr "addr" "gpr16,*")
+   (set_attr "type" "sselog")
    (set_attr "prefix_extra" "1")
    (set_attr "length_immediate" "1")
    (set_attr "prefix" "vex")

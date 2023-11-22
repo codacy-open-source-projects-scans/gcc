@@ -6295,7 +6295,65 @@ void f (void) __attribute__ ((interrupt ("user")));
 Permissible values for this parameter are @code{user}, @code{supervisor},
 and @code{machine}.  If there is no parameter, then it defaults to
 @code{machine}.
+
 @end table
+
+The following target-specific function attributes are available for the
+RISC-V target.  For the most part, these options mirror the behavior of
+similar command-line options (@pxref{RISC-V Options}), but on a
+per-function basis.
+
+@table @code
+@cindex @code{arch=} function attribute, RISC-V
+@item arch=
+Specifies the architecture version and architectural extensions to use
+for this function.  The behavior and permissible arguments are the same as
+for the @option{-march=} command-line option, in addtion, it also support
+extension enablement list, a list of extension name and prefixed with @code{+},
+like @code{arch=+zba} means enable @code{zba} extension.
+Multiple extension can be enabled by separating them with a comma.  For example:
+@code{arch=+zba,+zbb}.
+
+@cindex @code{tune=} function attribute, RISC-V
+@item tune=
+Specifies the core for which to tune the performance of this function.
+The behavior and permissible arguments are the same as for the @option{-mtune=}
+command-line option.
+
+@cindex @code{cpu=} function attribute, RISC-V
+@item cpu=
+Specifies the core for which to tune the performance of this function and also
+whose architectural features to use.  The behavior and valid arguments are the
+same as for the @option{-mcpu=} command-line option.
+
+@end table
+
+The above target attributes can be specified as follows:
+
+@smallexample
+__attribute__((target("@var{attr-string}")))
+int
+f (int a)
+@{
+  return a + 5;
+@}
+@end smallexample
+
+where @code{@var{attr-string}} is one of the attribute strings specified above.
+
+Multiple target function attributes can be specified by separating them with
+a semicolon.  For example:
+@smallexample
+__attribute__((target("arch=+zba,+zbb;tune=rocket")))
+int
+foo (int a)
+@{
+  return a + 5;
+@}
+@end smallexample
+
+is valid and compiles function @code{foo} with @code{zba}
+and @code{zbb} extensions and tunes it for @code{rocket}.
 
 @node RL78 Function Attributes
 @subsection RL78 Function Attributes
@@ -7282,6 +7340,21 @@ Enable/disable the generation of the SM4 instructions.
 @item usermsr
 @itemx no-usermsr
 Enable/disable the generation of the USER_MSR instructions.
+
+@cindex @code{target("avx10.1")} function attribute, x86
+@item avx10.1
+@itemx no-avx10.1
+Enable/disable the generation of the AVX10.1 instructions.
+
+@cindex @code{target("avx10.1-256")} function attribute, x86
+@item avx10.1-256
+@itemx no-avx10.1-256
+Enable/disable the generation of the AVX10.1 instructions.
+
+@cindex @code{target("avx10.1-512")} function attribute, x86
+@item avx10.1-512
+@itemx no-avx10.1-512
+Enable/disable the generation of the AVX10.1 512 bit instructions.
 
 @cindex @code{target("cld")} function attribute, x86
 @item cld
@@ -14673,11 +14746,11 @@ The @code{__builtin_classify_type} returns a small integer with a category
 of @var{arg} argument's type, like void type, integer type, enumeral type,
 boolean type, pointer type, reference type, offset type, real type, complex
 type, function type, method type, record type, union type, array type,
-string type, etc.  When the argument is an expression, for
-backwards compatibility reason the argument is promoted like arguments
-passed to @code{...} in varargs function, so some classes are never returned
-in certain languages.  Alternatively, the argument of the built-in
-function can be a typename, such as the @code{typeof} specifier.
+string type, bit-precise integer type, vector type, etc.  When the argument
+is an expression, for backwards compatibility reason the argument is promoted
+like arguments passed to @code{...} in varargs function, so some classes are
+never returned in certain languages.  Alternatively, the argument of the
+built-in function can be a typename, such as the @code{typeof} specifier.
 
 @smallexample
 int a[2];
@@ -14958,6 +15031,48 @@ Similar to @code{__builtin_popcount}, except the argument type is
 @defbuiltin{int __builtin_parityll (unsigned long long)}
 Similar to @code{__builtin_parity}, except the argument type is
 @code{unsigned long long}.
+@enddefbuiltin
+
+@defbuiltin{int __builtin_ffsg (...)}
+Similar to @code{__builtin_ffs}, except the argument is type-generic
+signed integer (standard, extended or bit-precise).  No integral argument
+promotions are performed on the argument.
+@enddefbuiltin
+
+@defbuiltin{int __builtin_clzg (...)}
+Similar to @code{__builtin_clz}, except the argument is type-generic
+unsigned integer (standard, extended or bit-precise) and there is
+optional second argument with int type.  No integral argument promotions
+are performed on the first argument.  If two arguments are specified,
+and first argument is 0, the result is the second argument.  If only
+one argument is specified and it is 0, the result is undefined.
+@enddefbuiltin
+
+@defbuiltin{int __builtin_ctzg (...)}
+Similar to @code{__builtin_ctz}, except the argument is type-generic
+unsigned integer (standard, extended or bit-precise) and there is
+optional second argument with int type.  No integral argument promotions
+are performed on the first argument.  If two arguments are specified,
+and first argument is 0, the result is the second argument.  If only
+one argument is specified and it is 0, the result is undefined.
+@enddefbuiltin
+
+@defbuiltin{int __builtin_clrsbg (...)}
+Similar to @code{__builtin_clrsb}, except the argument is type-generic
+signed integer (standard, extended or bit-precise).  No integral argument
+promotions are performed on the argument.
+@enddefbuiltin
+
+@defbuiltin{int __builtin_popcountg (...)}
+Similar to @code{__builtin_popcount}, except the argument is type-generic
+unsigned integer (standard, extended or bit-precise).  No integral argument
+promotions are performed on the argument.
+@enddefbuiltin
+
+@defbuiltin{int __builtin_parityg (...)}
+Similar to @code{__builtin_parity}, except the argument is type-generic
+unsigned integer (standard, extended or bit-precise).  No integral argument
+promotions are performed on the argument.
 @enddefbuiltin
 
 @defbuiltin{double __builtin_powi (double, int)}
@@ -18429,7 +18544,6 @@ These built-in functions are available for the Nvidia PTX target:
 
 @defbuiltin{unsigned int __builtin_nvptx_brev (unsigned int @var{x})}
 Reverse the bit order of a 32-bit unsigned integer.
-Disable global interrupt.
 @enddefbuiltin
 
 @defbuiltin{unsigned long long __builtin_nvptx_brevll (unsigned long long @var{x})}

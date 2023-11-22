@@ -124,6 +124,7 @@ extern void riscv_split_doubleword_move (rtx, rtx);
 extern const char *riscv_output_move (rtx, rtx);
 extern const char *riscv_output_return ();
 extern void riscv_declare_function_name (FILE *, const char *, tree);
+extern void riscv_declare_function_size (FILE *, const char *, tree);
 extern void riscv_asm_output_alias (FILE *, const tree, const tree);
 extern void riscv_asm_output_external (FILE *, const tree, const char *);
 extern bool
@@ -131,8 +132,10 @@ riscv_zcmp_valid_stack_adj_bytes_p (HOST_WIDE_INT, int);
 
 #ifdef RTX_CODE
 extern void riscv_expand_int_scc (rtx, enum rtx_code, rtx, rtx, bool *invert_ptr = 0);
-extern void riscv_expand_float_scc (rtx, enum rtx_code, rtx, rtx);
+extern void riscv_expand_float_scc (rtx, enum rtx_code, rtx, rtx,
+				    bool *invert_ptr = nullptr);
 extern void riscv_expand_conditional_branch (rtx, enum rtx_code, rtx, rtx);
+extern rtx riscv_emit_unary (enum rtx_code code, rtx dest, rtx x);
 extern rtx riscv_emit_binary (enum rtx_code code, rtx dest, rtx x, rtx y);
 #endif
 extern bool riscv_expand_conditional_move (rtx, rtx, rtx, rtx);
@@ -625,6 +628,7 @@ extern bool riscv_expand_strcmp (rtx, rtx, rtx, rtx, rtx);
 extern bool riscv_expand_strlen (rtx, rtx, rtx, rtx);
 
 /* Routines implemented in thead.cc.  */
+extern bool extract_base_offset_in_addr (rtx, rtx *, rtx *);
 extern bool th_mempair_operands_p (rtx[4], bool, machine_mode);
 extern void th_mempair_order_operands (rtx[4], bool, machine_mode);
 extern void th_mempair_prepare_save_restore_operands (rtx[4], bool,
@@ -647,5 +651,25 @@ extern bool th_print_operand_address (FILE *, machine_mode, rtx);
 
 extern bool riscv_use_divmod_expander (void);
 void riscv_init_cumulative_args (CUMULATIVE_ARGS *, tree, rtx, tree, int);
+extern bool
+riscv_option_valid_attribute_p (tree, tree, tree, int);
+extern void
+riscv_override_options_internal (struct gcc_options *);
+
+struct riscv_tune_param;
+/* Information about one micro-arch we know about.  */
+struct riscv_tune_info {
+  /* This micro-arch canonical name.  */
+  const char *name;
+
+  /* Which automaton to use for tuning.  */
+  enum riscv_microarchitecture_type microarchitecture;
+
+  /* Tuning parameters for this micro-arch.  */
+  const struct riscv_tune_param *tune_param;
+};
+
+const struct riscv_tune_info *
+riscv_parse_tune (const char *, bool);
 
 #endif /* ! GCC_RISCV_PROTOS_H */

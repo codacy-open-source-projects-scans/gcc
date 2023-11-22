@@ -6614,6 +6614,7 @@ is_direct_enum_init (tree type, tree init)
       && CONSTRUCTOR_NELTS (init) == 1
       /* DR 2374: The single element needs to be implicitly
 	 convertible to the underlying type of the enum.  */
+      && !type_dependent_expression_p (CONSTRUCTOR_ELT (init, 0)->value)
       && can_convert_arg (ENUM_UNDERLYING_TYPE (type),
 			  TREE_TYPE (CONSTRUCTOR_ELT (init, 0)->value),
 			  CONSTRUCTOR_ELT (init, 0)->value,
@@ -9592,6 +9593,9 @@ get_atexit_node (void)
 static tree
 get_thread_atexit_node (void)
 {
+  if (thread_atexit_node)
+    return thread_atexit_node;
+
   /* The declaration for `__cxa_thread_atexit' is:
 
      int __cxa_thread_atexit (void (*)(void *), void *, void *) */
@@ -9600,10 +9604,18 @@ get_thread_atexit_node (void)
 					   ptr_type_node, ptr_type_node,
 					   NULL_TREE);
 
-  /* Now, build the function declaration.  */
+  /* Now, build the function declaration, as with __cxa_atexit.  */
+  unsigned flags = push_abi_namespace ();
   tree atexit_fndecl = build_library_fn_ptr ("__cxa_thread_atexit", fn_type,
 					     ECF_LEAF | ECF_NOTHROW);
-  return decay_conversion (atexit_fndecl, tf_warning_or_error);
+  DECL_CONTEXT (atexit_fndecl) = FROB_CONTEXT (current_namespace);
+  DECL_SOURCE_LOCATION (atexit_fndecl) = BUILTINS_LOCATION;
+  atexit_fndecl = pushdecl (atexit_fndecl, /*hiding=*/true);
+  pop_abi_namespace (flags);
+  mark_used (atexit_fndecl);
+  thread_atexit_node = decay_conversion (atexit_fndecl, tf_warning_or_error);
+
+  return thread_atexit_node;
 }
 
 /* Returns the __dso_handle VAR_DECL.  */
@@ -17380,8 +17392,8 @@ start_preparsed_function (tree decl1, tree attrs, int flags)
   gcc_assert (TREE_CHAIN (void_list_node) == NULL_TREE);
 
   tree fntype = TREE_TYPE (decl1);
-  if (TREE_CODE (fntype) == METHOD_TYPE)
-    ctype = TYPE_METHOD_BASETYPE (fntype);
+  if (DECL_CLASS_SCOPE_P (decl1))
+    ctype = DECL_CONTEXT (decl1);
   else
     {
       ctype = DECL_FRIEND_CONTEXT (decl1);
@@ -17412,15 +17424,13 @@ start_preparsed_function (tree decl1, tree attrs, int flags)
 
   /* Sometimes we don't notice that a function is a static member, and
      build a METHOD_TYPE for it.  Fix that up now.  */
-  gcc_assert (!(ctype != NULL_TREE && DECL_STATIC_FUNCTION_P (decl1)
+  gcc_assert (!(DECL_STATIC_FUNCTION_P (decl1)
 		&& TREE_CODE (TREE_TYPE (decl1)) == METHOD_TYPE));
 
   /* Set up current_class_type, and enter the scope of the class, if
      appropriate.  */
   if (ctype)
     push_nested_class (ctype);
-  else if (DECL_STATIC_FUNCTION_P (decl1))
-    push_nested_class (DECL_CONTEXT (decl1));
 
   /* Now that we have entered the scope of the class, we must restore
      the bindings for any template parameters surrounding DECL1, if it
@@ -17457,7 +17467,7 @@ start_preparsed_function (tree decl1, tree attrs, int flags)
       tree newdecl1 = push_template_decl (decl1, doing_friend);
       if (newdecl1 == error_mark_node)
 	{
-	  if (ctype || DECL_STATIC_FUNCTION_P (decl1))
+	  if (ctype)
 	    pop_nested_class ();
 	  return false;
 	}
@@ -17609,7 +17619,7 @@ start_preparsed_function (tree decl1, tree attrs, int flags)
   /* Start the statement-tree, start the tree now.  */
   DECL_SAVED_TREE (decl1) = push_stmt_list ();
 
-  if (ctype && !doing_friend && !DECL_STATIC_FUNCTION_P (decl1))
+  if (DECL_NONSTATIC_MEMBER_FUNCTION_P (decl1))
     {
       /* We know that this was set up by `grokclassfn'.  We do not
 	 wait until `store_parm_decls', since evil parse errors may
@@ -18308,9 +18318,7 @@ finish_function (bool inline_p)
 	      && current_class_ref
 	      && same_type_ignoring_top_level_qualifiers_p
 		  (TREE_TYPE (valtype), TREE_TYPE (current_class_ref))
-	      && global_dc->m_option_enabled (OPT_Wreturn_type,
-					      global_dc->m_lang_mask,
-					      global_dc->m_option_state))
+	      && global_dc->option_enabled_p (OPT_Wreturn_type))
 	    add_return_star_this_fixit (&richloc, fndecl);
 	}
       if (cxx_dialect >= cxx14

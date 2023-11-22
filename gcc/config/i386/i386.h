@@ -54,6 +54,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define TARGET_APX_EGPR (ix86_apx_features & apx_egpr)
 #define TARGET_APX_PUSH2POP2 (ix86_apx_features & apx_push2pop2)
 #define TARGET_APX_NDD (ix86_apx_features & apx_ndd)
+#define TARGET_APX_PPX (ix86_apx_features & apx_ppx)
 
 #include "config/vxworks-dummy.h"
 
@@ -2380,7 +2381,7 @@ constexpr wide_int_bitmask PTA_CASCADELAKE = PTA_SKYLAKE_AVX512
 constexpr wide_int_bitmask PTA_COOPERLAKE = PTA_CASCADELAKE | PTA_AVX512BF16;
 constexpr wide_int_bitmask PTA_CANNONLAKE = PTA_SKYLAKE | PTA_AVX512F
   | PTA_AVX512CD | PTA_AVX512VL | PTA_AVX512BW | PTA_AVX512DQ | PTA_PKU
-  | PTA_AVX512VBMI | PTA_AVX512IFMA | PTA_SHA;
+  | PTA_AVX512VBMI | PTA_AVX512IFMA | PTA_SHA | PTA_EVEX512;
 constexpr wide_int_bitmask PTA_ICELAKE_CLIENT = PTA_CANNONLAKE | PTA_AVX512VNNI
   | PTA_GFNI | PTA_VAES | PTA_AVX512VBMI2 | PTA_VPCLMULQDQ | PTA_AVX512BITALG
   | PTA_RDPID | PTA_AVX512VPOPCNTDQ;
