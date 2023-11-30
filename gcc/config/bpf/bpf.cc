@@ -70,6 +70,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimplify-me.h"
 
 #include "core-builtins.h"
+#include "opts.h"
 
 /* Per-function machine data.  */
 struct GTY(()) machine_function
@@ -250,9 +251,10 @@ bpf_option_override (void)
   /* Disable -fstack-protector as it is not supported in BPF.  */
   if (flag_stack_protect)
     {
-      inform (input_location,
-              "%<-fstack-protector%> does not work "
-	      "on this architecture");
+      if (!flag_stack_protector_set_by_fhardened_p)
+	inform (input_location,
+		"%<-fstack-protector%> does not work "
+		"on this architecture");
       flag_stack_protect = 0;
     }
 
@@ -1114,6 +1116,22 @@ bpf_small_register_classes_for_mode_p (machine_mode mode)
 #undef TARGET_SMALL_REGISTER_CLASSES_FOR_MODE_P
 #define TARGET_SMALL_REGISTER_CLASSES_FOR_MODE_P \
   bpf_small_register_classes_for_mode_p
+
+static bool
+bpf_use_by_pieces_infrastructure_p (unsigned HOST_WIDE_INT size,
+				    unsigned int align ATTRIBUTE_UNUSED,
+				    enum by_pieces_operation op,
+				    bool speed_p)
+{
+  if (op != COMPARE_BY_PIECES)
+    return default_use_by_pieces_infrastructure_p (size, align, op, speed_p);
+
+  return size <= COMPARE_MAX_PIECES;
+}
+
+#undef TARGET_USE_BY_PIECES_INFRASTRUCTURE_P
+#define TARGET_USE_BY_PIECES_INFRASTRUCTURE_P \
+  bpf_use_by_pieces_infrastructure_p
 
 /* Finally, build the GCC target.  */
 

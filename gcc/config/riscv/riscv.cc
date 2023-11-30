@@ -2616,14 +2616,10 @@ riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
 	  nunits = nunits * 2;
 	}
       vmode = riscv_vector::get_vector_mode (smode, nunits).require ();
-      enum insn_code icode
-	= convert_optab_handler (vec_extract_optab, vmode, smode);
-      gcc_assert (icode != CODE_FOR_nothing);
       rtx v = gen_lowpart (vmode, SUBREG_REG (src));
 
       for (unsigned int i = 0; i < num; i++)
 	{
-	  class expand_operand ops[3];
 	  rtx result;
 	  if (num == 1)
 	    result = dest;
@@ -2631,13 +2627,7 @@ riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
 	    result = gen_lowpart (smode, dest);
 	  else
 	    result = gen_reg_rtx (smode);
-	  create_output_operand (&ops[0], result, smode);
-	  ops[0].target = 1;
-	  create_input_operand (&ops[1], v, vmode);
-	  create_integer_operand (&ops[2], index + i);
-	  expand_insn (icode, 3, ops);
-	  if (ops[0].value != result)
-	    emit_move_insn (result, ops[0].value);
+	  riscv_vector::emit_vec_extract (result, v, index + i);
 
 	  if (i == 1)
 	    {
@@ -8679,13 +8669,20 @@ riscv_option_override (void)
     error ("requested ABI requires %<-march%> to subsume the %qc extension",
 	   UNITS_PER_FP_ARG > 8 ? 'Q' : (UNITS_PER_FP_ARG > 4 ? 'D' : 'F'));
 
-  if (TARGET_RVE && riscv_abi != ABI_ILP32E)
-    error ("rv32e requires ilp32e ABI");
+  /* RVE requires specific ABI.  */
+  if (TARGET_RVE)
+    {
+      if (!TARGET_64BIT && riscv_abi != ABI_ILP32E)
+	error ("rv32e requires ilp32e ABI");
+      else if (TARGET_64BIT && riscv_abi != ABI_LP64E)
+	error ("rv64e requires lp64e ABI");
+    }
 
-  // Zfinx require abi ilp32,ilp32e or lp64.
-  if (TARGET_ZFINX && riscv_abi != ABI_ILP32
-      && riscv_abi != ABI_LP64 && riscv_abi != ABI_ILP32E)
-    error ("z*inx requires ABI ilp32, ilp32e or lp64");
+  /* Zfinx require abi ilp32, ilp32e, lp64 or lp64e.  */
+  if (TARGET_ZFINX
+      && riscv_abi != ABI_ILP32 && riscv_abi != ABI_LP64
+      && riscv_abi != ABI_ILP32E && riscv_abi != ABI_LP64E)
+    error ("z*inx requires ABI ilp32, ilp32e, lp64 or lp64e");
 
   /* We do not yet support ILP32 on RV64.  */
   if (BITS_PER_WORD != POINTER_SIZE)
@@ -8811,7 +8808,7 @@ static GTY (()) tree riscv_previous_fndecl;
 static void
 riscv_conditional_register_usage (void)
 {
-  /* We have only x0~x15 on RV32E.  */
+  /* We have only x0~x15 on RV32E/RV64E.  */
   if (TARGET_RVE)
     {
       for (int r = 16; r <= 31; r++)

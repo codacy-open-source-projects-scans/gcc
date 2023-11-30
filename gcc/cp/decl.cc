@@ -2231,13 +2231,19 @@ duplicate_decls (tree newdecl, tree olddecl, bool hiding, bool was_hidden)
 	}
 
       tree not_tmpl = STRIP_TEMPLATE (olddecl);
-      if (DECL_LANG_SPECIFIC (not_tmpl) && DECL_MODULE_ATTACH_P (not_tmpl))
+      if (DECL_LANG_SPECIFIC (not_tmpl)
+	  && DECL_MODULE_ATTACH_P (not_tmpl)
+	  /* Typedefs are not entities and so are OK to be redeclared
+	     as exported: see [module.interface]/p6.  */
+	  && TREE_CODE (olddecl) != TYPE_DECL)
 	{
 	  if (DECL_MODULE_EXPORT_P (STRIP_TEMPLATE (newdecl))
 	      && !DECL_MODULE_EXPORT_P (not_tmpl))
 	    {
-	      error ("conflicting exporting declaration %qD", newdecl);
-	      inform (olddecl_loc, "previous declaration %q#D here", olddecl);
+	      auto_diagnostic_group d;
+	      error ("conflicting exporting for declaration %qD", newdecl);
+	      inform (olddecl_loc,
+		      "previously declared here without exporting");
 	    }
 	}
       else if (DECL_MODULE_EXPORT_P (newdecl))
@@ -11004,7 +11010,8 @@ grokvardecl (tree type,
 			    && (DECL_THIS_EXTERN (decl)
 				|| ! constp
 				|| volatilep
-				|| inlinep));
+				|| inlinep
+				|| module_attach_p ()));
       TREE_STATIC (decl) = ! DECL_EXTERNAL (decl);
     }
   /* Not at top level, only `static' makes a static definition.  */
@@ -16261,9 +16268,22 @@ xref_tag (enum tag_types tag_code, tree name,
 	  tree decl = TYPE_NAME (t);
 	  if (!module_may_redeclare (decl))
 	    {
+	      auto_diagnostic_group d;
 	      error ("cannot declare %qD in a different module", decl);
-	      inform (DECL_SOURCE_LOCATION (decl), "declared here");
+	      inform (DECL_SOURCE_LOCATION (decl), "previously declared here");
 	      return error_mark_node;
+	    }
+
+	  tree not_tmpl = STRIP_TEMPLATE (decl);
+	  if (DECL_LANG_SPECIFIC (not_tmpl)
+	      && DECL_MODULE_ATTACH_P (not_tmpl)
+	      && !DECL_MODULE_EXPORT_P (not_tmpl)
+	      && module_exporting_p ())
+	    {
+	      auto_diagnostic_group d;
+	      error ("conflicting exporting for declaration %qD", decl);
+	      inform (DECL_SOURCE_LOCATION (decl),
+		      "previously declared here without exporting");
 	    }
 
 	  tree maybe_tmpl = decl;
@@ -17906,16 +17926,31 @@ store_parm_decls (tree current_function_parms)
 }
 
 
+/* Mark CDTOR's implicit THIS argument for returning, if required by
+   the ABI..  Return the decl for THIS, if it is to be returned, and
+   NULL otherwise.  */
+
+tree
+maybe_prepare_return_this (tree cdtor)
+{
+  if (targetm.cxx.cdtor_returns_this ())
+    if (tree val = DECL_ARGUMENTS (cdtor))
+      {
+	suppress_warning (val, OPT_Wuse_after_free);
+	return val;
+      }
+
+  return NULL_TREE;
+}
+
 /* Set the return value of the [cd]tor if the ABI wants that.  */
 
 void
-maybe_return_this (void)
+maybe_return_this ()
 {
-  if (targetm.cxx.cdtor_returns_this ())
+  if (tree val = maybe_prepare_return_this (current_function_decl))
     {
       /* Return the address of the object.  */
-      tree val = DECL_ARGUMENTS (current_function_decl);
-      suppress_warning (val, OPT_Wuse_after_free);
       val = fold_convert (TREE_TYPE (DECL_RESULT (current_function_decl)), val);
       val = build2 (MODIFY_EXPR, TREE_TYPE (val),
 		    DECL_RESULT (current_function_decl), val);

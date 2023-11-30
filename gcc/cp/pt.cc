@@ -13976,6 +13976,7 @@ tsubst_aggr_type (tree t,
       if (entering_scope
 	  && CLASS_TYPE_P (t)
 	  && dependent_type_p (t)
+	  && TYPE_TEMPLATE_INFO (t)
 	  && TYPE_CANONICAL (t) == TREE_TYPE (TYPE_TI_TEMPLATE (t)))
 	t = TYPE_CANONICAL (t);
 
@@ -18701,15 +18702,20 @@ tsubst_stmt (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 
     case STATIC_ASSERT:
       {
-	tree condition;
+	tree condition, message;
 
 	++c_inhibit_evaluation_warnings;
 	condition = tsubst_expr (STATIC_ASSERT_CONDITION (t), args,
 				 complain, in_decl);
+	message = tsubst_expr (STATIC_ASSERT_MESSAGE (t), args,
+			       complain, in_decl);
+	if (TREE_CODE (STATIC_ASSERT_MESSAGE (t)) != STRING_CST
+	    && TREE_CODE (message) == STRING_CST)
+	  message = build1_loc (STATIC_ASSERT_SOURCE_LOCATION (t),
+				PAREN_EXPR, TREE_TYPE (message), message);
 	--c_inhibit_evaluation_warnings;
 
-        finish_static_assert (condition,
-                              STATIC_ASSERT_MESSAGE (t),
+	finish_static_assert (condition, message,
                               STATIC_ASSERT_SOURCE_LOCATION (t),
 			      /*member_p=*/false, /*show_expr_p=*/true);
       }
@@ -19335,7 +19341,6 @@ tsubst_lambda_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl)
     = LAMBDA_EXPR_LOCATION (t);
   LAMBDA_EXPR_DEFAULT_CAPTURE_MODE (r)
     = LAMBDA_EXPR_DEFAULT_CAPTURE_MODE (t);
-  LAMBDA_EXPR_MUTABLE_P (r) = LAMBDA_EXPR_MUTABLE_P (t);
   if (tree ti = LAMBDA_EXPR_REGEN_INFO (t))
     LAMBDA_EXPR_REGEN_INFO (r)
       = build_template_info (t, add_to_template_args (TI_ARGS (ti),
@@ -20273,7 +20278,7 @@ tsubst_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 	   build_x_modify_expr sets it and it must not be reset
 	   here.  */
 	if (warning_suppressed_p (t, OPT_Wparentheses))
-	  suppress_warning (r, OPT_Wparentheses);
+	  suppress_warning (STRIP_REFERENCE_REF (r), OPT_Wparentheses);
 
 	RETURN (r);
       }
