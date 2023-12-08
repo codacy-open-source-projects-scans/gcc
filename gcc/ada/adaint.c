@@ -85,6 +85,8 @@
 
 #if defined (__APPLE__)
 #include <unistd.h>
+#include <signal.h>
+#include <sys/time.h>
 #include <TargetConditionals.h>
 #endif
 
@@ -241,6 +243,7 @@ UINT __gnat_current_ccs_encoding;
 #define DIR_SEPARATOR '\\'
 
 #else
+#include <signal.h>
 #include <utime.h>
 #endif
 

@@ -3467,7 +3467,7 @@ finish_class_member_access_expr (cp_expr object, tree name, bool template_p,
 			   name, scope);
 		  return error_mark_node;
 		}
-	      
+
 	      if (TREE_SIDE_EFFECTS (object))
 		val = build2 (COMPOUND_EXPR, TREE_TYPE (val), object, val);
 	      return val;
@@ -3484,9 +3484,24 @@ finish_class_member_access_expr (cp_expr object, tree name, bool template_p,
 	      return error_mark_node;
 	    }
 
+	  /* NAME may refer to a static data member, in which case there is
+	     one copy of the data member that is shared by all the objects of
+	     the class.  So NAME can be unambiguously referred to even if
+	     there are multiple indirect base classes containing NAME.  */
+	  const base_access ba = [scope, name] ()
+	    {
+	      if (identifier_p (name))
+		{
+		  tree m = lookup_member (scope, name, /*protect=*/0,
+					  /*want_type=*/false, tf_none);
+		  if (!m || shared_member_p (m))
+		    return ba_any;
+		}
+	      return ba_check;
+	    } ();
+
 	  /* Find the base of OBJECT_TYPE corresponding to SCOPE.  */
-	  access_path = lookup_base (object_type, scope, ba_check,
-				     NULL, complain);
+	  access_path = lookup_base (object_type, scope, ba, NULL, complain);
 	  if (access_path == error_mark_node)
 	    return error_mark_node;
 	  if (!access_path)
@@ -7254,11 +7269,9 @@ cp_build_addr_expr_1 (tree arg, bool strict_lvalue, tsubst_flags_t complain)
 			      complain);
     }
 
-  /* For addresses of immediate functions ensure we have EXPR_LOCATION
-     set for possible later diagnostics.  */
+  /* Ensure we have EXPR_LOCATION set for possible later diagnostics.  */
   if (TREE_CODE (val) == ADDR_EXPR
-      && TREE_CODE (TREE_OPERAND (val, 0)) == FUNCTION_DECL
-      && DECL_IMMEDIATE_FUNCTION_P (TREE_OPERAND (val, 0)))
+      && TREE_CODE (TREE_OPERAND (val, 0)) == FUNCTION_DECL)
     SET_EXPR_LOCATION (val, input_location);
 
   return val;
