@@ -1179,7 +1179,13 @@ cp_fold_immediate_r (tree *stmt_p, int *walk_subtrees, void *data_)
 
   /* No need to look into types or unevaluated operands.
      NB: This affects cp_fold_r as well.  */
-  if (TYPE_P (stmt) || unevaluated_p (code) || in_immediate_context ())
+  if (TYPE_P (stmt)
+      || unevaluated_p (code)
+      /* We do not use in_immediate_context here because it checks
+	 more than is desirable, e.g., sk_template_parms.  */
+      || cp_unevaluated_operand
+      || (current_function_decl
+	  && DECL_IMMEDIATE_FUNCTION_P (current_function_decl)))
     {
       *walk_subtrees = 0;
       return NULL_TREE;
@@ -2906,7 +2912,14 @@ cp_fold (tree x, fold_flags_t flags)
     fold_cache = hash_map<tree, tree>::create_ggc (101);
 
   if (tree *cached = fold_cache->get (x))
-    return *cached;
+    {
+      /* unshare_expr doesn't recurse into SAVE_EXPRs.  If SAVE_EXPR's
+	 argument has been folded into a tree invariant, make sure it is
+	 unshared.  See PR112727.  */
+      if (TREE_CODE (x) == SAVE_EXPR && *cached != x)
+	return unshare_expr (*cached);
+      return *cached;
+    }
 
   uid_sensitive_constexpr_evaluation_checker c;
 

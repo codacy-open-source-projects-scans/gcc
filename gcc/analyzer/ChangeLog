@@ -1,3 +1,53 @@
+2023-12-14  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/112655
+	* infinite-loop.cc (infinite_loop::infinite_loop): Pass eedges
+	via rvalue reference rather than by value.
+	(starts_infinite_loop_p): Move eedges when constructing an
+	infinite_loop instance.
+	* sm-file.cc (fileptr_state_machine::fileptr_state_machine): Use
+	initializer list for states.
+	* sm-sensitive.cc
+	(sensitive_state_machine::sensitive_state_machine): Likewise.
+	* sm-signal.cc (signal_state_machine::signal_state_machine):
+	Likewise.
+	* sm-taint.cc (taint_state_machine::taint_state_machine):
+	Likewise.
+	* varargs.cc (va_list_state_machine::va_list_state_machine): Likewise.
+
+2023-12-11  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/112955
+	* engine.cc (feasibility_state::feasibility_state): Initialize
+	m_snodes_visited.
+
+2023-12-11  Andrew Pinski  <apinski@marvell.com>
+
+	* region-model-manager.cc (maybe_undo_optimize_bit_field_compare): Remove
+	the check for type being unsigned_char_type_node.
+
+2023-12-08  David Malcolm  <dmalcolm@redhat.com>
+
+	* sm-taint.cc (taint_state_machine::alt_get_inherited_state): Fix
+	handling of TRUNC_MOD_EXPR.
+
+2023-12-08  David Malcolm  <dmalcolm@redhat.com>
+
+	* region-model.cc (contains_uninit_p): Only check for
+	svalues that the infoleak warning can handle.
+
+2023-12-08  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/112889
+	* store.h (concrete_binding::concrete_binding): Strengthen
+	assertion to require size to be be positive, rather than just
+	non-zero.
+	(concrete_binding::mark_deleted): Use size rather than start bit
+	offset.
+	(concrete_binding::mark_empty): Likewise.
+	(concrete_binding::is_deleted): Likewise.
+	(concrete_binding::is_empty): Likewise.
+
 2023-12-07  Alexandre Oliva  <oliva@adacore.com>
 
 	* region-model.cc (has_nondefault_case_for_value_p): Take

@@ -285,6 +285,8 @@ Mask(VECTOR_ELEN_FP_64) Var(riscv_vector_elen_flags)
 
 Mask(VECTOR_ELEN_FP_16) Var(riscv_vector_elen_flags)
 
+Mask(VECTOR_ELEN_BF_16) Var(riscv_vector_elen_flags)
+
 TargetVariable
 int riscv_zvl_flags
 
@@ -366,6 +368,8 @@ Mask(ZFHMIN)  Var(riscv_zf_subext)
 
 Mask(ZFH)     Var(riscv_zf_subext)
 
+Mask(ZVFBFMIN) Var(riscv_zf_subext)
+
 Mask(ZVFHMIN) Var(riscv_zf_subext)
 
 Mask(ZVFH)    Var(riscv_zf_subext)
@@ -415,6 +419,8 @@ int riscv_xcv_subext
 Mask(XCVMAC) Var(riscv_xcv_subext)
 
 Mask(XCVALU) Var(riscv_xcv_subext)
+
+Mask(XCVELW) Var(riscv_xcv_subext)
 
 TargetVariable
 int riscv_xthead_subext

@@ -7419,7 +7419,12 @@ vect_slp_check_for_roots (bb_vec_info bb_vinfo)
 		      invalid = true;
 		      break;
 		    }
-		  if (chain[i].dt != vect_internal_def)
+		  if (chain[i].dt != vect_internal_def
+		      /* Avoid stmts where the def is not the LHS, like
+			 ASMs.  */
+		      || (gimple_get_lhs (bb_vinfo->lookup_def
+						      (chain[i].op)->stmt)
+			  != chain[i].op))
 		    remain_cnt++;
 		}
 	      if (!invalid && chain.length () - remain_cnt > 1)
@@ -7431,8 +7436,11 @@ vect_slp_check_for_roots (bb_vec_info bb_vinfo)
 		    remain.create (remain_cnt);
 		  for (unsigned i = 0; i < chain.length (); ++i)
 		    {
-		      if (chain[i].dt == vect_internal_def)
-			stmts.quick_push (bb_vinfo->lookup_def (chain[i].op));
+		      stmt_vec_info stmt_info;
+		      if (chain[i].dt == vect_internal_def
+			  && ((stmt_info = bb_vinfo->lookup_def (chain[i].op)),
+			      gimple_get_lhs (stmt_info->stmt) == chain[i].op))
+			stmts.quick_push (stmt_info);
 		      else
 			remain.quick_push (chain[i].op);
 		    }
@@ -9054,13 +9062,6 @@ vect_schedule_slp_node (vec_info *vinfo,
   int i;
   slp_tree child;
 
-  /* For existing vectors there's nothing to do.  */
-  if (SLP_TREE_DEF_TYPE (node) == vect_external_def
-      && SLP_TREE_VEC_DEFS (node).exists ())
-    return;
-
-  gcc_assert (SLP_TREE_VEC_DEFS (node).is_empty ());
-
   /* Vectorize externals and constants.  */
   if (SLP_TREE_DEF_TYPE (node) == vect_constant_def
       || SLP_TREE_DEF_TYPE (node) == vect_external_def)
@@ -9071,9 +9072,17 @@ vect_schedule_slp_node (vec_info *vinfo,
       if (!SLP_TREE_VECTYPE (node))
 	return;
 
-      vect_create_constant_vectors (vinfo, node);
+      /* There are two reasons vector defs might already exist.  The first
+	 is that we are vectorizing an existing vector def.  The second is
+	 when performing BB vectorization shared constant/external nodes
+	 are not split apart during partitioning so during the code-gen
+	 DFS walk we can end up visiting them twice.  */
+      if (! SLP_TREE_VEC_DEFS (node).exists ())
+	vect_create_constant_vectors (vinfo, node);
       return;
     }
+
+  gcc_assert (SLP_TREE_VEC_DEFS (node).is_empty ());
 
   stmt_vec_info stmt_info = SLP_TREE_REPRESENTATIVE (node);
 

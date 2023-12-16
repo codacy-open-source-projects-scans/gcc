@@ -13058,7 +13058,8 @@ grokdeclarator (const cp_declarator *declarator,
       && !diagnose_misapplied_contracts (declspecs->std_attributes))
     {
       location_t attr_loc = declspecs->locations[ds_std_attribute];
-      if (warning_at (attr_loc, OPT_Wattributes, "attribute ignored"))
+      if (any_nonignored_attribute_p (declspecs->std_attributes)
+	  && warning_at (attr_loc, OPT_Wattributes, "attribute ignored"))
 	inform (attr_loc, "an attribute that appertains to a type-specifier "
 		"is ignored");
     }
@@ -14202,6 +14203,7 @@ grokdeclarator (const cp_declarator *declarator,
       tree auto_node = type_uses_auto (type);
       if (auto_node && !(cxx_dialect >= cxx17 && template_parm_flag))
 	{
+	  bool err_p = true;
 	  if (cxx_dialect >= cxx14)
 	    {
 	      if (decl_context == PARM && AUTO_IS_DECLTYPE (auto_node))
@@ -14220,13 +14222,21 @@ grokdeclarator (const cp_declarator *declarator,
 			    "abbreviated function template");
 		  inform (DECL_SOURCE_LOCATION (c), "%qD declared here", c);
 		}
-	      else
+	      else if (decl_context == CATCHPARM || template_parm_flag)
 		error_at (typespec_loc,
 			  "%<auto%> parameter not permitted in this context");
+	      else
+		/* Do not issue an error while tentatively parsing a function
+		   parameter: for T t(auto(a), 42);, when we just saw the 1st
+		   parameter, we don't know yet that this construct won't be
+		   a function declaration.  Defer the checking to
+		   cp_parser_parameter_declaration_clause.  */
+		err_p = false;
 	    }
 	  else
 	    error_at (typespec_loc, "parameter declared %<auto%>");
-	  type = error_mark_node;
+	  if (err_p)
+	    type = error_mark_node;
 	}
 
       /* A parameter declared as an array of T is really a pointer to T.
@@ -17400,7 +17410,7 @@ implicit_default_ctor_p (tree fn)
    storage is dead when we enter the constructor or leave the destructor.  */
 
 static tree
-build_clobber_this ()
+build_clobber_this (clobber_kind kind)
 {
   /* Clobbering an empty base is pointless, and harmful if its one byte
      TYPE_SIZE overlays real data.  */
@@ -17416,7 +17426,7 @@ build_clobber_this ()
   if (!vbases)
     ctype = CLASSTYPE_AS_BASE (ctype);
 
-  tree clobber = build_clobber (ctype);
+  tree clobber = build_clobber (ctype, kind);
 
   tree thisref = current_class_ref;
   if (ctype != current_class_type)
@@ -17835,7 +17845,7 @@ start_preparsed_function (tree decl1, tree attrs, int flags)
 	 because part of the initialization might happen before we enter the
 	 constructor, via AGGR_INIT_ZERO_FIRST (c++/68006).  */
       && !implicit_default_ctor_p (decl1))
-    finish_expr_stmt (build_clobber_this ());
+    finish_expr_stmt (build_clobber_this (CLOBBER_OBJECT_BEGIN));
 
   if (!processing_template_decl
       && DECL_CONSTRUCTOR_P (decl1)
@@ -18073,7 +18083,8 @@ begin_destructor_body (void)
 	    finish_decl_cleanup (NULL_TREE, stmt);
 	  }
 	else
-	  finish_decl_cleanup (NULL_TREE, build_clobber_this ());
+	  finish_decl_cleanup (NULL_TREE,
+			       build_clobber_this (CLOBBER_OBJECT_END));
       }
 
       /* And insert cleanups for our bases and members so that they

@@ -803,7 +803,7 @@ Objective-C and Objective-C++ Dialects}.
 -moverride=@var{string}  -mverbose-cost-dump
 -mstack-protector-guard=@var{guard} -mstack-protector-guard-reg=@var{sysreg}
 -mstack-protector-guard-offset=@var{offset} -mtrack-speculation
--moutline-atomics }
+-moutline-atomics -mearly-ldp-fusion -mlate-ldp-fusion}
 
 @emph{Adapteva Epiphany Options}
 @gccoptlist{-mhalf-reg-file  -mprefer-short-insn-regs
@@ -1056,6 +1056,7 @@ Objective-C and Objective-C++ Dialects}.
 -mexplicit-relocs=@var{style} -mexplicit-relocs -mno-explicit-relocs
 -mdirect-extern-access -mno-direct-extern-access
 -mcmodel=@var{code-model} -mrelax -mpass-mrelax-to-as}
+-mrecip  -mrecip=@var{opt}
 
 @emph{M32R/D Options}
 @gccoptlist{-m32r2  -m32rx  -m32r
@@ -3326,6 +3327,11 @@ called.  If the handler returns, execution continues normally.
 @opindex fcoroutines
 @item -fcoroutines
 Enable support for the C++ coroutines extension (experimental).
+
+@opindex fdiagnostics-all-candidates
+@item -fdiagnostics-all-candidates
+Permit the C++ front end to note all candidates during overload resolution
+failure, including when a deleted function is selected.
 
 @opindex fno-elide-constructors
 @opindex felide-constructors
@@ -6245,7 +6251,7 @@ that have their own flag:
 -Wimplicit-int @r{(C and Objective-C only)}
 -Wincompatible-pointer-types @r{(C and Objective-C only)}
 -Wint-conversion @r{(C and Objective-C only)}
--Wnarrowing @r{(C++)}
+-Wnarrowing @r{(C++ and Objective-C++ only)}
 -Wreturn-mismatch @r{(C and Objective-C only)}
 }
 
@@ -16577,6 +16583,12 @@ Maximum number of basic blocks for VRP to use a basic cache vector.
 @item avoid-fma-max-bits
 Maximum number of bits for which we avoid creating FMAs.
 
+@item fully-pipelined-fma
+Whether the target fully pipelines FMA instructions.  If non-zero,
+reassociation considers the benefit of parallelizing FMA's multiplication
+part and addition part, assuming FMUL and FMA use the same units that can
+also do FADD.
+
 @item sms-loop-average-count-threshold
 A threshold on the average loop count considered by the swing modulo scheduler.
 
@@ -16805,6 +16817,20 @@ of alignment.
 With @option{--param=aarch64-stp-policy=never}, do not emit stp.
 With @option{--param=aarch64-stp-policy=aligned}, emit stp only if the
 source pointer is aligned to at least double the alignment of the type.
+
+@item aarch64-ldp-alias-check-limit
+Limit on the number of alias checks performed by the AArch64 load/store pair
+fusion pass when attempting to form an ldp/stp.  Higher values make the pass
+more aggressive at re-ordering loads over stores, at the expense of increased
+compile time.
+
+@item aarch64-ldp-writeback
+Param to control which writeback opportunities we try to handle in the AArch64
+load/store pair fusion pass.  A value of zero disables writeback handling.  One
+means we try to form pairs involving one or more existing individual writeback
+accesses where possible.  A value of two means we also try to opportunistically
+form writeback opportunities by folding in trailing destructive updates of the
+base register used by a pair.
 
 @item aarch64-loop-vect-issue-rate-niters
 The tuning for some AArch64 CPUs tries to take both latencies and issue
@@ -20587,7 +20613,7 @@ allocation before or after interprocedural optimization.
 @item -fmultiflags
 This option enables multilib-aware @code{TFLAGS} to be used to build
 target libraries with options different from those the compiler is
-configured to use by default, through the use of specs (@xref{Spec
+configured to use by default, through the use of specs (@pxref{Spec
 Files}) set up by compiler internals, by the target, or by builders at
 configure time.
 
@@ -21239,6 +21265,16 @@ disables the pass.
 @option{-mearly-ra=all} is the default for @option{-O2} and above, and for
 @option{-Os}.  @option{-mearly-ra=none} is the default otherwise.
 
+@opindex mearly-ldp-fusion
+@item -mearly-ldp-fusion
+Enable the copy of the AArch64 load/store pair fusion pass that runs before
+register allocation.  Enabled by default at @samp{-O} and above.
+
+@opindex mlate-ldp-fusion
+@item -mlate-ldp-fusion
+Enable the copy of the AArch64 load/store pair fusion pass that runs after
+register allocation.  Enabled by default at @samp{-O} and above.
+
 @opindex msve-vector-bits
 @item -msve-vector-bits=@var{bits}
 Specify the number of bits in an SVE vector register.  This option only has
@@ -21627,8 +21663,8 @@ run-time performance.  The default is 32KB when using OpenACC or OpenMP, and
 Compile binaries suitable for devices with the XNACK feature enabled, disabled,
 or either mode.  Some devices always require XNACK and some allow the user to
 configure XNACK.  The compiled code must match the device mode.
-@c The default is @samp{-mxnack=any}.
-At present this option is a placeholder for support that is not yet implemented.
+The default is @samp{-mxnack=any} on devices that support Unified Shared
+Memory, and @samp{-mxnack=no} otherwise.
 
 @end table
 
@@ -26690,8 +26726,8 @@ The text segment and data segment must be within 2GB addressing space.
 
 @item extreme
 This mode does not limit the size of the code segment and data segment.
-The @option{-mcmodel=extreme} option is incompatible with @option{-fplt},
-and it requires @option{-mexplicit-relocs=always}.
+The @option{-mcmodel=extreme} option is incompatible with @option{-fplt}
+and/or @option{-mexplicit-relocs=none}.
 @end table
 The default code model is @code{normal}.
 
@@ -26756,6 +26792,59 @@ detecting corresponding assembler support:
 @option{-mrelax} option, @option{-mno-pass-mrelax-to-as} otherwise.
 This option is mostly useful for debugging, or interoperation with
 assemblers different from the build-time one.
+
+@opindex mrecip
+@item -mrecip
+This option enables use of the reciprocal estimate and reciprocal square
+root estimate instructions with additional Newton-Raphson steps to increase
+precision instead of doing a divide or square root and divide for
+floating-point arguments.
+These instructions are generated only when @option{-funsafe-math-optimizations}
+is enabled together with @option{-ffinite-math-only} and
+@option{-fno-trapping-math}.
+This option is off by default. Before you can use this option, you must sure the
+target CPU supports frecipe and frsqrte instructions.
+Note that while the throughput of the sequence is higher than the throughput of
+the non-reciprocal instruction, the precision of the sequence can be decreased
+by up to 2 ulp (i.e. the inverse of 1.0 equals 0.99999994).
+
+@opindex mrecip=opt
+@item -mrecip=@var{opt}
+This option controls which reciprocal estimate instructions
+may be used.  @var{opt} is a comma-separated list of options, which may
+be preceded by a @samp{!} to invert the option:
+
+@table @samp
+@item all
+Enable all estimate instructions.
+
+@item default
+Enable the default instructions, equivalent to @option{-mrecip}.
+
+@item none
+Disable all estimate instructions, equivalent to @option{-mno-recip}.
+
+@item div
+Enable the approximation for scalar division.
+
+@item vec-div
+Enable the approximation for vectorized division.
+
+@item sqrt
+Enable the approximation for scalar square root.
+
+@item vec-sqrt
+Enable the approximation for vectorized square root.
+
+@item rsqrt
+Enable the approximation for scalar reciprocal square root.
+
+@item vec-rsqrt
+Enable the approximation for vectorized reciprocal square root.
+@end table
+
+So, for example, @option{-mrecip=all,!sqrt} enables
+all of the reciprocal approximations, except for scalar square root.
 
 @item loongarch-vect-unroll-limit
 The vectorizer will use available tuning information to determine whether it
@@ -33397,8 +33486,8 @@ SSSE3, SSE4.1, SSE4.2, POPCNT, AES, PREFETCHW, PCLMUL, RDRND, XSAVE, XSAVEC,
 XSAVES, XSAVEOPT, FSGSBASE, PTWRITE, RDPID, SGX, GFNI-SSE, CLWB, MOVDIRI,
 MOVDIR64B, CLDEMOTE, WAITPKG, ADCX, AVX, AVX2, BMI, BMI2, F16C, FMA, LZCNT,
 PCONFIG, PKU, VAES, VPCLMULQDQ, SERIALIZE, HRESET, KL, WIDEKL, AVX-VNNI,
-AVXIFMA, AVXVNNIINT8, AVXNECONVERT, CMPCCXADD, ENQCMD, UINTR and RAOINT
-instruction set support.
+AVXIFMA, AVXVNNIINT8, AVXNECONVERT, CMPCCXADD, ENQCMD and UINTR instruction set
+support.
 
 @item clearwaterforest
 Intel Clearwater Forest CPU with 64-bit extensions, MOVBE, MMX, SSE, SSE2,
