@@ -458,10 +458,13 @@ ldp_bb_info::track_access (insn_info *insn, bool load_p, rtx mem)
   if (!ldp_operand_mode_ok_p (mem_mode))
     return;
 
-  // Note ldp_operand_mode_ok_p already rejected VL modes.
-  const HOST_WIDE_INT mem_size = GET_MODE_SIZE (mem_mode).to_constant ();
-
   rtx reg_op = XEXP (PATTERN (insn->rtl ()), !load_p);
+
+  // Ignore the access if the register operand isn't suitable for ldp/stp.
+  if (load_p
+      ? !aarch64_ldp_reg_operand (reg_op, mem_mode)
+      : !aarch64_stp_reg_operand (reg_op, mem_mode))
+    return;
 
   // We want to segregate FP/SIMD accesses from GPR accesses.
   //
@@ -474,6 +477,8 @@ ldp_bb_info::track_access (insn_info *insn, bool load_p, rtx mem)
     : (GET_MODE_CLASS (mem_mode) != MODE_INT
        && (load_p || !aarch64_const_zero_rtx_p (reg_op)));
 
+  // Note ldp_operand_mode_ok_p already rejected VL modes.
+  const HOST_WIDE_INT mem_size = GET_MODE_SIZE (mem_mode).to_constant ();
   const lfs_fields lfs = { load_p, fpsimd_op_p, mem_size };
 
   if (track_via_mem_expr (insn, mem, lfs))
@@ -612,6 +617,13 @@ latest_hazard_before (insn_info *insn, rtx *ignore,
 		      insn_info *ignore_insn = nullptr)
 {
   insn_info *result = nullptr;
+
+  // If the insn can throw then it is at the end of a BB and we can't
+  // move it, model this by recording a hazard in the previous insn
+  // which will prevent moving the insn up.
+  if (cfun->can_throw_non_call_exceptions
+      && find_reg_note (insn->rtl (), REG_EH_REGION, NULL_RTX))
+    return insn->prev_nondebug_insn ();
 
   // Return true if we registered the hazard.
   auto hazard = [&](insn_info *h) -> bool

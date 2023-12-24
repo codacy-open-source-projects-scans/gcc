@@ -1,3 +1,188 @@
+2023-12-22  Jason Merrill  <jason@redhat.com>
+
+	PR c++/81438
+	* decl.cc (poplevel_named_label_1): Handle leaving catch.
+	(check_previous_goto_1): Likewise.
+	(check_goto_1): Likewise.
+
+2023-12-22  Jason Merrill  <jason@redhat.com>
+
+	PR c++/95298
+	* mangle.cc (write_expression): Handle v18 sizeof... bug.
+	* pt.cc (tsubst_pack_expansion): Keep TREE_VEC for sizeof...
+	(tsubst_expr): Don't strip TREE_VEC here.
+
+2023-12-21  Patrick Palka  <ppalka@redhat.com>
+
+	* cp-tree.h (maybe_warn_unparenthesized_assignment): Add
+	'nested_p' bool parameter.
+	* semantics.cc (boolish_class_type_p_cache): Define.
+	(boolish_class_type_p): Define.
+	(maybe_warn_unparenthesized_assignment): Add 'nested_p'
+	bool parameter.  Suppress the warning for nested assignments
+	to bool and bool-like class types.
+	(maybe_convert_cond): Pass nested_p=false to
+	maybe_warn_unparenthesized_assignment.
+	* typeck.cc (convert_for_assignment): Pass nested_p=true to
+	maybe_warn_unparenthesized_assignment.  Remove now redundant
+	check for 'rhs' having bool type.
+
+2023-12-21  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/84542
+	* decl.cc (merge_attribute_bits): Merge TREE_DEPRECATED
+	and TREE_UNAVAILABLE.
+
+2023-12-21  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/70413
+	PR c++/107906
+	* decl2.cc (min_vis_expr_r): Handle PTRMEM_CST and TEMPLATE_DECL
+	other than those for alias templates.
+
+2023-12-21  Jakub Jelinek  <jakub@redhat.com>
+
+	* cp-gimplify.cc (cp_genericize_r): If warn_alloc_size, call
+	warn_for_alloc_size for -Walloc-size diagnostics.
+	* semantics.cc (finish_call_expr): If warn_calloc_transposed_args,
+	call warn_for_calloc for -Wcalloc-transposed-args diagnostics.
+
+2023-12-21  Jason Merrill  <jason@redhat.com>
+
+	PR c++/37722
+	* decl.cc (identify_goto): Adjust for computed goto.
+	(struct named_label_use_entry): Add computed_goto field.
+	(poplevel_named_label_1): Add to computed_goto vec.
+	(check_previous_goto_1): Dump computed_goto vec.
+	(check_goto_1): Split out from check_goto.
+	(check_goto): Check all addressable labels for computed goto.
+	(struct named_label_entry): Add addressed field.
+	(mark_label_addressed): New.
+	* parser.cc (cp_parser_unary_expression): Call it.
+	* cp-tree.h (mark_label_addressed): Declare it.
+
+2023-12-20  Jason Merrill  <jason@redhat.com>
+
+	PR c++/113088
+	PR c++/33799
+	* except.cc (maybe_splice_retval_cleanup): Handle an empty block.
+
+2023-12-20  Jason Merrill  <jason@redhat.com>
+
+	PR c++/103185
+	* typeck.cc (cp_build_array_ref): Handle swapped operands.
+
+2023-12-19  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/113063
+	* method.cc (synthesize_method): Use maybe_push_to_top_level
+	and maybe_pop_from_top_level.
+
+2023-12-19  Patrick Palka  <ppalka@redhat.com>
+
+	* name-lookup.cc (struct local_state_t): Define.
+	(local_state_stack): Define.
+	(maybe_push_to_top_level): Use them.
+	(maybe_pop_from_top_level): Likewise.
+	* pt.cc (instantiate_decl): Remove dead code for saving/restoring
+	cp_unevaluated_operand and c_inhibit_evaluation_warnings.
+
+2023-12-19  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/102420
+	* constexpr.cc (cxx_bind_parameters_in_call): Check for calling
+	non-static member functions with a null pointer.
+
+2023-12-19  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* decl.cc (omp_declare_variant_finalize_one): Adjust for new
+	representations.
+	* parser.cc (omp_construct_selectors): Delete.
+	(omp_device_selectors): Delete.
+	(omp_implementation_selectors): Delete.
+	(omp_user_selectors): Delete.
+	(cp_parser_omp_context_selector): Adjust for new representations
+	and simplify dispatch logic.  Uniformly warn instead of sometimes
+	error when an unknown selector is found.  Adjust error messages
+	for extraneous/incorrect score.
+	(cp_parser_omp_context_selector_specification): Likewise.
+	* pt.cc (tsubst_attribute): Adjust for new representations.
+
+2023-12-19  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* parser.cc (cp_parser_omp_context_selector): Adjust for new
+	namelist property representation.
+	* pt.cc (tsubst_attribute): Likewise.
+
+2023-12-19  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* parser.cc (cp_parser_omp_context_selector): Use new constructors.
+	* pt.cc: Include omp-general.h.
+	(tsubst_attribute): Use new context selector accessors and
+	constructors.
+
+2023-12-19  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/90679
+	* cp-tree.h (comp_template_args): Remove partial_order parameter.
+	(template_args_equal): Likewise.
+	* pt.cc (comparing_for_partial_ordering): New global flag.
+	(iterative_hash_template_arg) <case tcc_type>: Hash the template
+	and arguments for specializations that use structural equality.
+	(template_args_equal): Remove partial order parameter and
+	use comparing_for_partial_ordering instead.
+	(comp_template_args): Likewise.
+	(comp_template_args_porder): Set comparing_for_partial_ordering
+	instead.  Make static.
+	(any_template_arguments_need_structural_equality_p): Return true
+	for an argument that's a dependent alias template specialization
+	or a class template specialization that itself needs structural
+	equality.
+	* tree.cc (cp_tree_equal) <case TREE_VEC>: Adjust call to
+	comp_template_args.
+
+2023-12-19  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/90679
+	* cp-tree.h (TEMPLATE_DECL_COMPLEX_ALIAS_P): Remove.
+	(most_general_template): Constify parameter.
+	* pt.cc (push_template_decl): Adjust after removing
+	TEMPLATE_DECL_COMPLEX_ALIAS_P.
+	(complex_alias_tmpl_info): New hash_map.
+	(uses_all_template_parms_data::seen): Change type to
+	tree* from bool*.
+	(complex_alias_template_r): Adjust accordingly.
+	(complex_alias_template_p): Add 'seen_out' out parameter.
+	Call most_general_template and check PRIMARY_TEMPLATE_P.
+	Use complex_alias_tmpl_info to cache the result and set
+	'*seen_out' accordigly.
+	(dependent_alias_template_spec_p): Add !processing_template_decl
+	early exit test.  Consider dependence of only template arguments
+	corresponding to seen template parameters as per
+
+2023-12-19  Thomas Schwinge  <thomas@codesourcery.com>
+
+	PR c++/90868
+	* parser.cc (cp_parser_oacc_declare): For "more than once", check
+	the DECL that we're actually setting the attribute on.
+
+2023-12-16  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/106363
+	* module.cc (module_state::write_cluster): Don't skip first
+	depset for bindings.
+
+2023-12-16  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/113031
+	* constexpr.cc (cxx_fold_indirect_ref_1): Check for CLASS_TYPE
+	before using CLASSTYPE_AS_BASE.
+
+2023-12-16  Andrew Carlotti  <andrew.carlotti@arm.com>
+
+	* decl2.cc (check_classfn): Update comment to include
+	target_version attributes.
+
 2023-12-15  Patrick Palka  <ppalka@redhat.com>
 
 	PR c++/70435

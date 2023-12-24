@@ -1,3 +1,84 @@
+2023-12-20  Rimvydas Jasinskas  <rimvydas.jas@gmail.com>
+
+	PR fortran/81615
+	* lang-specs.h (F951_CPP_OPTIONS): Do not hardcode ".f90" extension
+	(F951_CPP_EXTENSION): Use .fi/.fii for fixed/free form sources
+	* options.cc (form_from_filename): Handle the new extensions
+
+2023-12-19  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* gfortran.h: Include omp-selectors.h.
+	(enum gfc_omp_trait_property_kind): Delete, and replace all
+	references with equivalent omp_tp_type enumerators.
+	(struct gfc_omp_trait_property): Update for omp_tp_type.
+	(struct gfc_omp_selector): Replace string name with new enumerator.
+	(struct gfc_omp_set_selector): Likewise.
+	* openmp.cc (gfc_free_omp_trait_property_list): Update for
+	omp_tp_type.
+	(omp_construct_selectors): Delete.
+	(omp_device_selectors): Delete.
+	(omp_implementation_selectors): Delete.
+	(omp_user_selectors): Delete.
+	(gfc_ignore_trait_property_extension): New.
+	(gfc_ignore_trait_property_extension_list): New.
+	(gfc_match_omp_selector): Adjust for new representations and simplify
+	dispatch logic.  Uniformly warn instead of sometimes error when an
+	unknown selector is found.
+	(gfc_match_omp_context_selector): Adjust for new representations.
+	Adjust error messages for extraneous/incorrect score.
+	(gfc_match_omp_context_selector_specification): Likewise.
+	* trans-openmp.cc (gfc_trans_omp_declare_variant): Adjust for
+	new representations.
+
+2023-12-19  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* trans-openmp.cc (gfc_trans_omp_declare_varaint): Adjust for
+	new namelist property representation.
+
+2023-12-19  Sandra Loosemore  <sandra@codesourcery.com>
+
+	* trans-openmp.cc (gfc_trans_omp_declare_variant): Use new
+	constructors.
+
+2023-12-18  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/96580
+	* check.cc (array_size_check): New helper function.
+	(gfc_check_date_and_time): Use it for checking minimum size of
+	VALUES argument.  Update kind check to Fortran 2018.
+	* intrinsic.texi: Fix documentation of DATE_AND_TIME.
+
+2023-12-17  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/97592
+	* trans-expr.cc (gfc_conv_procedure_call): For a contiguous dummy
+	with the TARGET attribute, the effective argument may still be
+	contiguous even if the actual argument is not simply-contiguous.
+	Allow packing to be decided at runtime by _gfortran_internal_pack.
+
+2023-12-16  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/112459
+	* trans-array.cc (gfc_trans_array_constructor_value): Replace
+	gfc_notification_std with explicit logical expression that
+	selects F2003/2008 and excludes -std=default/gnu.
+	* trans-expr.cc (gfc_conv_expr): Ditto.
+
+2023-12-16  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/112834
+	PR fortran/111853
+	* match.cc (build_associate_name): Fix whitespace issues.
+	(select_type_set_tmp): If the selector is of unknown type, go
+	the SELECT TYPE selector to see if this is a function and, if
+	the result is available, use its typespec.
+	* parse.cc (parse_associate): Again, use the function result if
+	the type of the selector result is unknown.
+	* trans-stmt.cc (trans_associate_var): The expression has to be
+	of type class, for class_target to be true. Convert and fix
+	class functions. Pass the fixed expression.
+	* resolve.cc (gfc_expression_rank): Avoid null dereference.
+
 2023-12-15  Jerry DeLisle  <jvdelisle@gcc.gnu.org>
 
 	PR fortran/112783

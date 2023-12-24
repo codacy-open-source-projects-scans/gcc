@@ -95,6 +95,7 @@ along with GCC; see the file COPYING3.  If not see
 /* Bitmap tracking statements which were propagated to be removed at the end of
    the pass.  */
 
+namespace {
 static bitmap dead_stmts;
 
 /* State of vertex during SCC discovery.
@@ -139,7 +140,6 @@ public:
   auto_vec<vec<gimple *>> compute_sccs (vec<gimple *> &stmts);
 
 private:
-  unsigned curr_generation = 0;
   vertex* vertices; /* Indexed by SSA_NAME_VERSION.  */
   auto_vec<unsigned> worklist; /* DFS stack.  */
   auto_vec<unsigned> stack; /* Tarjan stack.  */
@@ -333,6 +333,8 @@ scc_discovery::compute_sccs (vec<gimple *> &stmts)
 
   return sccs;
 }
+
+} // anon namespace
 
 /* Could this statement potentially be a copy statement?
 

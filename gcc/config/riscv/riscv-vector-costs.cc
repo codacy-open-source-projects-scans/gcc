@@ -123,7 +123,7 @@ compute_local_program_points (
       /* Collect the stmts that is vectorized and mark their program point.  */
       for (i = 0; i < nbbs; i++)
 	{
-	  int point = 0;
+	  int point = 1;
 	  basic_block bb = bbs[i];
 	  vec<stmt_point> program_points = vNULL;
 	  if (dump_enabled_p ())
@@ -300,13 +300,13 @@ max_number_of_live_regs (const basic_block bb,
   unsigned int i;
   unsigned int live_point = 0;
   auto_vec<unsigned int> live_vars_vec;
-  live_vars_vec.safe_grow_cleared (max_point + 1, true);
+  live_vars_vec.safe_grow_cleared (max_point, true);
   for (hash_map<tree, pair>::iterator iter = live_ranges.begin ();
        iter != live_ranges.end (); ++iter)
     {
       tree var = (*iter).first;
       pair live_range = (*iter).second;
-      for (i = live_range.first; i <= live_range.second; i++)
+      for (i = live_range.first + 1; i <= live_range.second; i++)
 	{
 	  machine_mode mode = TYPE_MODE (TREE_TYPE (var));
 	  unsigned int nregs
@@ -355,10 +355,11 @@ max_number_of_live_regs (const basic_block bb,
     }
 
   if (dump_enabled_p ())
-    dump_printf_loc (MSG_NOTE, vect_location,
-		     "Maximum lmul = %d, %d number of live V_REG at program "
-		     "point %d for bb %d\n",
-		     lmul, max_nregs, live_point, bb->index);
+    dump_printf_loc (
+      MSG_NOTE, vect_location,
+      "Maximum lmul = %d, At most %d number of live V_REG at program "
+      "point %d for bb %d\n",
+      lmul, max_nregs, live_point, bb->index);
   return max_nregs;
 }
 
@@ -472,6 +473,41 @@ update_local_live_ranges (
 	      tree def = gimple_phi_arg_def (phi, j);
 	      auto *live_ranges = live_ranges_per_bb.get (bb);
 	      auto *live_range = live_ranges->get (def);
+	      if (poly_int_tree_p (def))
+		{
+		  /* Insert live range of INTEGER_CST or POLY_CST since we will
+		     need to allocate a vector register for it.
+
+		     E.g. # j_17 = PHI <j_11(9), 0(5)> will be transformed
+		     into # vect_vec_iv_.8_24 = PHI <_25(9), { 0, ... }(5)>
+
+		     The live range for such value is short which only lives
+		     from program point 0 to 1.  */
+		  if (live_range)
+		    {
+		      unsigned int start = (*live_range).first;
+		      (*live_range).first = 0;
+		      if (dump_enabled_p ())
+			dump_printf_loc (
+			  MSG_NOTE, vect_location,
+			  "Update %T start point from %d to 0:\n", def, start);
+		    }
+		  else
+		    {
+		      live_ranges->put (def, pair (0, 1));
+		      auto &program_points = (*program_points_per_bb.get (bb));
+		      if (program_points.is_empty ())
+			{
+			  stmt_point info = {1, phi};
+			  program_points.safe_push (info);
+			}
+		      if (dump_enabled_p ())
+			dump_printf_loc (MSG_NOTE, vect_location,
+					 "Add %T start point from 0 to 1:\n",
+					 def);
+		    }
+		  continue;
+		}
 	      if (live_range && flow_bb_inside_loop_p (loop, e->src))
 		{
 		  unsigned int start = (*live_range).first;
@@ -485,7 +521,7 @@ update_local_live_ranges (
 	      if (!program_points_per_bb.get (e->src))
 		continue;
 	      unsigned int max_point
-		= (*program_points_per_bb.get (e->src)).length () - 1;
+		= (*program_points_per_bb.get (e->src)).length ();
 	      live_range = live_ranges->get (def);
 	      if (!live_range)
 		continue;
@@ -571,7 +607,7 @@ preferred_new_lmul_p (loop_vec_info other_loop_vinfo)
 	{
 	  basic_block bb = (*iter).first;
 	  unsigned int max_point
-	    = (*program_points_per_bb.get (bb)).length () - 1;
+	    = (*program_points_per_bb.get (bb)).length () + 1;
 	  if ((*iter).second.is_empty ())
 	    continue;
 	  /* We prefer larger LMUL unless it causes register spillings.  */
@@ -580,7 +616,6 @@ preferred_new_lmul_p (loop_vec_info other_loop_vinfo)
 				       biggest_mode, lmul);
 	  if (nregs > max_nregs)
 	    max_nregs = nregs;
-	  live_ranges_per_bb.empty ();
 	}
       live_ranges_per_bb.empty ();
       return max_nregs > V_REG_NUM;
