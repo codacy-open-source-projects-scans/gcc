@@ -1,3 +1,271 @@
+2023-12-31  Uros Bizjak  <ubizjak@gmail.com>
+	    Roger Sayle  <roger@nextmovesoftware.com>
+
+	PR target/43644
+	* config/i386/i386.md (*add<dwi>3_doubleword_concat_zext): Tweak
+	order of instructions after split, to minimize number of moves.
+
+2023-12-29  Jan Hubicka  <jh@suse.cz>
+
+	* config/i386/x86-tune.def (X86_TUNE_AVOID_128FMA_CHAINS,
+	X86_TUNE_AVOID_256FMA_CHAINS): Enable for znver4 and Core.
+
+2023-12-29  Tamar Christina  <tamar.christina@arm.com>
+
+	PR target/110625
+	* config/aarch64/aarch64.cc (aarch64_vector_costs::add_stmt_cost):
+	Adjust throughput and latency calculations for vector conversions.
+	(class aarch64_vector_costs): Add m_num_last_promote_demote.
+
+2023-12-29  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/loongarch.md (bstrins_<mode>_for_ior_mask):
+	For the condition, remove unneeded trailing "\" and move "&&" to
+	follow GNU coding style.  NFC.
+
+2023-12-29  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/predicates.md
+	(symbolic_pcrel_offset_operand): New define_predicate.
+	(mem_simple_ldst_operand): Likewise.
+	* config/loongarch/loongarch-protos.h
+	(loongarch_rewrite_mem_for_simple_ldst): Declare.
+	* config/loongarch/loongarch.cc
+	(loongarch_rewrite_mem_for_simple_ldst): Implement.
+	* config/loongarch/loongarch.md (simple_load<mode>): New
+	define_insn_and_rewrite.
+	(simple_load_<su>ext<SUBDI:mode><GPR:mode>): Likewise.
+	(simple_store<mode>): Likewise.
+	(define_peephole2): Remove la.local/[f]ld peepholes.
+
+2023-12-29  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/113133
+	* config/i386/i386.md
+	(TARGET_USE_VECTOR_FP_CONVERTS SF->DF float_extend splitter):
+	Do not handle xmm16+ with TARGET_EVEX512.
+
+2023-12-29  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-v.cc (is_vlmax_len_p): New function.
+	(expand_load_store): Disallow transformation into VLMAX when len is in range of [0,31]
+	(expand_cond_len_op): Ditto.
+	(expand_gather_scatter): Ditto.
+	(expand_lanes_load_store): Ditto.
+	(expand_fold_extract_last): Ditto.
+
+2023-12-28  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.cc (ix86_unary_operator_ok): Move from here...
+	* config/i386/i386-expand.cc (ix86_unary_operator_ok): ... to here.
+	* config/i386/i386-protos.h: Re-arrange ix86_{unary|binary}_operator_ok
+	and ix86_expand_{unary|binary}_operator prototypes.
+	* config/i386/i386.md: Cosmetic changes with the usage of
+	TARGET_APX_NDD in ix86_expand_{unary|binary}_operator
+	and ix86_{unary|binary}_operator_ok function calls.
+
+2023-12-28  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-vector-costs.cc (is_gimple_assign_or_call): Change interface.
+	(get_live_range): New function.
+
+2023-12-27  Xi Ruoyao  <xry111@xry111.site>
+
+	PR target/113148
+	* config/loongarch/loongarch.cc (loongarch_secondary_reload):
+	Check if regno == -1 besides MEM_P (x) for reloading FCCmode
+	from/to FPR to/from memory.
+
+2023-12-27  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/loongarch.md (rotl<mode>3):
+	New define_expand.
+	* config/loongarch/simd.md (vrotl<mode>3): Likewise.
+	(rotl<mode>3): Likewise.
+
+2023-12-27  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR target/113112
+	* config/riscv/riscv-vector-costs.cc (is_gimple_assign_or_call): New function.
+	(get_first_lane_point): Ditto.
+	(get_last_lane_point): Ditto.
+	(max_number_of_live_regs): Refine live point dump.
+	(compute_estimated_lmul): Make unknown NITERS loop be aware of liveness.
+	(costs::better_main_loop_than_p): Ditto.
+	* config/riscv/riscv-vector-costs.h (struct stmt_point): Add new member.
+
+2023-12-27  Chenghui Pan  <panchenghui@loongson.cn>
+
+	* config/loongarch/lasx.md: Use loongarch_split_move and
+	loongarch_split_move_p directly.
+	* config/loongarch/loongarch-protos.h
+	(loongarch_split_move): Remove unnecessary argument.
+	(loongarch_split_move_insn_p): Delete.
+	(loongarch_split_move_insn): Delete.
+	* config/loongarch/loongarch.cc
+	(loongarch_split_move_insn_p): Delete.
+	(loongarch_load_store_insns): Use loongarch_split_move_p
+	directly.
+	(loongarch_split_move): remove the unnecessary processing.
+	(loongarch_split_move_insn): Delete.
+	* config/loongarch/lsx.md: Use loongarch_split_move and
+	loongarch_split_move_p directly.
+
+2023-12-27  Chenghui Pan  <panchenghui@loongson.cn>
+
+	* config/loongarch/lasx.md (vec_concatv4di): Delete.
+	(vec_concatv8si): Delete.
+	(vec_concatv16hi): Delete.
+	(vec_concatv32qi): Delete.
+	(vec_concatv4df): Delete.
+	(vec_concatv8sf): Delete.
+	(vec_concat<mode>): New template with insn output fixed.
+
+2023-12-27  Li Wei  <liwei@loongson.cn>
+
+	* config/loongarch/loongarch.md: Adjust.
+
+2023-12-27  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	* config/rs6000/rs6000-string.cc (expand_block_compare): Assert
+	only P7 above can enter this function.  Remove P7 CPU test and let
+	P7 BE do the expand.
+
+2023-12-27  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	* config/rs6000/rs6000.md (cmpmemsi): Fail when optimizing for size.
+
+2023-12-27  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	* config/rs6000/rs6000.h (TARGET_EFFICIENT_OVERLAPPING_UNALIGNED):
+	Remove.
+	* config/rs6000/rs6000-string.cc (select_block_compare_mode):
+	Replace TARGET_EFFICIENT_OVERLAPPING_UNALIGNED with
+	targetm.slow_unaligned_access.
+	(expand_block_compare_gpr): Likewise.
+	(expand_block_compare): Likewise.
+	(expand_strncmp_gpr_sequence): Likewise.
+
+2023-12-26  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR target/113112
+	* config/riscv/riscv-vector-costs.cc (compute_estimated_lmul): Tweak LMUL estimation.
+	(has_unexpected_spills_p): Ditto.
+	(costs::record_potential_unexpected_spills): Ditto.
+
+2023-12-25  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* config/riscv/riscv-vector-costs.cc (compute_estimated_lmul): Allow
+	fractional vecrtor.
+	(preferred_new_lmul_p): Move RVV V_REGS liveness computation into analyze_loop_vinfo.
+	(has_unexpected_spills_p): New function.
+	(costs::record_potential_unexpected_spills): Ditto.
+	(costs::better_main_loop_than_p): Move RVV V_REGS liveness computation into
+	analyze_loop_vinfo.
+	* config/riscv/riscv-vector-costs.h: New functions and variables.
+
+2023-12-25  Tamar Christina  <tamar.christina@arm.com>
+
+	PR bootstrap/113132
+	* tree-vect-loop.cc (vect_create_epilog_for_reduction): Initialize vec_stmts;
+
+2023-12-25  Jeevitha Palanisamy  <jeevitha@linux.ibm.com>
+	    Peter Bergner  <bergner@linux.ibm.com>
+
+	PR target/110320
+	* config/rs6000/rs6000.cc (rs6000_conditional_register_usage): Change
+	GPR2 to volatile and non-fixed register for PCREL.
+	* config/rs6000/rs6000.h (FIXED_REGISTERS): Modify GPR2 to not fixed.
+
+2023-12-25  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR tree-optimization/19832
+	* match.pd (`(a != b) ? (a + b) : (2 * a)`): Add `:c`
+	on the plus operator.
+
+2023-12-24  Tamar Christina  <tamar.christina@arm.com>
+
+	* doc/sourcebuild.texi (check_effective_target_vect_early_break_hw,
+	check_effective_target_vect_early_break): Document.
+
+2023-12-24  Tamar Christina  <tamar.christina@arm.com>
+
+	* config/aarch64/aarch64-simd.md (cbranch<mode>4): New.
+
+2023-12-24  Tamar Christina  <tamar.christina@arm.com>
+
+	* tree-if-conv.cc (idx_within_array_bound): Expose.
+	* tree-vect-data-refs.cc (vect_analyze_early_break_dependences): New.
+	(vect_analyze_data_ref_dependences): Use it.
+	* tree-vect-loop-manip.cc (vect_iv_increment_position): New.
+	(vect_set_loop_controls_directly,
+	vect_set_loop_condition_partial_vectors,
+	vect_set_loop_condition_partial_vectors_avx512,
+	vect_set_loop_condition_normal): Support multiple exits.
+	(slpeel_tree_duplicate_loop_to_edge_cfg): Support LCSAA peeling for
+	multiple exits.
+	(slpeel_can_duplicate_loop_p): Change vectorizer from looking at BB
+	count and instead look at loop shape.
+	(vect_update_ivs_after_vectorizer): Drop asserts.
+	(vect_gen_vector_loop_niters_mult_vf): Support peeled vector iterations.
+	(vect_do_peeling): Support multiple exits.
+	(vect_loop_versioning): Likewise.
+	* tree-vect-loop.cc (_loop_vec_info::_loop_vec_info): Initialise
+	early_breaks.
+	(vect_analyze_loop_form): Support loop flows with more than single BB
+	loop body.
+	(vect_create_loop_vinfo): Support niters analysis for multiple exits.
+	(vect_analyze_loop): Likewise.
+	(vect_get_vect_def): New.
+	(vect_create_epilog_for_reduction): Support early exit reductions.
+	(vectorizable_live_operation_1): New.
+	(find_connected_edge): New.
+	(vectorizable_live_operation): Support early exit live operations.
+	(move_early_exit_stmts): New.
+	(vect_transform_loop): Use it.
+	* tree-vect-patterns.cc (vect_init_pattern_stmt): Support gcond.
+	(vect_recog_bitfield_ref_pattern): Support gconds and bools.
+	(vect_recog_gcond_pattern): New.
+	(possible_vector_mask_operation_p): Support gcond masks.
+	(vect_determine_mask_precision): Likewise.
+	(vect_mark_pattern_stmts): Set gcond def type.
+	(can_vectorize_live_stmts): Force early break inductions to be live.
+	* tree-vect-stmts.cc (vect_stmt_relevant_p): Add relevancy analysis for
+	early breaks.
+	(vect_mark_stmts_to_be_vectorized): Process gcond usage.
+	(perm_mask_for_reverse): Expose.
+	(vectorizable_comparison_1): New.
+	(vectorizable_early_exit): New.
+	(vect_analyze_stmt): Support early break and gcond.
+	(vect_transform_stmt): Likewise.
+	(vect_is_simple_use): Likewise.
+	(vect_get_vector_types_for_stmt): Likewise.
+	* tree-vectorizer.cc (pass_vectorize::execute): Update exits for value
+	numbering.
+	* tree-vectorizer.h (enum vect_def_type): Add vect_condition_def.
+	(LOOP_VINFO_EARLY_BREAKS, LOOP_VINFO_EARLY_BRK_STORES,
+	LOOP_VINFO_EARLY_BREAKS_VECT_PEELED, LOOP_VINFO_EARLY_BRK_DEST_BB,
+	LOOP_VINFO_EARLY_BRK_VUSES): New.
+	(is_loop_header_bb_p): Drop assert.
+	(class loop): Add early_breaks, early_break_stores, early_break_dest_bb,
+	early_break_vuses.
+	(vect_iv_increment_position, perm_mask_for_reverse,
+	ref_within_array_bound): New.
+	(slpeel_tree_duplicate_loop_to_edge_cfg): Update for early breaks.
+
+2023-12-24  Tamar Christina  <tamar.christina@arm.com>
+
+	* tree-ssa-loop-im.cc (determine_max_movement): Import insn-codes.h
+	and optabs-tree.h and check for vector compare motion out of gcond.
+
+2023-12-24  Hans-Peter Nilsson  <hp@axis.com>
+
+	PR middle-end/113109
+	* config/cris/cris.cc (cris_eh_return_handler_rtx): New function.
+	* config/cris/cris-protos.h (cris_eh_return_handler_rtx): Prototype.
+	* config/cris/cris.h (EH_RETURN_HANDLER_RTX): Redefine to call
+	cris_eh_return_handler_rtx.
+
 2023-12-23  Xi Ruoyao  <xry111@xry111.site>
 
 	* config/loongarch/loongarch.md (rotrsi3_extend): New

@@ -1,3 +1,410 @@
+2023-12-31  Uros Bizjak  <ubizjak@gmail.com>
+	    Roger Sayle  <roger@nextmovesoftware.com>
+
+	PR target/43644
+	* gcc.target/i386/pr43644-2.c: Expect 2 movq instructions.
+
+2023-12-30  Martin Uecker  <uecker@tugraz.at>
+
+	* gcc.dg/c23-tag-9.c: New test.
+
+2023-12-29  Tamar Christina  <tamar.christina@arm.com>
+
+	PR target/110625
+	* gcc.target/aarch64/pr110625_4.c: New test.
+	* gcc.target/aarch64/sve/unpack_fcvt_signed_1.c: Add
+	--param aarch64-sve-compare-costs=0.
+	* gcc.target/aarch64/sve/unpack_fcvt_unsigned_1.c: Likewise
+
+2023-12-29  Xi Ruoyao  <xry111@xry111.site>
+
+	* gcc.target/loongarch/explicit-relocs-auto-single-load-store-2.c:
+	New test.
+	* gcc.target/loongarch/explicit-relocs-auto-single-load-store-3.c:
+	New test.
+
+2023-12-29  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/113133
+	* gcc.target/i386/pr113133-1.c: New test.
+	* gcc.target/i386/pr113133-2.c: New test.
+
+2023-12-29  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR testsuite/113167
+	* gcc.dg/tree-ssa/gen-vect-26.c: Mark the test/check loop
+	as novector.
+
+2023-12-29  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.dg/vect/costmodel/riscv/rvv/pr113112-1.c: Remove redundant checks.
+
+2023-12-29  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.target/riscv/rvv/autovec/post-ra-avl.c: Adapt test.
+	* gcc.target/riscv/rvv/base/vf_avl-2.c: New test.
+
+2023-12-28  David Edelsohn  <dje.gcc@gmail.com>
+
+	* g++.dg/template/linkage2.C: XFAIL on AIX.
+	* g++.dg/template/linkage3.C: Same.
+
+2023-12-28  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-3.c: Adapt test.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-5.c: Ditto.
+
+2023-12-27  Xi Ruoyao  <xry111@xry111.site>
+
+	PR target/113148
+	* gcc.target/loongarch/pr113148.c: New test.
+
+2023-12-27  Xi Ruoyao  <xry111@xry111.site>
+
+	* gcc.target/loongarch/rotl-with-rotr.c: New test.
+	* gcc.target/loongarch/rotl-with-vrotr-b.c: New test.
+	* gcc.target/loongarch/rotl-with-vrotr-h.c: New test.
+	* gcc.target/loongarch/rotl-with-vrotr-w.c: New test.
+	* gcc.target/loongarch/rotl-with-vrotr-d.c: New test.
+	* gcc.target/loongarch/rotl-with-xvrotr-b.c: New test.
+	* gcc.target/loongarch/rotl-with-xvrotr-h.c: New test.
+	* gcc.target/loongarch/rotl-with-xvrotr-w.c: New test.
+	* gcc.target/loongarch/rotl-with-xvrotr-d.c: New test.
+
+2023-12-27  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR target/113112
+	* gcc.dg/vect/costmodel/riscv/rvv/pr113112-1.c:
+	* gcc.dg/vect/costmodel/riscv/rvv/pr113112-3.c: New test.
+
+2023-12-27  Chenghui Pan  <panchenghui@loongson.cn>
+
+	* gcc.target/loongarch/vector/lsx/lsx-mov-1.c: New test.
+
+2023-12-27  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	* gcc.target/powerpc/block-cmp-4.c: New.
+
+2023-12-27  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	* gcc.target/powerpc/block-cmp-3.c: New.
+
+2023-12-27  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	* gcc.target/powerpc/block-cmp-1.c: New.
+	* gcc.target/powerpc/block-cmp-2.c: New.
+
+2023-12-27  David Edelsohn  <dje.gcc@gmail.com>
+
+	* g++.dg/cpp23/wchar-multi1.C: Require 4 byte wchar_t.
+
+2023-12-27  David Edelsohn  <dje.gcc@gmail.com>
+
+	* g++.dg/ext/attr-section1.C: Test for csect section directive.
+	* g++.dg/ext/attr-section1a.C: Same.
+	* g++.dg/ext/attr-section2.C: Same.
+	* g++.dg/ext/attr-section2a.C: Same.
+	* g++.dg/ext/attr-section2b.C: Same.
+
+2023-12-26  David Edelsohn  <dje.gcc@gmail.com>
+
+	* gcc.dg/analyzer/out-of-bounds-diagram-17.c: Skip on AIX.
+	* gcc.dg/analyzer/out-of-bounds-diagram-18.c: Same.
+
+2023-12-26  David Edelsohn  <dje.gcc@gmail.com>
+
+	* gcc.dg/pr111409.c: Skip on AIX.
+
+2023-12-26  David Edelsohn  <dje.gcc@gmail.com>
+
+	* c-c++-common/strub-unsupported-2.c: Require strub.
+	* c-c++-common/strub-unsupported-3.c: Same.
+	* c-c++-common/strub-unsupported.c: Same.
+	* lib/target-supports.exp (check_effective_target_strub): Return 0
+	for AIX.
+
+2023-12-26  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-10.c: Fix typo.
+
+2023-12-26  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR target/113112
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-1.c: Add more checks.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-2.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-3.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-4.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-5.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-6.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-7.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-1.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-2.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-3.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-4.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-5.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-1.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-2.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-3.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-5.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-6.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-7.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-8.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-1.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-10.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-11.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-2.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-3.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-4.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-5.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-6.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-7.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-8.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-9.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-12.c: New test.
+	* gcc.dg/vect/costmodel/riscv/rvv/pr113112-2.c: New test.
+
+2023-12-26  Di Zhao  <dizhao@os.amperecomputing.com>
+
+	* gcc.dg/pr110279-1.c: Add "-mcpu=generic" for aarch64; add
+	"-mfma" for x86_64.
+	* gcc.dg/pr110279-2.c: Replace "-march=armv8.2-a" with
+	"-mcpu=generic"; limit the check to be on aarch64.
+
+2023-12-26  Jeevitha Palanisamy  <jeevitha@linux.ibm.com>
+
+	PR target/110320
+	* gcc.target/powerpc/pr110320-1.c: Add dg-require-effective-target powerpc_pcrel.
+
+2023-12-25  David Edelsohn  <dje.gcc@gmail.com>
+
+	* c-c++-common/analyzer/capacity-1.c: Skip on AIX.
+	* c-c++-common/analyzer/capacity-2.c: Same.
+	* c-c++-common/analyzer/fd-glibc-byte-stream-socket.c: Same.
+	* c-c++-common/analyzer/fd-manpage-getaddrinfo-client.c: Same.
+	* c-c++-common/analyzer/fd-mappage-getaddrinfo-server.c: Same.
+	* gcc.dg/analyzer/fd-glibc-byte-stream-connection-server.c: Same.
+
+2023-12-25  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul-mixed-1.c: Robostify test.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-1.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-2.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-3.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-4.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-5.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-6.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul1-7.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-1.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-2.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-3.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-4.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-5.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul2-6.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-1.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-10.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-2.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-3.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-5.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-6.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-7.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul4-8.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-1.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-10.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-11.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-2.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-3.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-4.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-5.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-6.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-7.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-8.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/dynamic-lmul8-9.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/no-dynamic-lmul-1.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/pr111848.c: Ditto.
+	* gcc.dg/vect/costmodel/riscv/rvv/pr113112-1.c: Ditto.
+
+2023-12-25  Jeevitha Palanisamy  <jeevitha@linux.ibm.com>
+	    Peter Bergner  <bergner@linux.ibm.com>
+
+	PR target/110320
+	* gcc.target/powerpc/pr110320-1.c: New testcase.
+	* gcc.target/powerpc/pr110320-2.c: New testcase.
+	* gcc.target/powerpc/pr110320-3.c: New testcase.
+
+2023-12-25  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	* gcc.dg/vect/costmodel/riscv/rvv/pr113112-1.c: Add one more ASM check.
+
+2023-12-25  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR tree-optimization/19832
+	* gcc.dg/tree-ssa/phi-opt-same-2.c: New test.
+
+2023-12-24  Tamar Christina  <tamar.christina@arm.com>
+
+	* gcc.dg/vect/tsvc/vect-tsvc-s332.c: Remove xfail when early break
+	supported.
+	* gcc.dg/vect/tsvc/vect-tsvc-s481.c: Likewise.
+	* gcc.dg/vect/tsvc/vect-tsvc-s482.c: Likewise.
+
+2023-12-24  Tamar Christina  <tamar.christina@arm.com>
+
+	* lib/target-supports.exp (add_options_for_vect_early_break,
+	check_effective_target_vect_early_break_hw,
+	check_effective_target_vect_early_break): New.
+	* g++.dg/vect/vect-early-break_1.cc: New test.
+	* g++.dg/vect/vect-early-break_2.cc: New test.
+	* g++.dg/vect/vect-early-break_3.cc: New test.
+	* gcc.dg/vect/vect-early-break-run_1.c: New test.
+	* gcc.dg/vect/vect-early-break-run_10.c: New test.
+	* gcc.dg/vect/vect-early-break-run_2.c: New test.
+	* gcc.dg/vect/vect-early-break-run_3.c: New test.
+	* gcc.dg/vect/vect-early-break-run_4.c: New test.
+	* gcc.dg/vect/vect-early-break-run_5.c: New test.
+	* gcc.dg/vect/vect-early-break-run_6.c: New test.
+	* gcc.dg/vect/vect-early-break-run_7.c: New test.
+	* gcc.dg/vect/vect-early-break-run_8.c: New test.
+	* gcc.dg/vect/vect-early-break-run_9.c: New test.
+	* gcc.dg/vect/vect-early-break-template_1.c: New test.
+	* gcc.dg/vect/vect-early-break-template_2.c: New test.
+	* gcc.dg/vect/vect-early-break_1.c: New test.
+	* gcc.dg/vect/vect-early-break_10.c: New test.
+	* gcc.dg/vect/vect-early-break_11.c: New test.
+	* gcc.dg/vect/vect-early-break_12.c: New test.
+	* gcc.dg/vect/vect-early-break_13.c: New test.
+	* gcc.dg/vect/vect-early-break_14.c: New test.
+	* gcc.dg/vect/vect-early-break_15.c: New test.
+	* gcc.dg/vect/vect-early-break_16.c: New test.
+	* gcc.dg/vect/vect-early-break_17.c: New test.
+	* gcc.dg/vect/vect-early-break_18.c: New test.
+	* gcc.dg/vect/vect-early-break_19.c: New test.
+	* gcc.dg/vect/vect-early-break_2.c: New test.
+	* gcc.dg/vect/vect-early-break_20.c: New test.
+	* gcc.dg/vect/vect-early-break_21.c: New test.
+	* gcc.dg/vect/vect-early-break_22.c: New test.
+	* gcc.dg/vect/vect-early-break_23.c: New test.
+	* gcc.dg/vect/vect-early-break_24.c: New test.
+	* gcc.dg/vect/vect-early-break_25.c: New test.
+	* gcc.dg/vect/vect-early-break_26.c: New test.
+	* gcc.dg/vect/vect-early-break_27.c: New test.
+	* gcc.dg/vect/vect-early-break_28.c: New test.
+	* gcc.dg/vect/vect-early-break_29.c: New test.
+	* gcc.dg/vect/vect-early-break_3.c: New test.
+	* gcc.dg/vect/vect-early-break_30.c: New test.
+	* gcc.dg/vect/vect-early-break_31.c: New test.
+	* gcc.dg/vect/vect-early-break_32.c: New test.
+	* gcc.dg/vect/vect-early-break_33.c: New test.
+	* gcc.dg/vect/vect-early-break_34.c: New test.
+	* gcc.dg/vect/vect-early-break_35.c: New test.
+	* gcc.dg/vect/vect-early-break_36.c: New test.
+	* gcc.dg/vect/vect-early-break_37.c: New test.
+	* gcc.dg/vect/vect-early-break_38.c: New test.
+	* gcc.dg/vect/vect-early-break_39.c: New test.
+	* gcc.dg/vect/vect-early-break_4.c: New test.
+	* gcc.dg/vect/vect-early-break_40.c: New test.
+	* gcc.dg/vect/vect-early-break_41.c: New test.
+	* gcc.dg/vect/vect-early-break_42.c: New test.
+	* gcc.dg/vect/vect-early-break_43.c: New test.
+	* gcc.dg/vect/vect-early-break_44.c: New test.
+	* gcc.dg/vect/vect-early-break_45.c: New test.
+	* gcc.dg/vect/vect-early-break_46.c: New test.
+	* gcc.dg/vect/vect-early-break_47.c: New test.
+	* gcc.dg/vect/vect-early-break_48.c: New test.
+	* gcc.dg/vect/vect-early-break_49.c: New test.
+	* gcc.dg/vect/vect-early-break_5.c: New test.
+	* gcc.dg/vect/vect-early-break_50.c: New test.
+	* gcc.dg/vect/vect-early-break_51.c: New test.
+	* gcc.dg/vect/vect-early-break_52.c: New test.
+	* gcc.dg/vect/vect-early-break_53.c: New test.
+	* gcc.dg/vect/vect-early-break_54.c: New test.
+	* gcc.dg/vect/vect-early-break_55.c: New test.
+	* gcc.dg/vect/vect-early-break_56.c: New test.
+	* gcc.dg/vect/vect-early-break_57.c: New test.
+	* gcc.dg/vect/vect-early-break_58.c: New test.
+	* gcc.dg/vect/vect-early-break_59.c: New test.
+	* gcc.dg/vect/vect-early-break_6.c: New test.
+	* gcc.dg/vect/vect-early-break_60.c: New test.
+	* gcc.dg/vect/vect-early-break_61.c: New test.
+	* gcc.dg/vect/vect-early-break_62.c: New test.
+	* gcc.dg/vect/vect-early-break_63.c: New test.
+	* gcc.dg/vect/vect-early-break_64.c: New test.
+	* gcc.dg/vect/vect-early-break_65.c: New test.
+	* gcc.dg/vect/vect-early-break_66.c: New test.
+	* gcc.dg/vect/vect-early-break_67.c: New test.
+	* gcc.dg/vect/vect-early-break_68.c: New test.
+	* gcc.dg/vect/vect-early-break_69.c: New test.
+	* gcc.dg/vect/vect-early-break_7.c: New test.
+	* gcc.dg/vect/vect-early-break_70.c: New test.
+	* gcc.dg/vect/vect-early-break_71.c: New test.
+	* gcc.dg/vect/vect-early-break_72.c: New test.
+	* gcc.dg/vect/vect-early-break_73.c: New test.
+	* gcc.dg/vect/vect-early-break_74.c: New test.
+	* gcc.dg/vect/vect-early-break_75.c: New test.
+	* gcc.dg/vect/vect-early-break_76.c: New test.
+	* gcc.dg/vect/vect-early-break_77.c: New test.
+	* gcc.dg/vect/vect-early-break_78.c: New test.
+	* gcc.dg/vect/vect-early-break_79.c: New test.
+	* gcc.dg/vect/vect-early-break_8.c: New test.
+	* gcc.dg/vect/vect-early-break_80.c: New test.
+	* gcc.dg/vect/vect-early-break_81.c: New test.
+	* gcc.dg/vect/vect-early-break_82.c: New test.
+	* gcc.dg/vect/vect-early-break_83.c: New test.
+	* gcc.dg/vect/vect-early-break_84.c: New test.
+	* gcc.dg/vect/vect-early-break_85.c: New test.
+	* gcc.dg/vect/vect-early-break_86.c: New test.
+	* gcc.dg/vect/vect-early-break_87.c: New test.
+	* gcc.dg/vect/vect-early-break_88.c: New test.
+	* gcc.dg/vect/vect-early-break_89.c: New test.
+	* gcc.dg/vect/vect-early-break_9.c: New test.
+	* gcc.dg/vect/vect-early-break_90.c: New test.
+	* gcc.dg/vect/vect-early-break_91.c: New test.
+	* gcc.dg/vect/vect-early-break_92.c: New test.
+	* gcc.dg/vect/vect-early-break_93.c: New test.
+
+2023-12-24  Tamar Christina  <tamar.christina@arm.com>
+
+	* gcc.target/aarch64/sve/vect-early-break-cbranch.c: New test.
+	* gcc.target/aarch64/vect-early-break-cbranch.c: New test.
+
+2023-12-24  Tamar Christina  <tamar.christina@arm.com>
+
+	* gcc.dg/vect/no-scevccp-slp-30.c: Add pragma GCC novector to abort
+	loop.
+	* gcc.dg/vect/no-scevccp-slp-31.c: Likewise.
+	* gcc.dg/vect/no-section-anchors-vect-69.c: Likewise.
+	* gcc.target/aarch64/vect-xorsign_exec.c: Likewise.
+	* gcc.target/i386/avx512er-vrcp28ps-3.c: Likewise.
+	* gcc.target/i386/avx512er-vrsqrt28ps-3.c: Likewise.
+	* gcc.target/i386/avx512er-vrsqrt28ps-5.c: Likewise.
+	* gcc.target/i386/avx512f-ceil-sfix-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-ceil-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-ceilf-sfix-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-ceilf-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-floor-sfix-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-floor-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-floorf-sfix-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-floorf-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-rint-sfix-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-rintf-sfix-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-round-sfix-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-roundf-sfix-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-trunc-vec-1.c: Likewise.
+	* gcc.target/i386/avx512f-truncf-vec-1.c: Likewise.
+	* gcc.target/i386/vect-alignment-peeling-1.c: Likewise.
+	* gcc.target/i386/vect-alignment-peeling-2.c: Likewise.
+	* gcc.target/i386/vect-pack-trunc-1.c: Likewise.
+	* gcc.target/i386/vect-pack-trunc-2.c: Likewise.
+	* gcc.target/i386/vect-perm-even-1.c: Likewise.
+	* gcc.target/i386/vect-unpack-1.c: Likewise.
+
+2023-12-24  John David Anglin  <danglin@gcc.gnu.org>
+
+	* gcc.dg/pr110279-1.c: Add -march=2.0 option on hppa*-*-*.
+
+2023-12-24  Pan Li  <pan2.li@intel.com>
+
+	* gcc.dg/signbit-5.c: XFail for the riscv_v.
+
 2023-12-23  Xi Ruoyao  <xry111@xry111.site>
 
 	* gcc.target/loongarch/rotrw.c: New test.
