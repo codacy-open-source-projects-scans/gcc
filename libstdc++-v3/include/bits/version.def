@@ -1,5 +1,5 @@
 // Feature test macro definitions                                  -*- C++ -*-
-// Copyright (C) 2023 Free Software Foundation, Inc.
+// Copyright (C) 2023-2024 Free Software Foundation, Inc.
 
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -1161,6 +1161,15 @@ ftms = {
   name = format;
   values = {
     v = 202110;
+    cxxmin = 20;
+    hosted = yes;
+  };
+};
+
+ftms = {
+  name = format_uchar;
+  values = {
+    v = 202311;
     cxxmin = 20;
     hosted = yes;
   };

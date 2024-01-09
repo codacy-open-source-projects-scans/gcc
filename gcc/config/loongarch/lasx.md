@@ -1,6 +1,6 @@
 ;; Machine Description for LARCH Loongson ASX ASE
 ;;
-;; Copyright (C) 2018 Free Software Foundation, Inc.
+;; Copyright (C) 2018-2024 Free Software Foundation, Inc.
 ;;
 ;; This file is part of GCC.
 ;;
@@ -465,6 +465,11 @@
    (V16HI "w")
    (V32QI "w")])
 
+;; Half modes of all LASX vector modes, in lower-case.
+(define_mode_attr lasxhalf [(V32QI "v16qi")  (V16HI "v8hi")
+             (V8SI "v4si")  (V4DI  "v2di")
+             (V8SF  "v4sf") (V4DF  "v2df")])
+
 (define_expand "vec_init<mode><unitmode>"
   [(match_operand:LASX 0 "register_operand")
    (match_operand:LASX 1 "")]
@@ -474,9 +479,9 @@
   DONE;
 })
 
-(define_expand "vec_initv32qiv16qi"
- [(match_operand:V32QI 0 "register_operand")
-  (match_operand:V16QI 1 "")]
+(define_expand "vec_init<mode><lasxhalf>"
+ [(match_operand:LASX 0 "register_operand")
+  (match_operand:<VHMODE256_ALL> 1 "")]
   "ISA_HAS_LASX"
 {
   loongarch_expand_vector_group_init (operands[0], operands[1]);
@@ -577,6 +582,21 @@
   [(set_attr "type" "simd_insert")
    (set_attr "mode" "<MODE>")])
 
+(define_insn "@vec_concatz<mode>"
+  [(set (match_operand:LASX 0 "register_operand" "=f")
+    (vec_concat:LASX
+      (match_operand:<VHMODE256_ALL> 1 "nonimmediate_operand")
+      (match_operand:<VHMODE256_ALL> 2 "const_0_operand")))]
+  "ISA_HAS_LASX"
+{
+  if (MEM_P (operands[1]))
+    return "vld\t%w0,%1";
+  else
+    return "vori.b\t%w0,%w1,0";
+}
+  [(set_attr "type" "simd_splat")
+   (set_attr "mode" "<MODE>")])
+
 (define_insn "vec_concat<mode>"
   [(set (match_operand:LASX 0 "register_operand" "=f")
 	(vec_concat:LASX
@@ -635,6 +655,8 @@
    (set_attr "mode" "<MODE>")])
 
 ;; xvpermi.q
+;; Unused bits in operands[3] need be set to 0 to avoid
+;; causing undefined behavior on LA464.
 (define_insn "lasx_xvpermi_q_<LASX:mode>"
   [(set (match_operand:LASX 0 "register_operand" "=f")
 	(unspec:LASX
@@ -643,7 +665,12 @@
 	   (match_operand     3 "const_uimm8_operand")]
 	  UNSPEC_LASX_XVPERMI_Q))]
   "ISA_HAS_LASX"
-  "xvpermi.q\t%u0,%u2,%3"
+{
+  int mask = 0x33;
+  mask &= INTVAL (operands[3]);
+  operands[3] = GEN_INT (mask);
+  return "xvpermi.q\t%u0,%u2,%3";
+}
   [(set_attr "type" "simd_splat")
    (set_attr "mode" "<MODE>")])
 
@@ -843,32 +870,6 @@
   [(const_int 0)]
 {
   loongarch_split_move (operands[0], operands[1]);
-  DONE;
-})
-
-;; Offset load
-(define_expand "lasx_mxld_<lasxfmt_f>"
-  [(match_operand:LASX 0 "register_operand")
-   (match_operand 1 "pmode_register_operand")
-   (match_operand 2 "aq10<lasxfmt>_operand")]
-  "ISA_HAS_LASX"
-{
-  rtx addr = plus_constant (GET_MODE (operands[1]), operands[1],
-				      INTVAL (operands[2]));
-  loongarch_emit_move (operands[0], gen_rtx_MEM (<MODE>mode, addr));
-  DONE;
-})
-
-;; Offset store
-(define_expand "lasx_mxst_<lasxfmt_f>"
-  [(match_operand:LASX 0 "register_operand")
-   (match_operand 1 "pmode_register_operand")
-   (match_operand 2 "aq10<lasxfmt>_operand")]
-  "ISA_HAS_LASX"
-{
-  rtx addr = plus_constant (GET_MODE (operands[1]), operands[1],
-			    INTVAL (operands[2]));
-  loongarch_emit_move (gen_rtx_MEM (<MODE>mode, addr), operands[0]);
   DONE;
 })
 

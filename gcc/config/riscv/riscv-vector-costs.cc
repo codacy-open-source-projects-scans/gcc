@@ -1,5 +1,5 @@
 /* Cost model implementation for RISC-V 'V' Extension for GNU compiler.
-   Copyright (C) 2023-2023 Free Software Foundation, Inc.
+   Copyright (C) 2023-2024 Free Software Foundation, Inc.
    Contributed by Juzhe Zhong (juzhe.zhong@rivai.ai), RiVAI Technologies Ltd.
 
 This file is part of GCC.
@@ -230,6 +230,86 @@ get_biggest_mode (machine_mode mode1, machine_mode mode2)
   return mode1_size >= mode2_size ? mode1 : mode2;
 }
 
+/* Return true if OP is invariant.  */
+
+static bool
+loop_invariant_op_p (class loop *loop,
+		     tree op)
+{
+  if (is_gimple_constant (op))
+    return true;
+  if (SSA_NAME_IS_DEFAULT_DEF (op)
+      || !flow_bb_inside_loop_p (loop, gimple_bb (SSA_NAME_DEF_STMT (op))))
+    return true;
+  return gimple_uid (SSA_NAME_DEF_STMT (op)) & 1;
+}
+
+/* Return true if the variable should be counted into liveness.  */
+static bool
+variable_vectorized_p (class loop *loop, stmt_vec_info stmt_info, tree var,
+		       bool lhs_p)
+{
+  if (!var)
+    return false;
+  gimple *stmt = STMT_VINFO_STMT (stmt_info);
+  enum stmt_vec_info_type type
+    = STMT_VINFO_TYPE (vect_stmt_to_vectorize (stmt_info));
+  if (is_gimple_call (stmt) && gimple_call_internal_p (stmt))
+    {
+      if (gimple_call_internal_fn (stmt) == IFN_MASK_STORE
+	  || gimple_call_internal_fn (stmt) == IFN_MASK_LOAD)
+	{
+	  /* .MASK_LOAD (_5, 32B, _33)
+			  ^    ^    ^
+	     Only the 3rd argument will be vectorized and consume
+	     a vector register.  */
+	  if (TREE_CODE (TREE_TYPE (var)) == BOOLEAN_TYPE
+	      || (is_gimple_reg (var) && !POINTER_TYPE_P (TREE_TYPE (var))))
+	    return true;
+	  else
+	    return false;
+	}
+    }
+  else if (is_gimple_assign (stmt))
+    {
+      tree_code tcode = gimple_assign_rhs_code (stmt);
+      /* vi variant doesn't need to allocate such statement.
+	 E.g. tmp_15 = _4 + 1; will be transformed into vadd.vi
+	 so the INTEGER_CST '1' doesn't need a vector register.  */
+      switch (tcode)
+	{
+	case PLUS_EXPR:
+	case BIT_IOR_EXPR:
+	case BIT_XOR_EXPR:
+	case BIT_AND_EXPR:
+	  return TREE_CODE (var) != INTEGER_CST
+		 || !tree_fits_shwi_p (var)
+		 || !IN_RANGE (tree_to_shwi (var), -16, 15);
+	case MINUS_EXPR:
+	  return TREE_CODE (var) != INTEGER_CST
+		 || !tree_fits_shwi_p (var)
+		 || !IN_RANGE (tree_to_shwi (var), -16, 15)
+		 || gimple_assign_rhs1 (stmt) != var;
+	case LSHIFT_EXPR:
+	case RSHIFT_EXPR:
+	  return gimple_assign_rhs2 (stmt) != var
+		 || !loop_invariant_op_p (loop, var);
+	default:
+	  break;
+	}
+    }
+
+  if (lhs_p)
+    return is_gimple_reg (var)
+	   && (!POINTER_TYPE_P (TREE_TYPE (var))
+	       || type != store_vec_info_type);
+  else
+    return poly_int_tree_p (var)
+	   || (is_gimple_val (var)
+	       && (!POINTER_TYPE_P (TREE_TYPE (var))
+		   || type != load_vec_info_type));
+}
+
 /* Compute local live ranges of each vectorized variable.
    Note that we only compute local live ranges (within a block) since
    local live ranges information is accurate enough for us to determine
@@ -251,10 +331,12 @@ get_biggest_mode (machine_mode mode1, machine_mode mode2)
    The live range of SSA 2 is [0, 4] in bb 3.  */
 static machine_mode
 compute_local_live_ranges (
+  loop_vec_info loop_vinfo,
   const hash_map<basic_block, vec<stmt_point>> &program_points_per_bb,
   hash_map<basic_block, hash_map<tree, pair>> &live_ranges_per_bb)
 {
   machine_mode biggest_mode = QImode;
+  class loop *loop = LOOP_VINFO_LOOP (loop_vinfo);
   if (!program_points_per_bb.is_empty ())
     {
       auto_vec<tree> visited_vars;
@@ -278,8 +360,8 @@ compute_local_live_ranges (
 	      unsigned int point = program_point.point;
 	      gimple *stmt = program_point.stmt;
 	      tree lhs = gimple_get_lhs (stmt);
-	      if (lhs != NULL_TREE && is_gimple_reg (lhs)
-		  && !POINTER_TYPE_P (TREE_TYPE (lhs)))
+	      if (variable_vectorized_p (loop, program_point.stmt_info, lhs,
+					 true))
 		{
 		  biggest_mode = get_biggest_mode (biggest_mode,
 						   TYPE_MODE (TREE_TYPE (lhs)));
@@ -296,16 +378,8 @@ compute_local_live_ranges (
 	      for (i = 0; i < gimple_num_args (stmt); i++)
 		{
 		  tree var = gimple_arg (stmt, i);
-		  /* Both IMM and REG are included since a VECTOR_CST may be
-		     potentially held in a vector register.  However, it's not
-		     accurate, since a PLUS_EXPR can be vectorized into vadd.vi
-		     if IMM is -16 ~ 15.
-
-		     TODO: We may elide the cases that the unnecessary IMM in
-		     the future.  */
-		  if (poly_int_tree_p (var)
-		      || (is_gimple_val (var)
-			  && !POINTER_TYPE_P (TREE_TYPE (var))))
+		  if (variable_vectorized_p (loop, program_point.stmt_info, var,
+					     false))
 		    {
 		      biggest_mode
 			= get_biggest_mode (biggest_mode,
@@ -368,13 +442,19 @@ compute_local_live_ranges (
    E.g. If mode = SImode, biggest_mode = DImode, LMUL = M4.
 	Then return RVVM4SImode (LMUL = 4, element mode = SImode).  */
 static unsigned int
-compute_nregs_for_mode (machine_mode mode, machine_mode biggest_mode, int lmul)
+compute_nregs_for_mode (loop_vec_info loop_vinfo, machine_mode mode,
+			machine_mode biggest_mode, int lmul)
 {
+  unsigned int rgroup_size = LOOP_VINFO_LENS (loop_vinfo).is_empty ()
+			       ? 1
+			       : LOOP_VINFO_LENS (loop_vinfo).length ();
   unsigned int mode_size = GET_MODE_SIZE (mode).to_constant ();
   unsigned int biggest_size = GET_MODE_SIZE (biggest_mode).to_constant ();
   gcc_assert (biggest_size >= mode_size);
   unsigned int ratio = biggest_size / mode_size;
-  return lmul / ratio;
+  /* RVV mask bool modes always consume 1 vector register regardless LMUL.  */
+  unsigned int nregs = mode == BImode ? 1 : lmul / ratio;
+  return MAX (nregs, 1) * rgroup_size;
 }
 
 /* This function helps to determine whether current LMUL will cause
@@ -388,7 +468,7 @@ compute_nregs_for_mode (machine_mode mode, machine_mode biggest_mode, int lmul)
        mode.
      - Third, Return the maximum V_REGs are alive of the loop.  */
 static unsigned int
-max_number_of_live_regs (const basic_block bb,
+max_number_of_live_regs (loop_vec_info loop_vinfo, const basic_block bb,
 			 const hash_map<tree, pair> &live_ranges,
 			 unsigned int max_point, machine_mode biggest_mode,
 			 int lmul)
@@ -405,9 +485,11 @@ max_number_of_live_regs (const basic_block bb,
       pair live_range = (*iter).second;
       for (i = live_range.first + 1; i <= live_range.second; i++)
 	{
-	  machine_mode mode = TYPE_MODE (TREE_TYPE (var));
+	  machine_mode mode = TREE_CODE (TREE_TYPE (var)) == BOOLEAN_TYPE
+				? BImode
+				: TYPE_MODE (TREE_TYPE (var));
 	  unsigned int nregs
-	    = compute_nregs_for_mode (mode, biggest_mode, lmul);
+	    = compute_nregs_for_mode (loop_vinfo, mode, biggest_mode, lmul);
 	  live_vars_vec[i] += nregs;
 	  if (live_vars_vec[i] > max_nregs)
 	    {
@@ -499,8 +581,12 @@ compute_estimated_lmul (loop_vec_info loop_vinfo, machine_mode mode)
   else if (known_eq (LOOP_VINFO_SLP_UNROLLING_FACTOR (loop_vinfo), 1U))
     {
       int estimated_vf = vect_vf_for_cost (loop_vinfo);
-      return estimated_vf * GET_MODE_BITSIZE (mode).to_constant ()
-	     / TARGET_MIN_VLEN;
+      int estimated_lmul = estimated_vf * GET_MODE_BITSIZE (mode).to_constant ()
+			   / TARGET_MIN_VLEN;
+      if (estimated_lmul > RVV_M8)
+	return regno_alignment;
+      else
+	return estimated_lmul;
     }
   else
     {
@@ -682,6 +768,24 @@ update_local_live_ranges (
 		dump_printf_loc (MSG_NOTE, vect_location,
 				 "Add perm indice %T, start = 0, end = %d\n",
 				 sel, max_point);
+	      if (!LOOP_VINFO_LENS (loop_vinfo).is_empty ()
+		  && LOOP_VINFO_LENS (loop_vinfo).length () > 1)
+		{
+		  /* If we are vectorizing a permutation when the rgroup number
+		     > 1, we will need additional mask to shuffle the second
+		     vector.  */
+		  tree mask = build_decl (UNKNOWN_LOCATION, VAR_DECL,
+					  get_identifier ("vect_perm_mask"),
+					  boolean_type_node);
+		  pair &live_range
+		    = live_ranges->get_or_insert (mask, &existed_p);
+		  gcc_assert (!existed_p);
+		  live_range = pair (0, max_point);
+		  if (dump_enabled_p ())
+		    dump_printf_loc (MSG_NOTE, vect_location,
+				     "Add perm mask %T, start = 0, end = %d\n",
+				     mask, max_point);
+		}
 	    }
 	}
     }
@@ -699,13 +803,15 @@ has_unexpected_spills_p (loop_vec_info loop_vinfo)
   /* Compute local live ranges.  */
   hash_map<basic_block, hash_map<tree, pair>> live_ranges_per_bb;
   machine_mode biggest_mode
-    = compute_local_live_ranges (program_points_per_bb, live_ranges_per_bb);
+    = compute_local_live_ranges (loop_vinfo, program_points_per_bb,
+				 live_ranges_per_bb);
 
   /* Update live ranges according to PHI.  */
   update_local_live_ranges (loop_vinfo, program_points_per_bb,
 			    live_ranges_per_bb, &biggest_mode);
 
   int lmul = compute_estimated_lmul (loop_vinfo, biggest_mode);
+  gcc_assert (lmul <= RVV_M8);
   /* TODO: We calculate the maximum live vars base on current STMTS
      sequence.  We can support live range shrink if it can give us
      big improvement in the future.  */
@@ -725,8 +831,8 @@ has_unexpected_spills_p (loop_vec_info loop_vinfo)
 		continue;
 	      /* We prefer larger LMUL unless it causes register spillings. */
 	      unsigned int nregs
-		= max_number_of_live_regs (bb, (*iter).second, max_point,
-					   biggest_mode, lmul);
+		= max_number_of_live_regs (loop_vinfo, bb, (*iter).second,
+					   max_point, biggest_mode, lmul);
 	      if (nregs > max_nregs)
 		max_nregs = nregs;
 	    }

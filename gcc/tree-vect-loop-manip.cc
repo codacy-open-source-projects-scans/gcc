@@ -1,5 +1,5 @@
 /* Vectorizer Specific Loop Manipulations
-   Copyright (C) 2003-2023 Free Software Foundation, Inc.
+   Copyright (C) 2003-2024 Free Software Foundation, Inc.
    Contributed by Dorit Naishlos <dorit@il.ibm.com>
    and Ira Rosen <irar@il.ibm.com>
 
@@ -3363,6 +3363,38 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
 	  if (guard_bb != bb_before_epilog && single_pred_p (bb_before_epilog))
 	    bb_before_epilog->count = single_pred_edge (bb_before_epilog)->count ();
 	  bb_before_epilog = loop_preheader_edge (epilog)->src;
+	}
+      else
+	{
+	  /* When we do not have a loop-around edge to the epilog we know
+	     the vector loop covered at least VF scalar iterations unless
+	     we have early breaks and the epilog will cover at most
+	     VF - 1 + gap peeling iterations.
+	     Update any known upper bound with this knowledge.  */
+	  if (! LOOP_VINFO_EARLY_BREAKS (loop_vinfo))
+	    {
+	      if (epilog->any_upper_bound)
+		epilog->nb_iterations_upper_bound -= lowest_vf;
+	      if (epilog->any_likely_upper_bound)
+		epilog->nb_iterations_likely_upper_bound -= lowest_vf;
+	      if (epilog->any_estimate)
+		epilog->nb_iterations_estimate -= lowest_vf;
+	    }
+	  unsigned HOST_WIDE_INT const_vf;
+	  if (vf.is_constant (&const_vf))
+	    {
+	      const_vf += LOOP_VINFO_PEELING_FOR_GAPS (loop_vinfo) - 1;
+	      if (epilog->any_upper_bound)
+		epilog->nb_iterations_upper_bound
+		  = wi::umin (epilog->nb_iterations_upper_bound, const_vf);
+	      if (epilog->any_likely_upper_bound)
+		epilog->nb_iterations_likely_upper_bound
+		  = wi::umin (epilog->nb_iterations_likely_upper_bound,
+			      const_vf);
+	      if (epilog->any_estimate)
+		epilog->nb_iterations_estimate
+		  = wi::umin (epilog->nb_iterations_estimate, const_vf);
+	    }
 	}
 
       /* If loop is peeled for non-zero constant times, now niters refers to

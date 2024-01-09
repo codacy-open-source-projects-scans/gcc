@@ -1,6 +1,6 @@
 /* Tree lowering pass.  This pass converts the GENERIC functions-as-trees
    tree representation into the GIMPLE form.
-   Copyright (C) 2002-2023 Free Software Foundation, Inc.
+   Copyright (C) 2002-2024 Free Software Foundation, Inc.
    Major work done by Sebastian Pop <s.pop@laposte.net>,
    Diego Novillo <dnovillo@redhat.com> and Jason Merrill <jason@redhat.com>.
 
@@ -3344,6 +3344,9 @@ recalculate_side_effects (tree t)
       return;
 
     default:
+      if (code == SSA_NAME)
+	/* No side-effects.  */
+	return;
       gcc_unreachable ();
    }
 }

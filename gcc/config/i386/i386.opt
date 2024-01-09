@@ -1,6 +1,6 @@
 ; Options for the IA-32 and AMD64 ports of the compiler.
 
-; Copyright (C) 2005-2023 Free Software Foundation, Inc.
+; Copyright (C) 2005-2024 Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
 ;
@@ -1328,7 +1328,8 @@ Enable vectorization for scatter instruction.
 
 mapxf
 Target Mask(ISA2_APX_F) Var(ix86_isa_flags2) Save
-Support APX code generation.
+Support code generation for APX features, including EGPR, PUSH2POP2,
+NDD and PPX.
 
 mapx-features=
 Target Undocumented Joined Enum(apx_features) EnumSet Var(ix86_apx_features) Init(apx_none) Save

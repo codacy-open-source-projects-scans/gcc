@@ -1,5 +1,5 @@
 /* Definitions for loongarch-specific option handling.
-   Copyright (C) 2021-2023 Free Software Foundation, Inc.
+   Copyright (C) 2021-2024 Free Software Foundation, Inc.
    Contributed by Loongson Ltd.
 
 This file is part of GCC.
@@ -112,6 +112,10 @@ struct loongarch_flags {
 
 #ifndef HAVE_AS_TLS
 #define HAVE_AS_TLS 0
+#endif
+
+#ifndef HAVE_AS_TLS_LE_RELAXATION
+#define HAVE_AS_TLS_LE_RELAXATION 0
 #endif
 
 #endif /* LOONGARCH_OPTS_H */

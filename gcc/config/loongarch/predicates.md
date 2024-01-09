@@ -1,5 +1,5 @@
 ;; Predicate definitions for LoongArch target.
-;; Copyright (C) 2021-2023 Free Software Foundation, Inc.
+;; Copyright (C) 2021-2024 Free Software Foundation, Inc.
 ;; Contributed by Loongson Ltd.
 ;; Based on MIPS target for GNU compiler.
 ;;
@@ -166,22 +166,6 @@
 (define_predicate "aq8d_operand"
   (and (match_code "const_int")
        (match_test "loongarch_signed_immediate_p (INTVAL (op), 8, 3)")))
-
-(define_predicate "aq10b_operand"
-  (and (match_code "const_int")
-       (match_test "loongarch_signed_immediate_p (INTVAL (op), 10, 0)")))
-
-(define_predicate "aq10h_operand"
-  (and (match_code "const_int")
-       (match_test "loongarch_signed_immediate_p (INTVAL (op), 10, 1)")))
-
-(define_predicate "aq10w_operand"
-  (and (match_code "const_int")
-       (match_test "loongarch_signed_immediate_p (INTVAL (op), 10, 2)")))
-
-(define_predicate "aq10d_operand"
-  (and (match_code "const_int")
-       (match_test "loongarch_signed_immediate_p (INTVAL (op), 10, 3)")))
 
 (define_predicate "aq12b_operand"
   (and (match_code "const_int")

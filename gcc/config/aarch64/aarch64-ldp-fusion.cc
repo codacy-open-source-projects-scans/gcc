@@ -1,5 +1,5 @@
 // LoadPair fusion optimization pass for AArch64.
-// Copyright (C) 2023 Free Software Foundation, Inc.
+// Copyright (C) 2023-2024 Free Software Foundation, Inc.
 //
 // This file is part of GCC.
 //
@@ -2194,6 +2194,15 @@ ldp_bb_info::try_fuse_pair (bool load_p, unsigned access_size,
     range.first = base->hazards[1];
   if (base->hazards[0])
     range.last = base->hazards[0]->prev_nondebug_insn ();
+
+  // If the second insn can throw, narrow the move range to exactly that insn.
+  // This prevents us trying to move the second insn from the end of the BB.
+  if (cfun->can_throw_non_call_exceptions
+      && find_reg_note (insns[1]->rtl (), REG_EH_REGION, NULL_RTX))
+    {
+      gcc_assert (range.includes (insns[1]));
+      range = insn_range_info (insns[1]);
+    }
 
   // Placement strategy: push loads down and pull stores up, this should
   // help register pressure by reducing live ranges.
