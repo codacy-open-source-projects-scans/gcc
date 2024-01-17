@@ -617,6 +617,43 @@ grok_array_decl (location_t loc, tree array_expr, tree index_exp,
   return expr;
 }
 
+/* Build an OMP_ARRAY_SECTION expression, handling usage in template
+   definitions, etc.  */
+
+tree
+grok_omp_array_section (location_t loc, tree array_expr, tree index,
+			tree length)
+{
+  tree orig_array_expr = array_expr;
+  tree orig_index = index;
+  tree orig_length = length;
+
+  if (error_operand_p (array_expr)
+      || error_operand_p (index)
+      || error_operand_p (length))
+    return error_mark_node;
+
+  if (processing_template_decl
+      && (type_dependent_expression_p (array_expr)
+	  || type_dependent_expression_p (index)
+	  || type_dependent_expression_p (length)))
+    return build_min_nt_loc (loc, OMP_ARRAY_SECTION, array_expr, index, length);
+
+  index = fold_non_dependent_expr (index);
+  length = fold_non_dependent_expr (length);
+
+  /* NOTE: We can pass through invalidly-typed index/length fields
+     here (e.g. if the user tries to use a floating-point index/length).
+     This is diagnosed later in semantics.cc:handle_omp_array_sections_1.  */
+
+  tree expr = build_omp_array_section (loc, array_expr, index, length);
+
+  if (processing_template_decl)
+    expr = build_min_non_dep (OMP_ARRAY_SECTION, expr, orig_array_expr,
+			      orig_index, orig_length);
+  return expr;
+}
+
 /* Given the cast expression EXP, checking out its validity.   Either return
    an error_mark_node if there was an unavoidable error, return a cast to
    void for trying to delete a pointer w/ the value 0, or return the
@@ -3860,6 +3897,7 @@ get_tls_wrapper_fn (tree var)
       TREE_PUBLIC (fn) = TREE_PUBLIC (var);
       DECL_ARTIFICIAL (fn) = true;
       DECL_IGNORED_P (fn) = 1;
+      DECL_CONTEXT (fn) = DECL_CONTEXT (var);
       /* The wrapper is inline and emitted everywhere var is used.  */
       DECL_DECLARED_INLINE_P (fn) = true;
       if (TREE_PUBLIC (var))
@@ -5289,10 +5327,11 @@ c_parse_final_cleanups (void)
 	     #pragma interface, etc.) we decided not to emit the
 	     definition here.  */
 	  && !DECL_INITIAL (decl)
-	  /* A defaulted fn in a header module can be synthesized on
-	     demand later.  (In non-header modules we should have
-	     synthesized it above.)  */
-	  && !(DECL_DEFAULTED_FN (decl) && header_module_p ())
+	  /* A defaulted fn or TLS wrapper in a header module can be
+	     synthesized on demand later.  (In non-header modules we
+	     should have synthesized it above.)  */
+	  && !(header_module_p ()
+	       && (DECL_DEFAULTED_FN (decl) || decl_tls_wrapper_p (decl)))
 	  /* Don't complain if the template was defined.  */
 	  && !(DECL_TEMPLATE_INSTANTIATION (decl)
 	       && DECL_INITIAL (DECL_TEMPLATE_RESULT
@@ -5639,7 +5678,7 @@ cp_handle_deprecated_or_unavailable (tree decl, tsubst_flags_t complain)
   if (cxx_dialect >= cxx11
       && DECL_P (decl)
       && DECL_ARTIFICIAL (decl)
-      && DECL_NONSTATIC_MEMBER_FUNCTION_P (decl)
+      && DECL_IOBJ_MEMBER_FUNCTION_P (decl)
       && copy_fn_p (decl))
     {
       /* Don't warn if the flag was disabled around the class definition

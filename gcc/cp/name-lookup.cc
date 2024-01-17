@@ -4464,14 +4464,23 @@ cp_binding_level_descriptor (cp_binding_level *scope)
     "try-scope",
     "catch-scope",
     "for-scope",
+    "cond-init-scope",
+    "stmt-expr-scope",
     "function-parameter-scope",
     "class-scope",
+    "enum-scope",
     "namespace-scope",
     "template-parameter-scope",
-    "template-explicit-spec-scope"
+    "template-explicit-spec-scope",
+    "transaction-scope",
+    "openmp-scope"
   };
-  const scope_kind kind = scope->explicit_spec_p
-    ? sk_template_spec : scope->kind;
+  static_assert (ARRAY_SIZE (scope_kind_names) == sk_count,
+		 "must keep names aligned with scope_kind enum");
+
+  scope_kind kind = scope->kind;
+  if (kind == sk_template_parms && scope->explicit_spec_p)
+    kind = sk_template_spec;
 
   return scope_kind_names[kind];
 }
@@ -8089,9 +8098,19 @@ lookup_elaborated_type (tree name, TAG_how how)
 	    {
 	      /* We're in the global module, perhaps there's a tag
 		 there?  */
-	      // FIXME: This isn't quite right, if we find something
-	      // here, from the language PoV we're not supposed to
-	      // know it?
+
+	      /* FIXME: In general we should probably merge global module
+		 classes in check_module_override rather than here, but for
+		 GCC14 let's just fix lazy declarations of __class_type_info in
+		 build_dynamic_cast_1.  */
+	      if (current_namespace == abi_node)
+		{
+		  tree g = (BINDING_VECTOR_CLUSTER (*slot, 0)
+			    .slots[BINDING_SLOT_GLOBAL]);
+		  for (ovl_iterator iter (g); iter; ++iter)
+		    if (qualify_lookup (*iter, LOOK_want::TYPE))
+		      return *iter;
+		}
 	    }
 	}
     }

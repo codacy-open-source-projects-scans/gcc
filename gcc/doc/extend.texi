@@ -1594,7 +1594,7 @@ from @w{@uref{https://www.nongnu.org/avr-libc/user-manual/,AVR-LibC}}
 together with attribute @code{progmem}.
 
 @noindent
-@b{Limitations and caveats}
+@b{Limitations and Caveats}
 
 @itemize
 @item
@@ -1608,6 +1608,8 @@ supports reading across the 64@tie{}KiB flash segment boundaries is
 If you use one of the @code{__flash@var{N}} address spaces
 you must arrange your linker script to locate the
 @code{.progmem@var{N}.data} sections according to your needs.
+For an example, see the
+@w{@uref{https://gcc.gnu.org/wiki/avr-gcc#Address_Spaces,avr-gcc wiki}}
 
 @item
 Any data or pointers to the non-generic address spaces must
@@ -8288,21 +8290,20 @@ at all.
 @item io
 @itemx io (@var{addr})
 Variables with the @code{io} attribute are used to address
-memory-mapped peripherals in the io address range.
+memory-mapped peripherals in the I/O address range.
+No memory is allocated.
 If an address is specified, the variable
 is assigned that address, and the value is interpreted as an
 address in the data address space.
 Example:
 
 @smallexample
-volatile int porta __attribute__((io (0x22)));
+volatile int porta __attribute__((io (__AVR_SFR_OFFSET__ + 0x2)));
 @end smallexample
 
-The address specified in the address in the data address range.
-
-Otherwise, the variable it is not assigned an address, but the
-compiler will still use in/out instructions where applicable,
-assuming some other module assigns an address in the io address range.
+Otherwise, the variable is not assigned an address, but the
+compiler will still use @code{in} and @code{out} instructions where applicable,
+assuming some other module assigns an address in the I/O address range.
 Example:
 
 @smallexample
@@ -8318,13 +8319,27 @@ allowing the use of @code{cbi}, @code{sbi}, @code{sbic} and @code{sbis}
 instructions.
 
 @cindex @code{address} variable attribute, AVR
-@item address
-@itemx address (@var{addr})
-Variables with the @code{address} attribute are used to address
-memory-mapped peripherals that may lie outside the io address range.
+@item address (@var{addr})
+Variables with the @code{address} attribute can be used to address
+memory-mapped peripherals that may lie outside the I/O address range.
+Just like with the @code{io} and @code{io_low} attributes, no memory is
+allocated.
 
 @smallexample
 volatile int porta __attribute__((address (0x600)));
+@end smallexample
+
+This attribute can also be used to define symbols in C/C++
+code which otherwise would require assembly, a linker description file
+or command line options like @code{-Wl,--defsym,a_symbol=@var{value}}.
+For example,
+@smallexample
+int a_symbol __attribute__((weak, address (1234)));
+@end smallexample
+will be compiled to
+@smallexample
+.weak a_symbol
+a_symbol = 1234
 @end smallexample
 
 @cindex @code{absdata} variable attribute, AVR
@@ -16817,19 +16832,27 @@ void __builtin_bfin_ssync (void);
 The following built-in functions are available for eBPF targets.
 
 @defbuiltin{{unsigned long long} __builtin_bpf_load_byte (unsigned long long @var{offset})}
-Load a byte from the @code{struct sk_buff} packet data pointed by the register @code{%r6} and return it.
+Load a byte from the @code{struct sk_buff} packet data pointed to by the
+register @code{%r6}, and return it.
 @enddefbuiltin
 
 @defbuiltin{{unsigned long long} __builtin_bpf_load_half (unsigned long long @var{offset})}
-Load 16 bits from the @code{struct sk_buff} packet data pointed by the register @code{%r6} and return it.
+Load 16 bits from the @code{struct sk_buff} packet data pointed to by the
+register @code{%r6}, and return it.
 @enddefbuiltin
 
 @defbuiltin{{unsigned long long} __builtin_bpf_load_word (unsigned long long @var{offset})}
-Load 32 bits from the @code{struct sk_buff} packet data pointed by the register @code{%r6} and return it.
+Load 32 bits from the @code{struct sk_buff} packet data pointed to by the
+register @code{%r6}, and return it.
 @enddefbuiltin
 
-@defbuiltin{{void *} __builtin_preserve_access_index (@var{expr})}
-BPF Compile Once-Run Everywhere (CO-RE) support. Instruct GCC to generate CO-RE relocation records for any accesses to aggregate data structures (struct, union, array types) in @var{expr}. This builtin is otherwise transparent, the return value is whatever @var{expr} evaluates to. It is also overloaded: @var{expr} may be of any type (not necessarily a pointer), the return type is the same. Has no effect if @code{-mco-re} is not in effect (either specified or implied).
+@defbuiltin{@var{type} __builtin_preserve_access_index (@var{type} @var{expr})}
+BPF Compile Once-Run Everywhere (CO-RE) support.  Instruct GCC to
+generate CO-RE relocation records for any accesses to aggregate
+data structures (struct, union, array types) in @var{expr}.  This builtin
+is otherwise transparent; @var{expr} may have any type and its value is
+returned.  This builtin has no effect if @code{-mco-re} is not in effect
+(either specified or implied).
 @enddefbuiltin
 
 @defbuiltin{{unsigned int} __builtin_preserve_field_info (@var{expr}, unsigned int @var{kind})}
@@ -16931,36 +16954,38 @@ The return value is the enum value in the target kernel.
 
 @defbuiltin{{unsigned int} __builtin_btf_type_id (@var{type}, unsigned int @var{kind})}
 BPF Compile Once-Run Everywhere (CO-RE) support. This builtin is used to get
-the BTF type ID of a specified type. Depending on the @var{kind} argument, it
-will either return the ID of the local BTF information, or the BTF type ID in
+the BTF type ID of a specified @var{type}.
+Depending on the @var{kind} argument, it
+either returns the ID of the local BTF information, or the BTF type ID in
 the target kernel.
 
 The following values are supported for @var{kind}:
 @table @code
 @item BTF_TYPE_ID_LOCAL = 0
-Return the local BTF type ID. Always succeeds.
+Return the local BTF type ID.  Always succeeds.
 
 @item BTF_TYPE_ID_TARGET = 1
-Return the target BTF type ID. If type does not exist in the target, returns 0.
+Return the target BTF type ID.  If @var{type} does not exist in the target,
+returns 0.
 @end table
 @enddefbuiltin
 
 @defbuiltin{{unsigned int} __builtin_preserve_type_info (@var{type}, unsigned int @var{kind})}
 BPF Compile Once-Run Everywhere (CO-RE) support. This builtin performs named
 type (struct/union/enum/typedef) verifications. The type of verification
-dependents on the @var{kind} argument provided.  This builtin will always
-return 0 if type does not exists in the target kernel.
+depends on the @var{kind} argument provided.  This builtin always
+returns 0 if @var{type} does not exist in the target kernel.
 
 The following values are supported for @var{kind}:
 @table @code
 @item BTF_TYPE_EXISTS = 0
-Checks if type exists in the target.
+Checks if @var{type} exists in the target.
 
 @item BTF_TYPE_MATCHES = 1
-Checks if type matches the local definition in the target kernel.
+Checks if @var{type} matches the local definition in the target kernel.
 
 @item BTF_TYPE_SIZE = 2
-Returns the size of the type within the target.
+Returns the size of the @var{type} within the target.
 @end table
 @enddefbuiltin
 
