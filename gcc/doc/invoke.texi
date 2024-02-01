@@ -547,6 +547,7 @@ Objective-C and Objective-C++ Dialects}.
 -falign-jumps[=@var{n}[:@var{m}:[@var{n2}[:@var{m2}]]]]
 -falign-labels[=@var{n}[:@var{m}:[@var{n2}[:@var{m2}]]]]
 -falign-loops[=@var{n}[:@var{m}:[@var{n2}[:@var{m2}]]]]
+-fmin-function-alignment=[@var{n}]
 -fno-allocation-dce -fallow-store-data-races
 -fassociative-math  -fauto-profile  -fauto-profile[=@var{path}]
 -fauto-inc-dec  -fbranch-probabilities
@@ -1138,6 +1139,7 @@ Objective-C and Objective-C++ Dialects}.
 -mcode-readable=@var{setting}
 -msplit-addresses  -mno-split-addresses
 -mexplicit-relocs  -mno-explicit-relocs
+-mexplicit-relocs=@var{release}
 -mcheck-zero-division  -mno-check-zero-division
 -mdivide-traps  -mdivide-breaks
 -mload-store-pairs  -mno-load-store-pairs
@@ -3202,7 +3204,9 @@ the language standard, so @option{-fconcepts} defaults to on.
 Some constructs that were allowed by the earlier C++ Extensions for
 Concepts Technical Specification, ISO 19217 (2015), but didn't make it
 into the standard, can additionally be enabled by
-@option{-fconcepts-ts}.
+@option{-fconcepts-ts}.  The option @option{-fconcepts-ts} was deprecated
+in GCC 14 and may be removed in GCC 15; users are expected to convert
+their code to C++20 concepts.
 
 @opindex fconstexpr-depth
 @item -fconstexpr-depth=@var{n}
@@ -3913,6 +3917,20 @@ auto p = std::minmax(1, 2);
 where @code{std::minmax} returns @code{std::pair<const int&, const int&>}, and
 both references dangle after the end of the full expression that contains
 the call to @code{std::minmax}.
+
+The warning does not warn for @code{std::span}-like classes.  We consider
+classes of the form:
+
+@smallexample
+template<typename T>
+struct Span @{
+  T* data_;
+  std::size len_;
+@};
+@end smallexample
+
+as @code{std::span}-like; that is, the class is a non-union class template
+that has a pointer data member and a trivial destructor.
 
 This warning is enabled by @option{-Wall}.
 
@@ -14233,6 +14251,9 @@ Align the start of functions to the next power-of-two greater than or
 equal to @var{n}, skipping up to @var{m}-1 bytes.  This ensures that at
 least the first @var{m} bytes of the function can be fetched by the CPU
 without crossing an @var{n}-byte alignment boundary.
+This is an optimization of code performance and alignment is ignored for
+functions considered cold.  If alignment is required for all functions,
+use @option{-fmin-function-alignment}.
 
 If @var{m} is not specified, it defaults to @var{n}.
 
@@ -14296,6 +14317,8 @@ Enabled at levels @option{-O2}, @option{-O3}.
 Align loops to a power-of-two boundary.  If the loops are executed
 many times, this makes up for any execution of the dummy padding
 instructions.
+This is an optimization of code performance and alignment is ignored for
+loops considered cold.
 
 If @option{-falign-labels} is greater than this value, then its value
 is used instead.
@@ -14318,6 +14341,8 @@ Enabled at levels @option{-O2}, @option{-O3}.
 Align branch targets to a power-of-two boundary, for branch targets
 where the targets can only be reached by jumping.  In this case,
 no dummy operations need be executed.
+This is an optimization of code performance and alignment is ignored for
+jumps considered cold.
 
 If @option{-falign-labels} is greater than this value, then its value
 is used instead.
@@ -14330,6 +14355,14 @@ If @var{n} is not specified or is zero, use a machine-dependent default.
 The maximum allowed @var{n} option value is 65536.
 
 Enabled at levels @option{-O2}, @option{-O3}.
+
+@opindex fmin-function-alignment=@var{n}
+@item -fmin-function-alignment
+Specify minimal alignment of functions to the next power-of-two greater than or
+equal to @var{n}. Unlike @option{-falign-functions} this alignment is applied
+also to all functions (even those considered cold).  The alignment is also not
+affected by @option{-flimit-function-alignment}
+
 
 @opindex fno-allocation-dce
 @item -fno-allocation-dce
@@ -14427,7 +14460,7 @@ To use the link-time optimizer, @option{-flto} and optimization
 options should be specified at compile time and during the final link.
 It is recommended that you compile all the files participating in the
 same link with the same options and also specify those options at
-link time.  
+link time.
 For example:
 
 @smallexample
@@ -19506,8 +19539,8 @@ for nested functions.
 By default, trampolines are generated on stack.  However, certain platforms
 (such as the Apple M1) do not permit an executable stack.  Compiling with
 @option{-ftrampoline-impl=heap} generate calls to
-@code{__builtin_nested_func_ptr_created} and
-@code{__builtin_nested_func_ptr_deleted} in order to allocate and
+@code{__gcc_nested_func_ptr_created} and
+@code{__gcc_nested_func_ptr_deleted} in order to allocate and
 deallocate trampoline space on the executable heap.  These functions are
 implemented in libgcc, and will only be provided on specific targets:
 x86_64 Darwin, x86_64 and aarch64 Linux.  @emph{PLEASE NOTE}: Heap
@@ -21721,6 +21754,12 @@ Compile for CDNA1 Instinct MI100 series devices (gfx908).
 
 @item gfx90a
 Compile for CDNA2 Instinct MI200 series devices (gfx90a).
+
+@item gfx1030
+Compile for RDNA2 gfx1030 devices (GFX10 series).
+
+@item gfx1100
+Compile for RDNA3 gfx1100 devices (GFX11 series).
 
 @end table
 
@@ -28417,16 +28456,20 @@ Enable (disable) use of the @code{%hi()} and @code{%lo()} assembler
 relocation operators.  This option has been superseded by
 @option{-mexplicit-relocs} but is retained for backwards compatibility.
 
-@opindex mexplicit-relocs
-@opindex mno-explicit-relocs
-@item -mexplicit-relocs
+@opindex mexplicit-relocs=none
+@opindex mexplicit-relocs=base
+@opindex mexplicit-relocs=pcrel
+@item -mexplicit-relocs=none
+@itemx -mexplicit-relocs=base
+@itemx -mexplicit-relocs=pcrel
+@itemx -mexplicit-relocs
 @itemx -mno-explicit-relocs
-Use (do not use) assembler relocation operators when dealing with symbolic
-addresses.  The alternative, selected by @option{-mno-explicit-relocs},
-is to use assembler macros instead.
+These options control whether explicit relocs (such as %gp_rel) are used.
+The default value depends on the version of GAS when GCC itself was built.
 
-@option{-mexplicit-relocs} is the default if GCC was configured
-to use an assembler that supports relocation operators.
+The @code{base} explicit-relocs support introdunced into GAS in 2001.
+The @code{pcrel} explicit-relocs support introdunced into GAS in 2014,
+which supports @code{%pcrel_hi} and @code{%pcrel_lo}.
 
 @opindex mcheck-zero-division
 @opindex mno-check-zero-division

@@ -5256,7 +5256,7 @@ keep_unused_object_arg (tree result, tree obj, tree fn)
 {
   if (result == NULL_TREE
       || result == error_mark_node
-      || TREE_CODE (TREE_TYPE (fn)) == METHOD_TYPE
+      || DECL_OBJECT_MEMBER_FUNCTION_P (fn)
       || !TREE_SIDE_EFFECTS (obj))
     return result;
 
@@ -6828,7 +6828,9 @@ op_is_ordered (tree_code code)
 
 /* Subroutine of build_new_op: Add to CANDIDATES all candidates for the
    operator indicated by CODE/CODE2.  This function calls itself recursively to
-   handle C++20 rewritten comparison operator candidates.
+   handle C++20 rewritten comparison operator candidates.  Returns NULL_TREE
+   upon success, and error_mark_node if something went wrong that prevented
+   us from performing overload resolution (e.g. ambiguous member name lookup).
 
    LOOKUPS, if non-NULL, is the set of pertinent namespace-scope operator
    overloads to consider.  This parameter is used when instantiating a
@@ -7005,11 +7007,16 @@ add_operator_candidates (z_candidate **candidates,
 
       if (rewrite_code)
 	{
+	  tree r;
 	  flags |= LOOKUP_REWRITTEN;
 	  if (rewrite_code != code)
-	    /* Add rewritten candidates in same order.  */
-	    add_operator_candidates (candidates, rewrite_code, ERROR_MARK,
-				     arglist, lookups, flags, complain);
+	    {
+	      /* Add rewritten candidates in same order.  */
+	      r = add_operator_candidates (candidates, rewrite_code, ERROR_MARK,
+					   arglist, lookups, flags, complain);
+	      if (r == error_mark_node)
+		return error_mark_node;
+	    }
 
 	  z_candidate *save_cand = *candidates;
 
@@ -7018,8 +7025,10 @@ add_operator_candidates (z_candidate **candidates,
 	  vec<tree,va_gc> *revlist = make_tree_vector ();
 	  revlist->quick_push ((*arglist)[1]);
 	  revlist->quick_push ((*arglist)[0]);
-	  add_operator_candidates (candidates, rewrite_code, ERROR_MARK,
-				   revlist, lookups, flags, complain);
+	  r = add_operator_candidates (candidates, rewrite_code, ERROR_MARK,
+				       revlist, lookups, flags, complain);
+	  if (r == error_mark_node)
+	    return error_mark_node;
 
 	  /* Release the vec if we didn't add a candidate that uses it.  */
 	  for (z_candidate *c = *candidates; c != save_cand; c = c->next)
@@ -14072,6 +14081,24 @@ reference_like_class_p (tree ctype)
 	      || id_equal (name, "ref_view")))
 	return true;
     }
+
+  /* Avoid warning if CTYPE looks like std::span: it's a class template,
+     has a T* member, and a trivial destructor.  For example,
+
+      template<typename T>
+      struct Span {
+	T* data_;
+	std::size len_;
+      };
+
+     is considered std::span-like.  */
+  if (NON_UNION_CLASS_TYPE_P (ctype)
+      && CLASSTYPE_TEMPLATE_INSTANTIATION (ctype)
+      && TYPE_HAS_TRIVIAL_DESTRUCTOR (ctype))
+    for (tree field = next_aggregate_field (TYPE_FIELDS (ctype));
+	 field; field = next_aggregate_field (DECL_CHAIN (field)))
+      if (TYPE_PTR_P (TREE_TYPE (field)))
+	return true;
 
   /* Some classes, such as std::tuple, have the reference member in its
      (non-direct) base class.  */

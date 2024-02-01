@@ -1,3 +1,19 @@
+2024-01-30  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/std/time/clock/gps/io.cc: Fix expected result in
+	assertion and call test_format() from main.
+
+2024-01-29  François Dumont  <fdumont@gcc.gnu.org>
+
+	* doc/xml/manual/debug_mode.xml: Link against libstdc++exp.a to use
+	_GLIBCXX_DEBUG_BACKTRACE macro.
+
+2024-01-24  Huanghui Nie  <nnnjkk@gmail.com>
+	    Théo Papadopoulo   <papadopoulo@gmail.com>
+
+	* include/bits/hashtable.h (_Hahstable<>::_M_remove_bucket_begin): Remove
+	_M_before_begin check and cleanup implementation.
+
 2024-01-22  Jonathan Wakely  <jwakely@redhat.com>
 
 	* testsuite/std/time/clock/file/io.cc: Fix expected result in
