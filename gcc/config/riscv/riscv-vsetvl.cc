@@ -315,6 +315,48 @@ vsetvl_insn_p (rtx_insn *rinsn)
 	  || INSN_CODE (rinsn) == CODE_FOR_vsetvlsi);
 }
 
+/* Return true if it is the bogus vsetvl_pre instruction:
+
+   (define_insn "@vlmax_avl<mode>"
+     [(set (match_operand:P 0 "register_operand" "=r")
+	(unspec:P [(match_operand:P 1 "const_int_operand" "i")] UNSPEC_VLMAX))]
+     "TARGET_VECTOR"
+     ""
+     [(set_attr "type" "vsetvl_pre")])
+
+   As described above, it's the bogus instruction which doesn't any assembler
+   and should be removed eventually.  It's used for occupying a scalar register
+   for VLMAX avl RVV instruction before register allocation.
+
+   Before RA:
+
+   ...
+   vsetvl_pre (set r136)
+   vadd.vv (use r136 with VLMAX avl)
+   ...
+
+   After RA:
+
+   ...
+   vsetvl_pre (set a5)
+   vadd.vv (use r136 with VLMAX avl)
+   ...
+
+   VSETVL PASS:
+
+   ...
+   vsetvl_pre (set a5) ---> removed.
+   vsetvl a5,zero,...  ---> Inserted.
+   vadd.vv
+   ...
+*/
+static bool
+vsetvl_pre_insn_p (rtx_insn *rinsn)
+{
+  return recog_memoized (rinsn) >= 0
+	 && get_attr_type (rinsn) == TYPE_VSETVL_PRE;
+}
+
 /* Return true if it is vsetvl zero, rs1.  */
 static bool
 vsetvl_discard_result_insn_p (rtx_insn *rinsn)
@@ -2239,9 +2281,8 @@ private:
       }
   }
 
-  void remove_vsetvl_insn (const vsetvl_info &info)
+  void remove_vsetvl_insn (rtx_insn *rinsn)
   {
-    rtx_insn *rinsn = info.get_insn ()->rtl ();
     if (dump_file)
       {
 	fprintf (dump_file, "  Eliminate insn %d:\n", INSN_UID (rinsn));
@@ -2376,6 +2417,7 @@ public:
   void cleaup ();
   void remove_avl_operand ();
   void remove_unused_dest_operand ();
+  void remove_vsetvl_pre_insns ();
 
   void dump (FILE *file, const char *title) const
   {
@@ -3188,7 +3230,7 @@ pre_vsetvl::emit_vsetvl ()
 	  if (curr_info.delete_p ())
 	    {
 	      if (vsetvl_insn_p (insn->rtl ()))
-		remove_vsetvl_insn (curr_info);
+		remove_vsetvl_insn (curr_info.get_insn ()->rtl ());
 	      continue;
 	    }
 	  else if (curr_info.valid_p ())
@@ -3226,7 +3268,7 @@ pre_vsetvl::emit_vsetvl ()
   for (const vsetvl_info &item : m_delete_list)
     {
       gcc_assert (vsetvl_insn_p (item.get_insn ()->rtl ()));
-      remove_vsetvl_insn (item);
+      remove_vsetvl_insn (item.get_insn ()->rtl ());
     }
 
   /* Insert vsetvl info that was not deleted after lift up.  */
@@ -3307,6 +3349,7 @@ pre_vsetvl::cleaup ()
 {
   remove_avl_operand ();
   remove_unused_dest_operand ();
+  remove_vsetvl_pre_insns ();
 }
 
 void
@@ -3371,6 +3414,26 @@ pre_vsetvl::remove_unused_dest_operand ()
 		validate_change_or_fail (rinsn, &PATTERN (rinsn), new_pat,
 					 false);
 	      }
+	}
+}
+
+/* Remove all bogus vsetvl_pre instructions.  */
+void
+pre_vsetvl::remove_vsetvl_pre_insns ()
+{
+  basic_block cfg_bb;
+  rtx_insn *rinsn;
+  FOR_ALL_BB_FN (cfg_bb, cfun)
+    FOR_BB_INSNS (cfg_bb, rinsn)
+      if (NONDEBUG_INSN_P (rinsn) && vsetvl_pre_insn_p (rinsn))
+	{
+	  if (dump_file)
+	    {
+	      fprintf (dump_file, "  Eliminate vsetvl_pre insn %d:\n",
+		       INSN_UID (rinsn));
+	      print_rtl_single (dump_file, rinsn);
+	    }
+	  remove_vsetvl_insn (rinsn);
 	}
 }
 

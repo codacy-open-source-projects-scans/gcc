@@ -7723,12 +7723,15 @@ rpo_elim::eliminate_avail (basic_block bb, tree op)
       if (SSA_NAME_IS_DEFAULT_DEF (valnum))
 	return valnum;
       vn_ssa_aux_t valnum_info = VN_INFO (valnum);
-      /* See above.  */
-      if (!valnum_info->visited)
-	return valnum;
       vn_avail *av = valnum_info->avail;
       if (!av)
-	return NULL_TREE;
+	{
+	  /* See above.  But when there's availability info prefer
+	     what we recorded there for example to preserve LC SSA.  */
+	  if (!valnum_info->visited)
+	    return valnum;
+	  return NULL_TREE;
+	}
       if (av->location == bb->index)
 	/* On tramp3d 90% of the cases are here.  */
 	return ssa_name (av->leader);
@@ -7773,6 +7776,11 @@ rpo_elim::eliminate_avail (basic_block bb, tree op)
 	  av = av->next;
 	}
       while (av);
+      /* While we prefer avail we have to fallback to using the value
+	 directly if defined outside of the region when none of the
+	 available defs suit.  */
+      if (!valnum_info->visited)
+	return valnum;
     }
   else if (valnum != VN_TOP)
     /* valnum is is_gimple_min_invariant.  */
