@@ -5534,7 +5534,7 @@ foreach { armfunc armflag armdefs } {
 	v8m_main "-march=armv8-m.main+fp -mthumb" __ARM_ARCH_8M_MAIN__
 	v8_1m_main "-march=armv8.1-m.main+fp -mthumb" __ARM_ARCH_8M_MAIN__
 	v8_1m_main_pacbti "-march=armv8.1-m.main+pacbti+fp -mthumb"
-		"__ARM_ARCH_8M_MAIN__ && __ARM_FEATURE_BTI"
+		"__ARM_ARCH_8M_MAIN__ && __ARM_FEATURE_BTI && __ARM_FEATURE_PAUTH"
 	v9a "-march=armv9-a+simd" __ARM_ARCH_9A__ } {
     eval [string map [list FUNC $armfunc FLAG $armflag DEFS $armdefs ] {
 	proc check_effective_target_arm_arch_FUNC_ok { } {
@@ -13476,4 +13476,16 @@ proc dg-require-python-h { args } {
     verbose "Before appending, extra-tool-flags: ${extra-tool-flags}" 3
     eval lappend extra-tool-flags $python_flags
     verbose "After appending, extra-tool-flags: ${extra-tool-flags}" 3
+}
+
+# Return 1 if the target supports heap-trampoline, 0 otherwise.
+proc check_effective_target_heap_trampoline {} {
+    if { [istarget aarch64*-*-linux*]
+	 || [istarget i?86-*-darwin*]
+	 || [istarget x86_64-*-darwin*]
+	 || [istarget i?86-*-linux*]
+	 || [istarget x86_64-*-linux*] } {
+	return 1
+    }
+    return 0
 }
