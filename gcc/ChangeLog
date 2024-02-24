@@ -1,3 +1,573 @@
+2024-02-23  Robin Dapp  <rdapp@ventanamicro.com>
+
+	PR target/114028
+	* config/riscv/riscv-v.cc (rvv_builder::can_duplicate_repeating_sequence_p):
+	Return false if inner mode is already Pmode.
+	(rvv_builder::is_all_same_sequence): New function.
+	(expand_vec_init): Emit broadcast if sequence is all same.
+
+2024-02-23  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR target/113613
+	* config/aarch64/aarch64-early-ra.cc
+	(early_ra::m_current_region): New member variable.
+	(early_ra::m_fpr_recency): Likewise.
+	(early_ra::start_new_region): Bump m_current_region.
+	(early_ra::allocate_colors): Prefer less recently used registers
+	in the event of a tie.  Add a comment to explain why we prefer(ed)
+	higher-numbered registers.
+	(early_ra::find_oldest_color): Prefer less recently used registers
+	here too.
+	(early_ra::finalize_allocation): Update recency information for
+	allocated registers.
+	(early_ra::process_blocks): Initialize m_current_region and
+	m_fpr_recency.
+
+2024-02-23  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR target/113295
+	* config/aarch64/aarch64-early-ra.cc
+	(early_ra::test_strictness): New enum.
+	(early_ra::is_chain_candidate): Add a strictness parameter to
+	control whether only correctness matters, or whether both correctness
+	and heuristics should be used.  Handle multiple levels of equivalence.
+	(early_ra::find_related_start): Update call accordingly.
+	(early_ra::strided_polarity_pref): Likewise.
+	(early_ra::form_chains): Likewise.
+	(early_ra::try_to_chain_allocnos): Use is_chain_candidate in
+	correctness mode rather than trying to inline the test.
+
+2024-02-23  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR target/113295
+	* config/aarch64/aarch64-early-ra.cc
+	(early_ra::find_related_start): Account for definitions by shared
+	registers when testing for a single register definition.
+	(early_ra::accumulate_defs): New function.
+	(early_ra::record_copy): If A shares B's register, fold A's
+	definition information into B's.  Fold A's use information into B's.
+
+2024-02-23  H.J. Lu  <hjl.tools@gmail.com>
+
+	* configure.ac (HAVE_AS_R_X86_64_CODE_6_GOTTPOFF): Defined as 1
+	if R_X86_64_CODE_6_GOTTPOFF is supported.
+	* config.in: Regenerated.
+	* configure: Likewise.
+	* config/i386/predicates.md (apx_ndd_add_memory_operand): Allow
+	UNSPEC_GOTNTPOFF if R_X86_64_CODE_6_GOTTPOFF is supported.
+
+2024-02-23  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR target/108120
+	* config/arm/neon.md (div<VCVTF:mode>3): Rename from div<mode>3.
+	Gate with ARM_HAVE_NEON_<MODE>_ARITH.
+
+2024-02-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/114054
+	* expr.cc (expand_expr_real_2) <case MULT_EXPR>: Use
+	temp variable instead of target parameter for result.
+
+2024-02-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/114040
+	* gimple-lower-bitint.cc (bitint_large_huge::lower_addsub_overflow):
+	Use EQ_EXPR rather than LT_EXPR for g2 condition and change its
+	probability from likely to unlikely.  When handling the true true
+	store, first cast to limb_access_type and then to l's type.
+
+2024-02-23  Richard Biener  <rguenther@suse.de>
+
+	PR target/90785
+	* config.gcc: Add ia64*-*-* to the list of obsoleted targets.
+
+2024-02-23  Palmer Dabbelt  <palmer@rivosinc.com>
+
+	PR other/109668
+	* config/riscv/arch-canonicalize: Move to python3
+	* config/riscv/multilib-generator: Likewise
+
+2024-02-23  Palmer Dabbelt  <palmer@rivosinc.com>
+
+	* doc/invoke.texi: Document -mcpu.
+
+2024-02-23  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* configure: Regenerate.
+	* configure.ac: Add parameter "--fatal-warnings" to assemble
+	when checking whether the assemble support conditional branch
+	relaxation.
+
+2024-02-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/114007
+	* doc/extend.texi: (__extension__): Remove comments about scope
+	tokens vs. two colons.
+
+2024-02-22  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR tree-optimization/109804
+	* gimple-ssa-warn-access.cc (new_delete_mismatch_p): Handle
+	DEMANGLE_COMPONENT_UNNAMED_TYPE.
+
+2024-02-22  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/114048
+	* tree-ssa-sccvn.cc (copy_reference_ops_from_ref): MEM_REF
+	can also produce -1 off.
+
+2024-02-22  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/114027
+	* tree-vect-loop.cc (vecctorizable_reduction): Use optimized
+	condition reduction classification only for single-element
+	chains.
+
+2024-02-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR ipa/111960
+	* profile-count.h (profile_count::dump): Remove overload with
+	char * first argument.
+	* profile-count.cc (profile_count::dump): Change overload with char *
+	first argument which uses sprintf into the overfload with FILE *
+	first argument and use fprintf instead.  Remove overload which wrapped
+	it.
+
+2024-02-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/113993
+	* tree-call-cdce.cc (get_no_error_domain): Handle
+	BUILT_IN_{COSH,SINH,EXP{,M1,2}}{F32X,F64X}.  Handle
+	BUILT_IN_{COSH,SINH,EXP{,M1,2}}L for
+	REAL_MODE_FORMAT (TYPE_MODE (long_double_type_node))->emax == 16384
+	the as the F128 suffixed cases, otherwise as non-suffixed ones.
+	Handle BUILT_IN_{EXP,POW}10L for
+	REAL_MODE_FORMAT (TYPE_MODE (long_double_type_node))->emax == 16384
+	as (-inf, 4932).
+
+2024-02-22  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/114038
+	* gimple-lower-bitint.cc (bitint_large_huge::lower_mul_overflow): Fix
+	loop exit condition if end is divisible by limb_prec.
+
+2024-02-22  YunQiang Su  <syq@gcc.gnu.org>
+
+	* doc/invoke.texi(MIPS Options): Fix skipping UrlSuffix
+	problem of mabi=, mno-flush-func, mexplicit-relocs;
+	add missing leading - of mbranch-cost option.
+	* config/mips/mips.opt.urls: Regenerate.
+
+2024-02-22  Kewen Lin  <linkw@linux.ibm.com>
+
+	PR target/109987
+	* config/rs6000/constraints.md (we): Update internal doc without
+	referring to option -mpower9-vector.
+	* config/rs6000/driver-rs6000.cc (asm_names): Remove mpower9-vector
+	special handlings.
+	* config/rs6000/rs6000-cpus.def (OTHER_P9_VECTOR_MASKS,
+	OTHER_P8_VECTOR_MASKS): Merge to ...
+	(OTHER_VSX_VECTOR_MASKS): ... here.
+	* config/rs6000/rs6000.cc (rs6000_option_override_internal): Remove
+	some error message handlings and explicit option mask adjustments on
+	explicit option power{8,9}-vector conflicting with other options.
+	(rs6000_print_isa_options): Update comments.
+	(rs6000_disable_incompatible_switches): Remove power{8,9}-vector
+	related array items and handlings.
+	* config/rs6000/rs6000.h (ASM_CPU_SPEC): Remove mpower9-vector
+	special handlings.
+	* config/rs6000/rs6000.opt: Make option power{8,9}-vector as
+	WarnRemoved.
+	* doc/extend.texi: Remove documentation referring to option
+	-mpower8-vector.
+	* doc/invoke.texi: Remove documentation for option
+	-mpower{8,9}-vector and adjust some documentation referring to them.
+	* doc/md.texi: Update documentation for constraint we.
+	* doc/sourcebuild.texi: Remove documentation for powerpc_p8vector_ok.
+
+2024-02-22  Pan Li  <pan2.li@intel.com>
+
+	PR target/114017
+	* config/riscv/riscv-c.cc (riscv_cpu_cpp_builtins): Upgrade
+	the version to 0.12.
+
+2024-02-21  Edwin Lu  <ewlu@rivosinc.com>
+
+	* config/riscv/riscv.cc (riscv_sched_variable_issue): Enable assert
+
+2024-02-21  Edwin Lu  <ewlu@rivosinc.com>
+	    Robin Dapp  <rdapp.gcc@gmail.com>
+
+	* config/riscv/generic-ooo.md (generic_ooo): Move reservation
+	(generic_ooo_vec_load): Ditto
+	(generic_ooo_vec_store): Ditto
+	(generic_ooo_vec_loadstore_seg): Ditto
+	(generic_ooo_vec_alu): Ditto
+	(generic_ooo_vec_fcmp): Ditto
+	(generic_ooo_vec_imul): Ditto
+	(generic_ooo_vec_fadd): Ditto
+	(generic_ooo_vec_fmul): Ditto
+	(generic_ooo_crypto): Ditto
+	(generic_ooo_perm): Ditto
+	(generic_ooo_vec_reduction): Ditto
+	(generic_ooo_vec_ordered_reduction): Ditto
+	(generic_ooo_vec_idiv): Ditto
+	(generic_ooo_vec_float_divsqrt): Ditto
+	(generic_ooo_vec_mask): Ditto
+	(generic_ooo_vec_vesetvl): Ditto
+	(generic_ooo_vec_setrm): Ditto
+	(generic_ooo_vec_readlen): Ditto
+	* config/riscv/riscv.md: Include generic-vector-ooo
+	* config/riscv/generic-vector-ooo.md: New file. To here
+
+2024-02-21  Edwin Lu  <ewlu@rivosinc.com>
+
+	* config/riscv/generic-ooo.md (generic_ooo_sfb_alu): Add reservation
+	(generic_ooo_branch): Ditto
+	* config/riscv/generic.md (generic_sfb_alu): Ditto
+	(generic_fmul_half): Ditto
+	* config/riscv/riscv.md: Remove cbo, pushpop, and rdfrm types
+	* config/riscv/sifive-7.md (sifive_7_hfma): Add reservation
+	(sifive_7_popcount): Ditto
+	* config/riscv/sifive-p400.md (sifive_p400_clmul): Ditto
+	* config/riscv/sifive-p600.md (sifive_p600_clmul): Ditto
+	* config/riscv/vector.md: Change rdfrm to fmove
+	* config/riscv/zc.md: Change pushpop to load/store
+
+2024-02-21  Jonathan Wakely  <jwakely@redhat.com>
+
+	* doc/invoke.texi (Warning Options): Fix typos.
+
+2024-02-21  David Faust  <david.faust@oracle.com>
+
+	* config/bpf/bpf-protos.h (bpf_expand_cpymem): New.
+	* config/bpf/bpf.cc: (emit_move_loop, bpf_expand_cpymem): New.
+	* config/bpf/bpf.md: (cpymemdi, movmemdi): New define_expands.
+
+2024-02-21  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/113476
+	* ipa-prop.h (ipa_node_params): Convert lattices to a vector, adjust
+	initializers in the contructor.
+	(ipa_node_params::~ipa_node_params): Release lattices as a vector.
+	* ipa-cp.h: New file.
+	* ipa-cp.cc: Include sreal.h and ipa-cp.h.
+	(ipcp_value_source): Move to ipa-cp.h.
+	(ipcp_value_base): Likewise.
+	(ipcp_value): Likewise.
+	(ipcp_lattice): Likewise.
+	(ipcp_agg_lattice): Likewise.
+	(ipcp_bits_lattice): Likewise.
+	(ipcp_vr_lattice): Likewise.
+	(ipcp_param_lattices): Likewise.
+	(ipa_get_parm_lattices): Remove assert latticess is non-NULL.
+	(ipa_value_from_jfunc): Adjust a check for empty lattices.
+	(ipa_context_from_jfunc): Likewise.
+	(ipa_agg_value_from_jfunc): Likewise.
+	(merge_agg_lats_step): Do not memset new aggregate lattices to zero.
+	(ipcp_propagate_stage): Allocate lattices in a vector as opposed to
+	just in contiguous memory.
+	(ipcp_store_vr_results): Adjust a check for empty lattices.
+	* auto-profile.cc: Include sreal.h and ipa-cp.h.
+	* cgraph.cc: Likewise.
+	* cgraphclones.cc: Likewise.
+	* cgraphunit.cc: Likewise.
+	* config/aarch64/aarch64.cc: Likewise.
+	* config/i386/i386-builtins.cc: Likewise.
+	* config/i386/i386-expand.cc: Likewise.
+	* config/i386/i386-features.cc: Likewise.
+	* config/i386/i386-options.cc: Likewise.
+	* config/i386/i386.cc: Likewise.
+	* config/rs6000/rs6000.cc: Likewise.
+	* config/s390/s390.cc: Likewise.
+	* gengtype.cc (open_base_files): Added sreal.h and ipa-cp.h to the
+	files to be included in gtype-desc.cc.
+	* gimple-range-fold.cc: Include sreal.h and ipa-cp.h.
+	* ipa-devirt.cc: Likewise.
+	* ipa-fnsummary.cc: Likewise.
+	* ipa-icf.cc: Likewise.
+	* ipa-inline-analysis.cc: Likewise.
+	* ipa-inline-transform.cc: Likewise.
+	* ipa-inline.cc: Include ipa-cp.h, move inclusion of sreal.h higher.
+	* ipa-modref.cc: Include sreal.h and ipa-cp.h.
+	* ipa-param-manipulation.cc: Likewise.
+	* ipa-predicate.cc: Likewise.
+	* ipa-profile.cc: Likewise.
+	* ipa-prop.cc: Likewise.
+	(ipa_node_params_t::duplicate): Assert new lattices remain empty
+	instead of setting them to NULL.
+	* ipa-pure-const.cc: Include sreal.h and ipa-cp.h.
+	* ipa-split.cc: Likewise.
+	* ipa-sra.cc: Likewise.
+	* ipa-strub.cc: Likewise.
+	* ipa-utils.cc: Likewise.
+	* ipa.cc: Likewise.
+	* toplev.cc: Likewise.
+	* tree-ssa-ccp.cc: Likewise.
+	* tree-ssa-sccvn.cc: Likewise.
+	* tree-vrp.cc: Likewise.
+
+2024-02-21  Tamar Christina  <tamar.christina@arm.com>
+
+	* config/aarch64/aarch64-arches.def (AARCH64_ARCH): Remove LS64 from
+	Armv8.7-a.
+
+2024-02-21  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64.cc (aarch64_mode_emit_local_sme_state):
+	Use aarch64_gen_compare_zero_and_branch rather than emitting
+	a CBZ directly.
+
+2024-02-21  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64.cc (aarch64_option_valid_attribute_p):
+	Remove duplicated call.
+
+2024-02-21  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64.cc (aarch64_function_ok_for_sibcall):
+	Check that each individual piece of state is shared in the same
+	way, rather than using an aggregate check for PSTATE.ZA.
+
+2024-02-21  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64.cc (aarch64_mode_emit_local_sme_state):
+	In the code that commits a lazy save, only zero ZA if the function
+	has ZA state.  Similarly zero ZT0 if the function has ZT0 state.
+
+2024-02-21  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* config/aarch64/aarch64-sme.md (aarch64_commit_lazy_save): Remove,
+	directly inserting the associated sequence
+	* config/aarch64/aarch64.cc (aarch64_mode_emit_local_sme_state):
+	...here instead.
+
+2024-02-21  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR target/113995
+	* config/aarch64/aarch64.cc (aarch64_expand_prologue): Don't
+	fold the SVE allocation into the initial allocation if the
+	initial allocation includes a VG save.
+
+2024-02-21  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR target/113220
+	* cfgrtl.cc (commit_one_edge_insertion): Handle sequences that
+	contain jumps even if called after initial RTL expansion.
+	* mode-switching.cc: Include cfgbuild.h.
+	(optimize_mode_switching): Allow the sequence returned by the
+	emit hook to contain internal jumps.  Record which blocks
+	contain such jumps and split the blocks at the end.
+	* config/aarch64/aarch64.cc (aarch64_mode_emit): Check for
+	non-debug insns when scanning the sequence.
+
+2024-02-21  Tobias Burnus  <tburnus@baylibre.com>
+
+	* config/nvptx/gen-omp-device-properties.sh: Add 'nvptx64' to arch.
+	* config/nvptx/nvptx.cc (nvptx_omp_device_kind_arch_isa): Likewise.
+
+2024-02-21  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	* doc/invoke.texi (-mmcu): Add information about MCU specs.
+
+2024-02-21  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	* doc/invoke.texi (-minrt): Clarify that main
+	must take no arguments.
+
+2024-02-20  Georg-Johann Lay  <avr@gjlay.de>
+
+	* config/avr/builtins.def: Use function prototypes of given size
+	and signedness.
+	* config/avr/avr.cc (avr_init_builtins): Adjust types required
+	by builtins.def.
+	* doc/extend.texi (AVR Built-in Functions): Adjust accordingly.
+
+2024-02-20  Georg-Johann Lay  <avr@gjlay.de>
+
+	* doc/extend.texi (AVR Built-in Functions): Use @defbuiltin
+	instead of @table.
+
+2024-02-20  Will Hawkins  <hawkinsw@obs.cr>
+
+	* config/bpf/bpf.opt: Add help information for -mcpu.
+
+2024-02-20  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR target/113805
+	* config/aarch64/aarch64-passes.def (pass_late_track_speculation):
+	New pass.
+	* config/aarch64/aarch64-protos.h (make_pass_late_track_speculation):
+	Declare.
+	* config/aarch64/aarch64.md (is_call): New attribute.
+	(*and<mode>3nr_compare0): Rename to...
+	(@aarch64_and<mode>3nr_compare0): ...this.
+	* config/aarch64/aarch64-sme.md (aarch64_get_sme_state)
+	(aarch64_tpidr2_save, aarch64_tpidr2_restore): Add is_call attributes.
+	* config/aarch64/aarch64-speculation.cc: Update file comment to
+	describe the new late pass.
+	(aarch64_do_track_speculation): Handle is_call insns like other calls.
+	(pass_track_speculation): Add an is_late member variable.
+	(pass_track_speculation::gate): Run the late pass for streaming-
+	compatible functions and the early pass for other functions.
+	(make_pass_track_speculation): Update accordingly.
+	(make_pass_late_track_speculation): New function.
+	* config/aarch64/aarch64.cc (aarch64_gen_test_and_branch): New
+	function.
+	(aarch64_guard_switch_pstate_sm): Use it.
+
+2024-02-19  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* config/aarch64/aarch64-builtins.cc (aarch64_init_rng_builtins):
+	Register these builtins with a pointer to uint64_t rather than unsigned
+	DI mode.
+
+2024-02-19  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	PR target/113615
+	* config/gcn/gcn-valu.md (define_expand "reduc_<fexpander>_scal_<mode>"):
+	Conditionalize on '!TARGET_RDNA2_PLUS'.
+	* config/gcn/gcn.cc (gcn_expand_dpp_shr_insn)
+	(gcn_expand_reduc_scalar):
+	'gcc_checking_assert (!TARGET_RDNA2_PLUS);'.
+
+2024-02-19  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	* config/gcn/gcn.h (TARGET_CPU_CPP_BUILTINS): Restore lost
+	'__gfx90a__' target CPU definition.  Add some safeguards for the future.
+
+2024-02-19  Richard Biener  <rguenther@suse.de>
+
+	PR rtl-optimization/54052
+	* rtl-ssa/blocks.cc (function_info::place_phis): Filter
+	local defs by LR_OUT.
+
+2024-02-19  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/113967
+	* match.pd (bit_insert @0 (BIT_FIELD_REF @1 ..) ..): Require
+	in condition that @rpos is multiple of vector element size.
+
+2024-02-19  Juzhe-Zhong  <juzhe.zhong@rivai.ai>
+
+	PR target/113696
+	* config/riscv/riscv-vsetvl.cc (pre_vsetvl::earliest_fuse_vsetvl_info):
+	Suppress vsetvl fusion.
+
+2024-02-18  H.J. Lu  <hjl.tools@gmail.com>
+
+	PR target/113912
+	* config/i386/i386.cc (ix86_can_use_push2pop2): New.
+	(ix86_pro_and_epilogue_can_use_push2pop2): Use it.
+	(ix86_emit_save_regs): Don't generate push2 if
+	ix86_can_use_push2pop2 return false.
+	(ix86_expand_epilogue): Don't generate pop2 if
+	ix86_can_use_push2pop2 return false.
+
+2024-02-18  Georg-Johann Lay  <avr@gjlay.de>
+
+	* doc/invoke.texi (AVR Options) <-mmcu>: Remove "Atmel".
+	Note on complete device support.
+
+2024-02-18  Georg-Johann Lay  <avr@gjlay.de>
+
+	* doc/extend.texi (AVR Function Attributes): Fuse description
+	of "signal" and "interrupt" attribute.  Link pseudo instruction.
+
+2024-02-18  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/larchintrin.h (__movgr2fcsr): Remove redundant
+	symbol type conversions.
+	(__cacop_d): Likewise.
+	(__cpucfg): Likewise.
+	(__asrtle_d): Likewise.
+	(__asrtgt_d): Likewise.
+	(__lddir_d): Likewise.
+	(__ldpte_d): Likewise.
+	(__crc_w_b_w): Likewise.
+	(__crc_w_h_w): Likewise.
+	(__crc_w_w_w): Likewise.
+	(__crc_w_d_w): Likewise.
+	(__crcc_w_b_w): Likewise.
+	(__crcc_w_h_w): Likewise.
+	(__crcc_w_w_w): Likewise.
+	(__crcc_w_d_w): Likewise.
+	(__csrrd_w): Likewise.
+	(__csrwr_w): Likewise.
+	(__csrxchg_w): Likewise.
+	(__csrrd_d): Likewise.
+	(__csrwr_d): Likewise.
+	(__csrxchg_d): Likewise.
+	(__iocsrrd_b): Likewise.
+	(__iocsrrd_h): Likewise.
+	(__iocsrrd_w): Likewise.
+	(__iocsrrd_d): Likewise.
+	(__iocsrwr_b): Likewise.
+	(__iocsrwr_h): Likewise.
+	(__iocsrwr_w): Likewise.
+	(__iocsrwr_d): Likewise.
+	(__frecipe_s): Likewise.
+	(__frecipe_d): Likewise.
+	(__frsqrte_s): Likewise.
+	(__frsqrte_d): Likewise.
+
+2024-02-18  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/larchintrin.h (__iocsrrd_h): Modify the
+	function return value type to unsigned short.
+
+2024-02-16  Edwin Lu  <ewlu@rivosinc.com>
+
+	* doc/sourcebuild.texi: add scan-assembler-bound
+
+2024-02-16  Jason Merrill  <jason@redhat.com>
+
+	* gdbhooks.py: Fix regex syntax.
+
+2024-02-16  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/113895
+	* tree-ssa-sccvn.cc (copy_reference_ops_from_ref): Disable
+	consistency checking when there are out-of-bound array
+	accesses.  Allow -1 off when from an array reference with
+	constant index.
+
+2024-02-16  Kito Cheng  <kito.cheng@sifive.com>
+
+	PR target/106543
+	* config/riscv/riscv.md (*sge<u>_<X:mode><GPR:mode>): Fix asm
+	pattern.
+
+2024-02-16  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* doc/sourcebuild.texi (Effective-Target Keywords, Other
+	attribugs): Document linker_plugin.
+	(Require Support): Document dg-require-linker-plugin.
+
+2024-02-16  Kito Cheng  <kito.cheng@sifive.com>
+
+	PR target/109349
+	* common/config/riscv/riscv-common.cc (riscv_arch_help): New.
+	* config/riscv/riscv-protos.h (RISCV_MAJOR_VERSION_BASE): New.
+	(RISCV_MINOR_VERSION_BASE): Ditto.
+	(RISCV_REVISION_VERSION_BASE): Ditto.
+	* config/riscv/riscv-c.cc (riscv_ext_version_value): Use enum
+	rather than magic number.
+	* config/riscv/riscv.h (riscv_arch_help): New.
+	(EXTRA_SPEC_FUNCTIONS): Add riscv_arch_help.
+	(DRIVER_SELF_SPECS): Handle -march=help, -print-supported-extensions and
+	--print-supported-extensions.
+	* config/riscv/riscv.opt (march=help): New.
+	(print-supported-extensions): New.
+	(-print-supported-extensions): New.
+	* doc/invoke.texi (RISC-V Options): Document -march=help.
+
+2024-02-16  Tejas Belagod  <tejas.belagod@arm.com>
+
+	PR target/113780
+	* config/arm/arm.cc (arm_function_ok_for_sibcall): Don't allow tailcalls
+	for indirect calls with 4 or more arguments in pac-enabled functions.
+
 2024-02-15  David Faust  <david.faust@oracle.com>
 
 	* config/bpf/bpf.md (zero_extendqidi2): Correct asm template to
