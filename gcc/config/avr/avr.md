@@ -51,22 +51,33 @@
 ;;  ~  Output 'r' if not AVR_HAVE_JMP_CALL.
 ;;  !  Output 'e' if AVR_HAVE_EIJMP_EICALL.
 
-
+;; Used in avr.cc to avoid magic numbers for register numbers.
 (define_constants
-  [(REG_X       26)
-   (REG_Y       28)
-   (REG_Z       30)
-   (REG_W       24)
-   (REG_SP      32)
-   (REG_CC      36)
-   (LPM_REGNO   0)      ; implicit target register of LPM
-   (TMP_REGNO   0)      ; temporary register r0
-   (ZERO_REGNO  1)      ; zero register r1
+  [(REG_0   0)   (REG_1   1)   (REG_2   2)
+   (REG_8   8)   (REG_9   9)   (REG_10 10)   (REG_11 11)
+   (REG_12 12)   (REG_13 13)   (REG_14 14)   (REG_15 15)
+   (REG_16 16)   (REG_17 17)   (REG_18 18)   (REG_19 19)
+   (REG_20 20)   (REG_21 21)   (REG_22 22)   (REG_23 23)
+   (REG_24 24)   (REG_25 25)   (REG_26 26)   (REG_27 27)
+   (REG_28 28)   (REG_29 29)   (REG_30 30)   (REG_31 31)
+   (REG_32 32)   (REG_36 36)
    ])
 
 (define_constants
-  [(TMP_REGNO_TINY  16) ; r16 is temp register for AVR_TINY
-   (ZERO_REGNO_TINY 17) ; r17 is zero register for AVR_TINY
+  [(REG_X       REG_26)
+   (REG_Y       REG_28)
+   (REG_Z       REG_30)
+   (REG_W       REG_24)
+   (REG_SP      REG_32)
+   (REG_CC      REG_36)
+   (LPM_REGNO   REG_0)      ; implicit target register of LPM
+   (TMP_REGNO   REG_0)      ; temporary register r0
+   (ZERO_REGNO  REG_1)      ; zero register r1
+   ])
+
+(define_constants
+  [(TMP_REGNO_TINY  REG_16) ; r16 is temp register for AVR_TINY
+   (ZERO_REGNO_TINY REG_17) ; r17 is zero register for AVR_TINY
   ])
 
 (define_c_enum "unspec"
@@ -955,6 +966,30 @@
     operands[3] = addr;
     operands[4] = gen_int_mode (-GET_MODE_SIZE (<MODE>mode), HImode);
   })
+
+
+;; Legitimate address and stuff allows way more addressing modes than
+;; Reduced Tiny actually supports.  Split them now so that we get
+;; closer to real instructions which may result in some optimization
+;; opportunities.
+(define_split
+  [(parallel [(set (match_operand:MOVMODE 0 "nonimmediate_operand")
+                   (match_operand:MOVMODE 1 "general_operand"))
+              (clobber (reg:CC REG_CC))])]
+  "AVR_TINY
+   && reload_completed
+   && avr_fuse_add > 0
+   // Only split this for .split2 when we are before
+   // pass .avr-fuse-add (which runs after proep).
+   && ! epilogue_completed
+   && (MEM_P (operands[0]) || MEM_P (operands[1]))"
+  [(scratch)]
+  {
+    if (avr_split_tiny_move (curr_insn, operands))
+      DONE;
+    FAIL;
+  })
+
 
 ;;==========================================================================
 ;; xpointer move (24 bit)
@@ -6703,6 +6738,11 @@
                    (compare:CC (match_operand:HISI 0 "register_operand")
                                (match_operand:HISI 1 "const_int_operand")))
               (clobber (match_operand:QI 2 "scratch_operand"))])])
+
+(define_expand "gen_move_clobbercc"
+  [(parallel [(set (match_operand 0)
+                   (match_operand 1))
+              (clobber (reg:CC REG_CC))])])
 
 ;; ----------------------------------------------------------------------
 ;; JUMP INSTRUCTIONS

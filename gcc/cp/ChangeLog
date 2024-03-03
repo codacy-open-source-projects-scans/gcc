@@ -1,3 +1,106 @@
+2024-03-01  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/104919
+	PR c++/106009
+	* module.cc (depset::hash::sneakoscope): Remove.
+	(trees_out::decl_node): Always add a dependency on a local type.
+	(depset::hash::find_dependencies): Remove sneakoscope stuff.
+
+2024-03-01  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/114170
+	* module.cc (has_definition): Fall back to DECL_INITIALIZED_P
+	when DECL_INITIAL is not set on a template.
+	(module_state::write_inits): Only increment count when
+	initializers are actually written.
+
+2024-03-01  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/114005
+	* init.cc (create_temporary_var): Use current_scope instead of
+	current_function_decl.
+
+2024-03-01  Patrick Palka  <ppalka@redhat.com>
+
+	* decl.cc (maybe_register_incomplete_var): Restrict second
+	branch to static data members from a not-yet-complete class.
+
+2024-03-01  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/110358
+	PR c++/109642
+	* call.cc (no_dangling_p): New.
+	(reference_like_class_p): Use it.
+	(do_warn_dangling_reference): Use it.  Don't warn when the function
+	or its enclosing class has attribute gnu::no_dangling.
+	* tree.cc (cxx_gnu_attributes): Add gnu::no_dangling.
+	(handle_no_dangling_attribute): New.
+
+2024-03-01  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/110025
+	PR c++/114138
+	* cp-tree.h (make_cast_auto): Declare.
+	* parser.cc (cp_parser_functional_cast): If the type is an auto,
+	replace it with a level-less one via make_cast_auto.
+	* pt.cc (find_parameter_packs_r): Don't treat level-less auto
+	as a type parameter pack.
+	(tsubst) <case TEMPLATE_TYPE_PARM>: Generalize CTAD placeholder
+	auto handling to all level-less autos.
+	(make_cast_auto): Define.
+	(do_auto_deduction): Handle replacement of a level-less auto.
+
+2024-03-01  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/92687
+	* decl.cc (lookup_decomp_type): Return NULL_TREE if decomp_type_table
+	doesn't have entry for V.
+	* semantics.cc (finish_decltype_type): If ptds.saved, assert
+	DECL_HAS_VALUE_EXPR_P is true and decide on tuple vs. non-tuple based
+	on if lookup_decomp_type is NULL or not.
+
+2024-02-29  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/113987
+	* call.cc (conv_binds_to_reference_parm_p): New.
+	* cp-tree.h (conv_binds_to_reference_parm_p): Declare.
+	* init.cc (find_uninit_fields_r): Call it.
+
+2024-02-29  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/111710
+	* cp-tree.h (DECL_MODULE_KEYED_DECLS_P): Remove tree checking.
+	(struct lang_decl_base): Update comments and fix whitespace.
+	* module.cc (trees_out::lang_decl_bools): Always write
+	module_keyed_decls_p flag...
+	(trees_in::lang_decl_bools): ...and always read it.
+	(trees_out::decl_value): Handle all kinds of keyed decls.
+	(trees_in::decl_value): Likewise.
+	(trees_in::tree_value): Deduplicate LAMBDA_EXPRs.
+	(maybe_key_decl): Also support lambdas attached to fields,
+	parameters, and types. Key lambdas attached to fields to their
+	class.
+	(trees_out::get_merge_kind): Likewise.
+	(trees_out::key_mergeable): Likewise.
+	(trees_in::key_mergeable): Support keyed decls in a TYPE_DECL
+	container.
+	* parser.cc (cp_parser_class_head): Start a lambda scope when
+	parsing base classes.
+
+2024-02-28  Jakub Jelinek  <jakub@redhat.com>
+	    Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/113976
+	* decl.cc (grokdeclarator): Don't call cp_apply_type_quals_to_decl
+	on DECL_TEMPLATE_INSTANTIATED VAR_DECLs.
+
+2024-02-28  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/113970
+	PR c++/114013
+	* decl.cc (make_rtl_for_nonlocal_decl): Don't defer inline
+	variables.
+
 2024-02-23  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/113083

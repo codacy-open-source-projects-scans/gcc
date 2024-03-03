@@ -1,3 +1,31 @@
+2024-03-01  Jakub Jelinek  <jakub@redhat.com>
+	    Tobias Burnus  <tburnus@baylibre.com>
+
+	PR c++/110347
+	* testsuite/libgomp.c++/target-lambda-3.C: Moved from
+	gcc/testsuite/g++.dg/gomp/ and fixed is-mapped handling.
+	* testsuite/libgomp.c++/target-lambda-1.C: Modify to also
+	also work without offloading.
+	* testsuite/libgomp.c++/firstprivate-1.C: New test.
+	* testsuite/libgomp.c++/firstprivate-2.C: New test.
+	* testsuite/libgomp.c++/private-1.C: New test.
+	* testsuite/libgomp.c++/private-2.C: New test.
+	* testsuite/libgomp.c++/target-lambda-4.C: New test.
+	* testsuite/libgomp.c++/use_device_ptr-1.C: New test.
+
+2024-02-27  Tobias Burnus  <tburnus@baylibre.com>
+
+	* libgomp.texi (OpenACC Runtime Library Routines): Document new 3.3
+	routines that simply map to their C counterpart.
+	* openacc.f90 (openacc): Add them.
+	* openacc_lib.h: Likewise.
+	* testsuite/libgomp.oacc-fortran/acc_host_device_ptr.f90: New test.
+	* testsuite/libgomp.oacc-fortran/acc-memcpy.f90: New test.
+	* testsuite/libgomp.oacc-fortran/acc-memcpy-2.f90: New test.
+	* testsuite/libgomp.oacc-c-c++-common/lib-59.c: Crossref to f90 test.
+	* testsuite/libgomp.oacc-c-c++-common/lib-60.c: Likewise.
+	* testsuite/libgomp.oacc-c-c++-common/lib-95.c: Likewise.
+
 2024-02-21  Tobias Burnus  <tburnus@baylibre.com>
 
 	* libgomp.texi (OpenMP Context Selectors): Add 'nvptx64' as additional
