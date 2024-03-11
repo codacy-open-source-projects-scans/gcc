@@ -1527,10 +1527,6 @@ riscv_v_adjust_bytesize (machine_mode mode, int scale)
 	return BYTES_PER_RISCV_VECTOR;
 
       poly_int64 nunits = GET_MODE_NUNITS (mode);
-      poly_int64 mode_size = GET_MODE_SIZE (mode);
-
-      if (maybe_eq (mode_size, (uint16_t) -1))
-	mode_size = riscv_vector_chunks * scale;
 
       if (nunits.coeffs[0] > 8)
 	return exact_div (nunits, 8);
@@ -4637,8 +4633,6 @@ riscv_expand_conditional_move (rtx dest, rtx op, rtx cons, rtx alt)
 	       || (code == NE && rtx_equal_p (alt, op0)))
 	    {
 	      rtx cond = gen_rtx_fmt_ee (code, GET_MODE (op0), op0, op1);
-	      if (!rtx_equal_p (cons, op0))
-		std::swap (alt, cons);
 	      alt = force_reg (mode, alt);
 	      emit_insn (gen_rtx_SET (dest,
 				      gen_rtx_IF_THEN_ELSE (mode, cond,
