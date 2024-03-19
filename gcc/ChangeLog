@@ -1,3 +1,420 @@
+2024-03-18  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/110902
+	PR analyzer/110928
+	PR analyzer/111305
+	PR analyzer/111441
+	* selftest.h (ASSERT_NE_AT): New macro.
+
+2024-03-18  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/111822
+	* config/i386/i386-features.cc (smode_convert_cst): New function
+	to handle SImode, DImode and TImode immediates, generalized from
+	timode_convert_cst.
+	(timode_convert_cst): Remove.
+	(scalar_chain::convert_op): Unify from
+	general_scalar_chain::convert_op and timode_scalar_chain::convert_op.
+	(general_scalar_chain::convert_op): Remove.
+	(timode_scalar_chain::convert_op): Remove.
+	(timode_scalar_chain::convert_insn): Update the call to
+	renamed timode_convert_cst.
+	* config/i386/i386-features.h (class scalar_chain):
+	Redeclare convert_op as protected class member.
+	(class general_calar_chain): Remove convert_op.
+	(class timode_scalar_chain): Ditto.
+
+2024-03-18  Jan Hubicka  <jh@suse.cz>
+
+	* config/i386/zn4zn5.md: Add file missed in the previous commit.
+
+2024-03-18  Jan Hubicka  <jh@suse.cz>
+	    Karthiban Anbazhagan  <Karthiban.Anbazhagan@amd.com>
+
+	* common/config/i386/cpuinfo.h (get_amd_cpu): Recognize znver5.
+	* common/config/i386/i386-common.cc (processor_names): Add znver5.
+	(processor_alias_table): Likewise.
+	* common/config/i386/i386-cpuinfo.h (processor_types): Add new zen
+	family.
+	(processor_subtypes): Add znver5.
+	* config.gcc (x86_64-*-* |...): Likewise.
+	* config/i386/driver-i386.cc (host_detect_local_cpu): Let
+	march=native detect znver5 cpu's.
+	* config/i386/i386-c.cc (ix86_target_macros_internal): Add
+	znver5.
+	* config/i386/i386-options.cc (m_ZNVER5): New definition
+	(processor_cost_table): Add znver5.
+	* config/i386/i386.cc (ix86_reassociation_width): Likewise.
+	* config/i386/i386.h (processor_type): Add PROCESSOR_ZNVER5
+	(PTA_ZNVER5): New definition.
+	* config/i386/i386.md (define_attr "cpu"): Add znver5.
+	(Scheduling descriptions) Add znver5.md.
+	* config/i386/x86-tune-costs.h (znver5_cost): New definition.
+	* config/i386/x86-tune-sched.cc (ix86_issue_rate): Add znver5.
+	(ix86_adjust_cost): Likewise.
+	* config/i386/x86-tune.def (avx512_move_by_pieces): Add m_ZNVER5.
+	(avx512_store_by_pieces): Add m_ZNVER5.
+	* doc/extend.texi: Add znver5.
+	* doc/invoke.texi: Likewise.
+	* config/i386/znver4.md: Rename to zn4zn5.md; combine znver4 and znver5 Scheduler.
+
+2024-03-18  Georg-Johann Lay  <avr@gjlay.de>
+
+	* config/avr/constraints.md (CX2, CX3, CX4): New constraints.
+	* config/avr/avr-protos.h (avr_xor_noclobber_dconst): New proto.
+	* config/avr/avr.cc (avr_xor_noclobber_dconst): New function.
+	* config/avr/avr.md (xorhi3, *xorhi3): Add "d,0,CX2,X" alternative.
+	(xorpsi3, *xorpsi3): Add "d,0,CX3,X" alternative.
+	(xorsi3, *xorsi3): Add "d,0,CX4,X" alternative.
+
+2024-03-18  liuhongt  <hongtao.liu@intel.com>
+
+	PR target/114334
+	* config/i386/i386.md (mode): Add new number V8BF,V16BF,V32BF.
+	(MODEF248): New mode iterator.
+	(ssevecmodesuffix): Hanlde BF and HF.
+	* config/i386/sse.md (andnot<mode>3): Extend to HF/BF.
+	(<code><mode>3): Ditto.
+
+2024-03-18  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR rtl-optimization/112415
+	* config/pa/pa.cc (pa_emit_move_sequence): Revise condition
+	for symbolic memory operands.
+	(pa_legitimate_address_p): Revise LO_SUM condition.
+	* config/pa/pa.h (INT14_OK_STRICT): Revise define.  Move
+	comment about GNU linker to predicates.md.
+	* config/pa/predicates.md (floating_point_store_memory_operand):
+	Revise condition for symbolic memory operands.  Update
+	comment.
+
+2024-03-17  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa.cc (pa_delegitimize_address): Delegitimize UNSPEC_TP.
+
+2024-03-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/114175
+	* config/i386/i386.cc (ix86_setup_incoming_varargs): Only skip
+	ix86_function_arg_advance for TYPE_NO_NAMED_ARGS_STDARG_P functions
+	if arg.type is NULL.
+
+2024-03-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/114329
+	* gimple-lower-bitint.cc (struct bitint_large_huge): Declare
+	build_bit_field_ref method.
+	(bitint_large_huge::build_bit_field_ref): New method.
+	(bitint_large_huge::lower_mergeable_stmt): Use it.
+
+2024-03-15  YunQiang Su  <syq@gcc.gnu.org>
+
+	* config/riscv/riscv.opt.urls: Regenerated.
+	* config/rs6000/sysv4.opt.urls: Likewise.
+	* config/xtensa/xtensa.opt.urls: Likewise.
+
+2024-03-15  Jakub Jelinek  <jakub@redhat.com>
+
+	* lower-subreg.cc (resolve_simple_move): Fix comment typo,
+	betwee -> between.
+	* edit-context.cc (class line_event): Fix comment typo,
+	betweeen -> between.
+
+2024-03-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/114339
+	* config/i386/i386-expand.cc (ix86_expand_int_sse_cmp) <case LE>: Fix
+	a pasto, compare code against LE rather than GE.
+
+2024-03-15  Joe Ramsay  <Joe.Ramsay@arm.com>
+
+	* match.pd: Fix truncation pattern for -fno-signed-zeroes
+
+2024-03-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/114332
+	* expr.cc (expand_expr_real_1): EXTEND_BITINT also CALL_EXPR results.
+
+2024-03-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/113466
+	* gimple-lower-bitint.cc (bitint_large_huge): Add m_returns_twice_calls
+	member.
+	(bitint_large_huge::bitint_large_huge): Initialize it.
+	(bitint_large_huge::~bitint_large_huge): Release it.
+	(bitint_large_huge::lower_call): Remember ECF_RETURNS_TWICE call stmts
+	before which at least one statement has been inserted.
+	(gimple_lower_bitint): Move argument loads before ECF_RETURNS_TWICE
+	calls to a different block and add corresponding PHIs.
+
+2024-03-15  YunQiang Su  <syq@gcc.gnu.org>
+
+	* config/mips/mips.opt: Support -mstrict-align, and use
+	TARGET_STRICT_ALIGN as the flag; keep -m(no-)unaligned-access
+	as alias.
+	* config/mips/mips.h: Use TARGET_STRICT_ALIGN.
+	* config/mips/mips.opt.urls: Regenerate.
+	* doc/invoke.texi: Document -m(no-)strict-algin for MIPSr6.
+
+2024-03-15  Tejas Belagod  <tejas.belagod@arm.com>
+
+	PR middle-end/114108
+	* tree-vect-patterns.cc (vect_recog_abd_pattern): Call
+	vect_convert_output with the correct vecitype.
+
+2024-03-15  Chenghui Pan  <panchenghui@loongson.cn>
+
+	* config/loongarch/lasx.md (lasx_xvpermi_q_<LASX:mode>):
+	Remove masking of operand 3.
+
+2024-03-14  Jason Merrill  <jason@redhat.com>
+
+	* tree-core.h (enum clobber_kind): Clarify CLOBBER_OBJECT_*
+	comments.
+
+2024-03-14  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR target/114288
+	* config/pa/pa.cc (pa_legitimate_address_p): Don't allow
+	14-bit displacements before reload for modes that may use
+	a floating-point load or store.
+
+2024-03-14  David Faust  <david.faust@oracle.com>
+
+	* config/bpf/bpf.h (INT8_TYPE): Change to signed char.
+
+2024-03-14  Max Filippov  <jcmvbkbc@gmail.com>
+
+	* config/xtensa/xtensa.md (movsi_internal): Move l32i and s32i
+	patterns ahead of the l32i.n and s32i.n.
+
+2024-03-14  Jakub Jelinek  <jakub@redhat.com>
+
+	* config/gcn/gcn-hsa.h (ABI_VERSION_SPEC): Fix comment typo.
+
+2024-03-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/113907
+	* ipa-icf.cc (sem_item_optimizer::merge_classes): Reset
+	SSA_NAME_RANGE_INFO and SSA_NAME_PTR_INFO on successfully ICF merged
+	functions.
+
+2024-03-14  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/loongarch.md (any_ge): Remove.
+	(sge<u>_<X:mode><GPR:mode>): Remove.
+
+2024-03-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/114310
+	* config/aarch64/aarch64.cc (aarch64_expand_compare_and_swap): For
+	TImode force newval into a register.
+
+2024-03-14  Chung-Lin Tang  <cltang@baylibre.com>
+
+	* tree.h (OMP_CLAUSE_MAP_READONLY): New macro.
+	(OMP_CLAUSE__CACHE__READONLY): New macro.
+	* tree-core.h (struct GTY(()) tree_base): Adjust comments for new
+	uses of readonly_flag bit in OMP_CLAUSE_MAP_READONLY and
+	OMP_CLAUSE__CACHE__READONLY.
+	* tree-pretty-print.cc (dump_omp_clause): Add support for printing
+	OMP_CLAUSE_MAP_READONLY and OMP_CLAUSE__CACHE__READONLY.
+
+2024-03-14  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	* config/s390/s390.cc (s390_encode_section_info): Adjust the check
+	for misaligned symbols.
+	* config/s390/s390.opt: Improve documentation.
+
+2024-03-14  Jakub Jelinek  <jakub@redhat.com>
+
+	* gimple-iterator.cc (edge_before_returns_twice_call): Copy all
+	flags and probability from ad_edge to e edge.  If CDI_DOMINATORS
+	are computed, recompute immediate dominator of other_edge->src
+	and other_edge->dest.
+	(gsi_safe_insert_before, gsi_safe_insert_seq_before): Update *iter
+	for the returns_twice call case to the gsi_for_stmt (stmt) to deal
+	with update it for bb splitting.
+
+2024-03-14  liuhongt  <hongtao.liu@intel.com>
+
+	* config/i386/i386-features.cc
+	(general_scalar_chain::convert_op): Handle REG_EH_REGION note.
+	(convert_scalars_to_vector): Ditto.
+	* config/i386/i386-features.h (class scalar_chain): New
+	memeber control_flow_insns.
+
+2024-03-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/114319
+	* gimple-ssa-store-merging.cc
+	(imm_store_chain_info::try_coalesce_bswap): For 32-bit targets
+	allow matching __builtin_bswap64 if there is bswapsi2 optab.
+
+2024-03-13  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
+
+	* config/s390/s390.cc (s390_secondary_reload): Guard
+	SYMBOL_FLAG_NOTALIGN2_P.
+
+2024-03-13  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
+
+	* config/s390/s390-builtin-types.def: Update to reflect latest
+	changes.
+	* config/s390/s390-builtins.def: Streamline vector builtins with
+	LLVM.
+
+2024-03-13  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
+
+	* config/s390/s390-builtins.def (vec_permi): Deprecate.
+	(vec_ctd): Deprecate.
+	(vec_ctd_s64): Deprecate.
+	(vec_ctd_u64): Deprecate.
+	(vec_ctsl): Deprecate.
+	(vec_ctul): Deprecate.
+	(vec_ld2f): Deprecate.
+	(vec_st2f): Deprecate.
+	(vec_insert): Deprecate overloads with bool vectors.
+
+2024-03-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/114313
+	* gimple-lower-bitint.cc (bitint_large_huge::limb_access): Use
+	TYPE_SIZE of TREE_TYPE (var) rather than TYPE_SIZE of type.
+	(bitint_large_huge::handle_load): Pass NULL_TREE rather than
+	rhs_type to limb_access for the bitfield load cases.
+	(bitint_large_huge::lower_mergeable_stmt): Pass NULL_TREE rather than
+	lhs_type to limb_access if nlhs is non-NULL.
+
+2024-03-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR sanitizer/112709
+	* asan.cc (maybe_create_ssa_name, maybe_cast_to_ptrmode,
+	build_check_stmt, maybe_instrument_call, asan_expand_mark_ifn): Use
+	gsi_safe_insert_before instead of gsi_insert_before.
+
+2024-03-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR sanitizer/112709
+	* gimple-iterator.h (gsi_safe_insert_before,
+	gsi_safe_insert_seq_before): Declare.
+	* gimple-iterator.cc: Include gimplify.h.
+	(edge_before_returns_twice_call, adjust_before_returns_twice_call,
+	gsi_safe_insert_before, gsi_safe_insert_seq_before): New functions.
+	* ubsan.cc (instrument_mem_ref, instrument_pointer_overflow,
+	instrument_nonnull_arg, instrument_nonnull_return): Use
+	gsi_safe_insert_before instead of gsi_insert_before.
+	(maybe_instrument_pointer_overflow): Use force_gimple_operand,
+	gimple_seq_add_seq_without_update and gsi_safe_insert_seq_before
+	instead of force_gimple_operand_gsi.
+	(instrument_object_size): Likewise.  Use gsi_safe_insert_before
+	instead of gsi_insert_before.
+
+2024-03-12  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/114121
+	* tree-chrec.cc (chrec_fold_plus_1): Guard recursion with
+	converted operand properly.
+	(chrec_fold_multiply): Likewise.  Handle missed recursion.
+
+2024-03-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR sanitizer/112709
+	* asan.cc (has_stmt_been_instrumented_p): Don't instrument call
+	stores on the caller side unless it is a call to a builtin or
+	internal function or function doesn't return by hidden reference.
+	(maybe_instrument_call): Likewise.
+	(instrument_derefs): Instrument stores to RESULT_DECL if
+	returning by hidden reference.
+
+2024-03-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/114293
+	* tree-ssa-strlen.cc (strlen_pass::handle_builtin_strlen): If
+	max is smaller than min, set max to ~(size_t)0.
+
+2024-03-12  Pan Li  <pan2.li@intel.com>
+
+	* config/riscv/riscv-c.cc (riscv_ext_version_value): Fix
+	code style greater than 80 chars.
+	(riscv_cpu_cpp_builtins): Fix useless empty line, indent
+	with 3 space(s) and argument unalignment.
+
+2024-03-12  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/114297
+	* tree-vect-loop.cc (vectorizable_live_operation): Pass in the
+	live stmts SLP node to vect_create_epilog_for_reduction.
+
+2024-03-12  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR driver/114314
+	* common.opt (fmultiflags): Add RejectNegative.
+
+2024-03-11  Szabolcs Nagy  <szabolcs.nagy@arm.com>
+
+	* config/aarch64/aarch64.md: Rename aarch_ to aarch64_.
+	* config/aarch64/aarch64.opt: Likewise.
+	* config/aarch64/aarch64-c.cc (aarch64_update_cpp_builtins): Likewise.
+	* config/aarch64/aarch64.cc (aarch64_expand_prologue): Likewise.
+	(aarch64_expand_epilogue): Likewise.
+	(aarch64_post_cfi_startproc): Likewise.
+	(aarch64_handle_no_branch_protection): Copy and rename.
+	(aarch64_handle_standard_branch_protection): Likewise.
+	(aarch64_handle_pac_ret_protection): Likewise.
+	(aarch64_handle_pac_ret_leaf): Likewise.
+	(aarch64_handle_pac_ret_b_key): Likewise.
+	(aarch64_handle_bti_protection): Likewise.
+	(aarch64_override_options): Update branch protection validation.
+	(aarch64_handle_attr_branch_protection): Likewise.
+	* config/arm/aarch-common-protos.h (aarch_validate_mbranch_protection):
+	Pass branch protection type description as argument.
+	(struct aarch_branch_protect_type): Move from aarch-common.h.
+	* config/arm/aarch-common.cc (aarch_handle_no_branch_protection):
+	Remove.
+	(aarch_handle_standard_branch_protection): Remove.
+	(aarch_handle_pac_ret_protection): Remove.
+	(aarch_handle_pac_ret_leaf): Remove.
+	(aarch_handle_pac_ret_b_key): Remove.
+	(aarch_handle_bti_protection): Remove.
+	(aarch_validate_mbranch_protection): Pass branch protection type
+	description as argument.
+	* config/arm/aarch-common.h (enum aarch_key_type): Remove.
+	(struct aarch_branch_protect_type): Remove.
+	* config/arm/arm-c.cc (arm_cpu_builtins): Remove aarch_ra_sign_key.
+	* config/arm/arm.cc (arm_handle_no_branch_protection): Copy and rename.
+	(arm_handle_standard_branch_protection): Likewise.
+	(arm_handle_pac_ret_protection): Likewise.
+	(arm_handle_pac_ret_leaf): Likewise.
+	(arm_handle_bti_protection): Likewise.
+	(arm_configure_build_target): Update branch protection validation.
+	* config/arm/arm.opt: Remove aarch_ra_sign_key.
+
+2024-03-11  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/114299
+	* gimplify.cc (internal_get_tmp_var): When gimplification
+	of VAL failed, return a decl.
+
+2024-03-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/114278
+	* tree-ssa.cc (maybe_optimize_var): If large/huge _BitInt vars are no
+	longer addressable, set DECL_NOT_GIMPLE_REG_P on them.
+
+2024-03-11  Eric Botcazou  <ebotcazou@adacore.com>
+
+	PR debug/113519
+	PR debug/113777
+	* dwarf2out.cc (gen_enumeration_type_die): In the reverse case,
+	generate the DIE with the same parent as in the regular case.
+
+2024-03-11  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR middle-end/95351
+	* fold-const.cc (merge_truthop_with_opposite_arm): Use
+	the type of the operands of the comparison and not the type
+	of the comparison.
+
 2024-03-10  jlaw  <jeffreyalaw@gmail.com>
 
 	PR tree-optimization/110199

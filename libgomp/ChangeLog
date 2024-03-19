@@ -1,3 +1,18 @@
+2024-03-14  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	* testsuite/libgomp.oacc-fortran/acc-memcpy.f90: Fix 'char'
+	initialization, copy, check.
+
+2024-03-13  Tobias Burnus  <tburnus@baylibre.com>
+
+	PR fortran/114283
+	* testsuite/libgomp.fortran/declare-target-indirect-4.f90: New test.
+
+2024-03-12  Tobias Burnus  <tburnus@baylibre.com>
+
+	* libgomp.texi (Device Memory Routines): Swap item order to match
+	the order of the '@node's of the '@subsection's.
+
 2024-03-08  Thomas Schwinge  <tschwinge@baylibre.com>
 
 	* plugin/plugin-gcn.c (GOMP_OFFLOAD_can_run): Don't consider

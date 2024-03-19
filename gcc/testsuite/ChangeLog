@@ -1,3 +1,352 @@
+2024-03-18  Jonathan Yong  <10walls@gmail.com>
+
+	* c-c++-common/Wrestrict.c: Fix typos in comments and
+	enable for LLP64 testing.
+
+2024-03-18  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/110902
+	PR analyzer/110928
+	PR analyzer/111305
+	PR analyzer/111441
+	* c-c++-common/analyzer/out-of-bounds-const-fn.c: New test.
+	* c-c++-common/analyzer/out-of-bounds-diagram-11.c: Update
+	expected diagram output.
+	* c-c++-common/analyzer/out-of-bounds-diagram-pr110928.c: New test.
+	* c-c++-common/analyzer/out-of-bounds-diagram-pr111305.c: New test.
+	* c-c++-common/analyzer/out-of-bounds-diagram-pr111441.c: New test.
+
+2024-03-18  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR target/111822
+	* g++.target/i386/pr111822.C (dg-do): Compile only for ia32 targets.
+	(dg-options): Add -march=x86-64.
+
+2024-03-18  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/103715
+	* gfortran.dg/pr103715.f90: New test.
+
+2024-03-18  Thiago Jung Bauermann  <thiago.bauermann@linaro.org>
+
+	* gcc.target/arm/acle/cde-mve-error-2.c: Add -fpermissive.  Use
+	relative offsets for line numbers.
+
+2024-03-18  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	PR modula2/114380
+	* gm2/pim/fail/badset7.mod: New test.
+
+2024-03-18  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR testsuite/114320
+	* g++.dg/modules/target-powerpc-1_a.C: Suppress -Wpsabi.
+	* g++.dg/modules/target-powerpc-1_b.C: Likewise.
+
+2024-03-18  Jan Hubicka  <jh@suse.cz>
+	    Karthiban Anbazhagan  <Karthiban.Anbazhagan@amd.com>
+
+	* g++.target/i386/mv29.C: Handle znver5 arch.
+	* gcc.target/i386/funcspec-56.inc:Likewise.
+
+2024-03-18  Torbjörn SVENSSON  <torbjorn.svensson@foss.st.com>
+
+	* c-c++-common/analyzer/strndup-1.c: Define _POSIX_C_SOURCE.
+
+2024-03-18  liuhongt  <hongtao.liu@intel.com>
+
+	* gcc.target/i386/pr114334.c: New test.
+
+2024-03-17  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/101135
+	* gfortran.dg/missing_optional_dummy_6a.f90: Adjust diagnostic pattern.
+	* gfortran.dg/ubsan/missing_optional_dummy_8.f90: New test.
+
+2024-03-17  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	PR modula2/114296
+	* gm2/pim/fail/badtype2.mod: New test.
+
+2024-03-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/114175
+	* gcc.dg/c23-stdarg-7.c: New test.
+	* gcc.dg/c23-stdarg-8.c: New test.
+
+2024-03-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/114329
+	* gcc.dg/bitint-101.c: New test.
+
+2024-03-16  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/112631
+	* g++.dg/modules/block-decl-1_a.C: New test.
+	* g++.dg/modules/block-decl-1_b.C: New test.
+	* g++.dg/modules/block-decl-2.C: New test.
+
+2024-03-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR libgcc/114327
+	* gcc.dg/torture/bitint-63.c: New test.
+
+2024-03-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/113431
+	* gcc.dg/vect/pr113431.c: Restrict scan-tree-dump-times to
+	vect_hw_misalign targets.
+
+2024-03-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/114339
+	* gcc.target/i386/pr114339.c: New test.
+
+2024-03-15  Joe Ramsay  <Joe.Ramsay@arm.com>
+
+	* gcc.target/aarch64/no_merge_trunc_signed_zero.c: New test.
+
+2024-03-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/114332
+	* gcc.dg/torture/bitint-64.c: New file.
+
+2024-03-15  Jakub Jelinek  <jakub@redhat.com>
+
+	* g++.dg/torture/pr104601.C: Add -Wno-unused-result to dg-options.
+
+2024-03-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/113466
+	* gcc.dg/bitint-100.c: New test.
+
+2024-03-15  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/87477
+	PR fortran/89645
+	PR fortran/99065
+	PR fortran/114141
+	PR fortran/114280
+	* gfortran.dg/associate_64.f90 : New test
+	* gfortran.dg/associate_66.f90 : New test
+	* gfortran.dg/associate_67.f90 : New test
+	* gfortran.dg/associate_65.f90 : New test
+	* gfortran.dg/associate_68.f90 : New test
+
+2024-03-15  Tejas Belagod  <tejas.belagod@arm.com>
+
+	* gcc.dg/vect/pr114108.c: New test.
+
+2024-03-15  Chenghui Pan  <panchenghui@loongson.cn>
+
+	* gcc.target/loongarch/vector/lasx/lasx-xvpermi_q.c:
+	Reposition operand 3's value into instruction's defined accept range.
+
+2024-03-14  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	PR modula2/114294
+	* gm2/pim/pass/log: Removed.
+	* gm2/pim/pass/highexp.mod: New test.
+
+2024-03-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/113907
+	* gcc.dg/pr113907-1.c: New test.
+
+2024-03-14  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	PR modula2/114333
+	* gm2/pim/fail/badset5.mod: New test.
+	* gm2/pim/fail/badset6.mod: New test.
+
+2024-03-14  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	* c-c++-common/goacc/readonly-1.c: Add basic OpenACC 'declare'
+	testing.
+	* gfortran.dg/goacc/readonly-1.f90: Likewise.
+
+2024-03-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/114310
+	* gcc.dg/pr114310.c: New test.
+
+2024-03-14  Juergen Christ  <jchrist@linux.ibm.com>
+
+	* gcc.target/s390/htm-builtins-1.c: Fix.
+	* gcc.target/s390/htm-builtins-2.c: Fix.
+
+2024-03-14  Lewis Hyatt  <lhyatt@gmail.com>
+
+	PR preprocessor/110558
+	* c-c++-common/cpp/has-include-2.c: New test.
+	* c-c++-common/cpp/has-include-2.h: New test.
+
+2024-03-14  Lewis Hyatt  <lhyatt@gmail.com>
+
+	* lib/gcc-defs.exp (dg-additional-options): Make $srcdir usable in a
+	dg-additional-options directive.
+	* c-c++-common/cpp/has-include-next-2-dir/has-include-next-2.h: New test.
+	* c-c++-common/cpp/has-include-next-2.c: New test.
+
+2024-03-14  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	PR modula2/114333
+	* gm2/cse/pass/testcse54.mod: New test.
+	* gm2/iso/run/pass/array9.mod: New test.
+	* gm2/iso/run/pass/strcons3.mod: New test.
+	* gm2/iso/run/pass/strcons4.mod: New test.
+	* gm2/pim/fail/badset1.mod: New test.
+	* gm2/pim/fail/badset2.mod: New test.
+	* gm2/pim/fail/badset3.mod: New test.
+	* gm2/pim/fail/badset4.mod: New test.
+
+2024-03-14  Chung-Lin Tang  <cltang@baylibre.com>
+
+	* c-c++-common/goacc/readonly-1.c: New test.
+	* gfortran.dg/goacc/readonly-1.f90: New test.
+
+2024-03-14  Andreas Krebbel  <krebbel@linux.ibm.com>
+
+	* gcc.target/s390/aligned-1.c: Add weak and void variables
+	incorporating the cases from unaligned-2.c.
+	* gcc.target/s390/unaligned-1.c: Likewise.
+	* gcc.target/s390/unaligned-2.c: Removed.
+
+2024-03-14  liuhongt  <hongtao.liu@intel.com>
+
+	* g++.target/i386/pr111822.C: New test.
+
+2024-03-13  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/114001
+	* gfortran.dg/is_contiguous_4.f90: New test.
+
+2024-03-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/114319
+	* gcc.target/i386/pr114319.c: New test.
+
+2024-03-13  Torbjörn SVENSSON  <torbjorn.svensson@foss.st.com>
+
+	* c-c++-common/analyzer/null-deref-pr108251-smp_fetch_ssl_fc_has_early-O2.c:
+	Added dg-bogus with target on offending line for short_enums.
+
+2024-03-13  Stefan Schulze Frielinghaus  <stefansf@linux.ibm.com>
+
+	* gcc.target/s390/md/rXsbg_mode_sXl.c: Fix tests rosbg_si_srl
+	and rxsbg_si_srl.
+
+2024-03-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/114313
+	* gcc.dg/torture/bitint-62.c: New test.
+
+2024-03-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR sanitizer/112709
+	* gcc.dg/asan/pr112709-2.c: New test.
+
+2024-03-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR sanitizer/112709
+	* gcc.dg/ubsan/pr112709-1.c: New test.
+	* gcc.dg/ubsan/pr112709-2.c: New test.
+
+2024-03-12  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/110826
+	* gfortran.dg/proc_ptr_comp_53.f90: New test.
+
+2024-03-12  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/114121
+	* gcc.dg/torture/pr114312.c: New testcase.
+
+2024-03-12  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/98645
+	PR c++/98688
+	PR c++/111224
+	* g++.dg/modules/target-aarch64-1_a.C: New test.
+	* g++.dg/modules/target-aarch64-1_b.C: New test.
+	* g++.dg/modules/target-powerpc-1_a.C: New test.
+	* g++.dg/modules/target-powerpc-1_b.C: New test.
+	* g++.dg/modules/target-powerpc-2_a.C: New test.
+	* g++.dg/modules/target-powerpc-2_b.C: New test.
+
+2024-03-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR sanitizer/112709
+	* gcc.dg/asan/pr112709-1.c: New test.
+	* g++.dg/asan/pr69276.C: Adjust expected output for some targets.
+
+2024-03-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/114293
+	* gcc.dg/pr114293.c: New test.
+
+2024-03-12  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/114297
+	* gcc.dg/vect/vect-early-break_123-pr114297.c: New testcase.
+
+2024-03-11  Jerry DeLisle  <jvdelisle@gcc.gnu.org>
+
+	PR libfortran/105437
+	PR libfortran/114304
+	* gfortran.dg/pr105473.f90: Add additional checks to address
+	the case of semicolon at the end of a line.
+
+2024-03-11  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR testsuite/113428
+	* gcc.dg/gomp/bad-array-section-c-3.c: Use signed char instead
+	of int.
+
+2024-03-11  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	PR tree-optimization/98238
+	* gcc.dg/vect/vect-cost-model-1.c (scan-tree-dump): Also require
+	vect_hw_misalign.
+	* gcc.dg/vect/vect-cost-model-3.c: Likewise.
+	* gcc.dg/vect/vect-cost-model-5.c: Likewise.
+
+2024-03-11  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	PR tree-optimization/114071
+	PR tree-optimization/113557
+	PR testsuite/96109
+	* gcc.dg/vect/pr37027.c: Require vect_perm.
+	* gcc.dg/vect/pr67790.c: Likewise.
+	* gcc.dg/vect/slp-reduc-1.c: Likewise.
+	* gcc.dg/vect/slp-reduc-2.c: Likewise.
+	* gcc.dg/vect/slp-reduc-7.c: Likewise.
+	* gcc.dg/vect/slp-reduc-8.c: Likewise.
+	* gcc.dg/vect/vect-multi-peel-gaps.c (scan-tree-dump): Also
+	require vect_perm.
+	* gcc.dg/vect/slp-47.c: Require vect_perm.
+	* gcc.dg/vect/slp-48.c: Likewise.
+
+2024-03-11  Richard Biener  <rguenther@suse.de>
+
+	PR middle-end/114299
+	* gcc.target/i386/pr114299.c: New testcase.
+
+2024-03-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/114278
+	* gcc.dg/bitint-99.c: New test.
+
+2024-03-11  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gcc.dg/sso-20.c: New test.
+	* gcc.dg/sso-21.c: Likewise.
+
+2024-03-11  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR middle-end/95351
+	* gcc.dg/float_opposite_arm-1.c: New test.
+
 2024-03-10  Iain Buclaw  <ibuclaw@gdcproject.org>
 
 	PR d/112285

@@ -147,7 +147,7 @@ FROM M2Comp IMPORT CompilingImplementationModule,
                    CompilingProgramModule ;
 
 FROM M2LexBuf IMPORT currenttoken, UnknownTokenNo, BuiltinTokenNo,
-                     GetToken, MakeVirtualTok,
+                     GetToken, MakeVirtualTok, MakeVirtual2Tok,
                      GetFileName, TokenToLineNo, GetTokenName,
                      GetTokenNo, GetLineNo, GetPreviousTokenLineNo, PrintTokenNo ;
 
@@ -2384,12 +2384,12 @@ PROCEDURE callRequestDependant (tokno: CARDINAL;
 BEGIN
    Assert (requestDep # NulSym) ;
    PushTtok (requestDep, tokno) ;
-   PushTF (Adr, Address) ;
+   PushTFtok (Adr, Address, tokno) ;
    PushTtok (MakeConstString (tokno, GetSymName (moduleSym)), tokno) ;
    PushT (1) ;
    BuildAdrFunction ;
 
-   PushTF (Adr, Address) ;
+   PushTFtok (Adr, Address, tokno) ;
    PushTtok (MakeConstString (tokno, GetLibName (moduleSym)), tokno) ;
    PushT (1) ;
    BuildAdrFunction ;
@@ -2399,12 +2399,12 @@ BEGIN
       PushTF (Nil, Address) ;
       PushTF (Nil, Address)
    ELSE
-      PushTF (Adr, Address) ;
+      PushTFtok (Adr, Address, tokno) ;
       PushTtok (MakeConstString (tokno, GetSymName (depModuleSym)), tokno) ;
       PushT (1) ;
       BuildAdrFunction ;
 
-      PushTF (Adr, Address) ;
+      PushTFtok (Adr, Address, tokno) ;
       PushTtok (MakeConstString (tokno, GetLibName (depModuleSym)), tokno) ;
       PushT (1) ;
       BuildAdrFunction
@@ -2668,7 +2668,7 @@ PROCEDURE BuildStringAdrParam (tok: CARDINAL; name: Name);
 VAR
    str, m2strnul: CARDINAL ;
 BEGIN
-   PushTF (Adr, Address) ;
+   PushTFtok (Adr, Address, tok) ;
    str := MakeConstString (tok, name) ;
    PutConstStringKnown (tok, str, name, FALSE, TRUE) ;
    m2strnul := DeferMakeConstStringM2nul (tok, str) ;
@@ -2772,12 +2772,12 @@ BEGIN
             (* DeconstructModules (module_name, argc, argv, envp);  *)
             PushTtok (deconstructModules, tok) ;
 
-            PushTF(Adr, Address) ;
+            PushTFtok (Adr, Address, tok) ;
             PushTtok (MakeConstString (tok, GetSymName (moduleSym)), tok) ;
             PushT(1) ;
             BuildAdrFunction ;
 
-            PushTF(Adr, Address) ;
+            PushTFtok (Adr, Address, tok) ;
             PushTtok (MakeConstString (tok, GetLibName (moduleSym)), tok) ;
             PushT(1) ;
             BuildAdrFunction ;
@@ -2836,12 +2836,12 @@ BEGIN
             (* RegisterModule (module_name, init, fini, dependencies);  *)
             PushTtok (RegisterModule, tok) ;
 
-            PushTF (Adr, Address) ;
+            PushTFtok (Adr, Address, tok) ;
             PushTtok (MakeConstString (tok, GetSymName (moduleSym)), tok) ;
             PushT (1) ;
             BuildAdrFunction ;
 
-            PushTF (Adr, Address) ;
+            PushTFtok (Adr, Address, tok) ;
             PushTtok (MakeConstString (tok, GetLibName (moduleSym)), tok) ;
             PushT (1) ;
             BuildAdrFunction ;
@@ -3702,7 +3702,7 @@ BEGIN
       THEN
          (* Tell code generator to test runtime values of assignment so ensure we
             catch overflow and underflow.  *)
-         BuildRange (InitAssignmentRangeCheck (combinedtok, Des, Exp))
+         BuildRange (InitAssignmentRangeCheck (combinedtok, Des, Exp, destok, exptok))
       END ;
       IF checkTypes
       THEN
@@ -6422,7 +6422,7 @@ BEGIN
             THEN
                MarkAsReadWrite(rw) ;
                (* pass the address field of an unbounded variable *)
-               PushTF(Adr, Address) ;
+               PushTFtok (Adr, Address, OperandTok (pi)) ;
                PushTFAD (f^.TrueExit, f^.FalseExit, f^.Unbounded, f^.Dimension) ;
                PushT(1) ;
                BuildAdrFunction ;
@@ -6452,7 +6452,7 @@ BEGIN
       THEN
          MarkAsReadWrite(rw) ;
          (* pass the address field of an unbounded variable *)
-         PushTF(Adr, Address) ;
+         PushTFtok (Adr, Address, OperandTok (pi)) ;
          PushTFAD (f^.TrueExit, f^.FalseExit, f^.Unbounded, f^.Dimension) ;
          PushT(1) ;
          BuildAdrFunction ;
@@ -8400,6 +8400,7 @@ VAR
 BEGIN
    PopT (NoOfParam) ;
    ReturnVar := MakeTemporary (tok, ImmediateValue) ;
+   PutConst (ReturnVar, Cardinal) ;
    GenHigh (tok, ReturnVar, 1, OperandT (1)) ;
    PopN (NoOfParam+1) ;
    PushTtok (ReturnVar, tok)
@@ -11824,11 +11825,12 @@ END BuildAccessWithField ;
                         Empty             +------------+
                                           | NulSym     |
                                           |------------|
+   tokpos is the position of the RETURN token.
 *)
 
-PROCEDURE BuildNulExpression ;
+PROCEDURE BuildNulExpression (tokpos: CARDINAL) ;
 BEGIN
-   PushT(NulSym)
+   PushTtok (NulSym, tokpos)
 END BuildNulExpression ;
 
 
@@ -11838,25 +11840,25 @@ END BuildNulExpression ;
                              it Pushes a Bitset type.
 *)
 
-PROCEDURE BuildTypeForConstructor ;
+PROCEDURE BuildTypeForConstructor (tokpos: CARDINAL) ;
 VAR
    c: ConstructorFrame ;
 BEGIN
    IF NoOfItemsInStackAddress(ConstructorStack)=0
    THEN
-      PushT(Bitset)
+      PushTtok (Bitset, tokpos)
    ELSE
       c := PeepAddress(ConstructorStack, 1) ;
       WITH c^ DO
-         IF IsArray(type) OR IsSet(type)
+         IF IsArray (type) OR IsSet (type)
          THEN
-            PushT(GetSType(type))
-         ELSIF IsRecord(type)
+            PushTtok (GetSType (type), tokpos)
+         ELSIF IsRecord (type)
          THEN
-            PushT(GetSType(GetNth(type, index)))
+            PushTtok (GetSType (GetNth (type, index)), tokpos)
          ELSE
-            MetaError1('{%1ad} is not a set, record or array type which is expected when constructing an aggregate entity',
-                       type)
+            MetaError1 ('{%1ad} is not a set, record or array type which is expected when constructing an aggregate entity',
+                        type)
          END
       END
    END
@@ -11877,9 +11879,9 @@ END BuildTypeForConstructor ;
                                         |--------------|
 *)
 
-PROCEDURE BuildSetStart ;
+PROCEDURE BuildSetStart (tokpos: CARDINAL) ;
 BEGIN
-   PushT(Bitset)
+   PushTtok (Bitset, tokpos)
 END BuildSetStart ;
 
 
@@ -11899,12 +11901,15 @@ END BuildSetStart ;
 
 PROCEDURE BuildSetEnd ;
 VAR
-   v, t: CARDINAL ;
+   valuepos, typepos,
+   combined,
+   value, type      : CARDINAL ;
 BEGIN
-   PopT(v) ;
-   PopT(t) ;
-   PushTF(v, t) ;
-   Assert(IsSet(t))
+   PopTtok (value, valuepos) ;
+   PopTtok (type, typepos) ;
+   combined := MakeVirtual2Tok (typepos, valuepos) ;
+   PushTFtok (value, type, combined) ;
+   Assert (IsSet (type))
 END BuildSetEnd ;
 
 
@@ -11921,52 +11926,54 @@ END BuildSetEnd ;
       	       	   | SetType   |     | SetType     |
                    |-----------|     |-------------|
 
+   tokpos points to the opening '{'.
 *)
 
-PROCEDURE BuildEmptySet ;
+PROCEDURE BuildEmptySet (tokpos: CARDINAL) ;
 VAR
-   n     : Name ;
-   Type  : CARDINAL ;
-   NulSet: CARDINAL ;
-   tok   : CARDINAL ;
+   n      : Name ;
+   typepos,
+   Type   : CARDINAL ;
+   NulSet : CARDINAL ;
+   tok    : CARDINAL ;
 BEGIN
-   PopT(Type) ;  (* type of set we are building *)
-   tok := GetTokenNo () ;
-   IF (Type=NulSym) AND Pim
+   PopTtok (Type, typepos) ;  (* type of set we are building *)
+   IF (Type = NulSym) AND Pim
    THEN
       (* allowed generic {} in PIM Modula-2 *)
-   ELSIF IsUnknown(Type)
+      typepos := tokpos
+   ELSIF IsUnknown (Type)
    THEN
-      n := GetSymName(Type) ;
-      WriteFormat1('set type %a is undefined', n) ;
+      n := GetSymName (Type) ;
+      WriteFormat1 ('set type %a is undefined', n) ;
       Type := Bitset
-   ELSIF NOT IsSet(SkipType(Type))
+   ELSIF NOT IsSet (SkipType (Type))
    THEN
-      n := GetSymName(Type) ;
+      n := GetSymName (Type) ;
       WriteFormat1('expecting a set type %a', n) ;
       Type := Bitset
    ELSE
-      Type := SkipType(Type) ;
-      Assert((Type#NulSym))
+      Type := SkipType (Type) ;
+      Assert (Type # NulSym)
    END ;
-   NulSet := MakeTemporary(tok, ImmediateValue) ;
-   PutVar(NulSet, Type) ;
-   PutConstSet(NulSet) ;
+   NulSet := MakeTemporary (typepos, ImmediateValue) ;
+   PutVar (NulSet, Type) ;
+   PutConstSet (NulSet) ;
    IF CompilerDebugging
    THEN
-      n := GetSymName(Type) ;
-      printf1('set type = %a\n', n)
+      n := GetSymName (Type) ;
+      printf1 ('set type = %a\n', n)
    END ;
-   PushNulSet(Type) ;   (* onto the ALU stack  *)
-   PopValue(NulSet) ;   (* ALU -> symbol table *)
+   PushNulSet (Type) ;   (* onto the ALU stack  *)
+   PopValue (NulSet) ;   (* ALU -> symbol table *)
 
    (* and now construct the M2Quads stack as defined by the comments above *)
-   PushT(Type) ;
-   PushT(NulSet) ;
+   PushTtok (Type, typepos) ;
+   PushTtok (NulSet, typepos) ;
    IF CompilerDebugging
    THEN
-      n := GetSymName(Type) ;
-      printf2('Type = %a  (%d)  built empty set\n', n, Type) ;
+      n := GetSymName (Type) ;
+      printf2 ('Type = %a  (%d)  built empty set\n', n, Type) ;
       DisplayStack    (* Debugging info *)
    END
 END BuildEmptySet ;
@@ -12196,10 +12203,11 @@ END SilentBuildConstructorStart ;
 
 PROCEDURE BuildConstructorStart (cbratokpos: CARDINAL) ;
 VAR
+   typepos,
    constValue,
    type      : CARDINAL ;
 BEGIN
-   PopT (type) ;   (* we ignore the type as we already have the constructor symbol from pass C *)
+   PopTtok (type, typepos) ;   (* we ignore the type as we already have the constructor symbol from pass C *)
    GetConstructorFromFifoQueue (constValue) ;
    IF type # GetSType (constValue)
    THEN
@@ -12223,25 +12231,34 @@ END BuildConstructorStart ;
                          +------------+        +------------+
                          | const      |        | const      |
                          |------------|        |------------|
+
+   startpos is the start of the constructor, either the typename or '{'
+   cbratokpos is the '}'.
 *)
 
-PROCEDURE BuildConstructorEnd (cbratokpos: CARDINAL) ;
+PROCEDURE BuildConstructorEnd (startpos, cbratokpos: CARDINAL) ;
 VAR
    typetok,
    value, valtok: CARDINAL ;
 BEGIN
-   PopTtok (value, valtok) ;
-   IF IsBoolean (1)
+   IF DebugTokPos
    THEN
-      typetok := valtok
-   ELSE
-      typetok := OperandTtok (1)
+      WarnStringAt (InitString ('startpos'), startpos) ;
+      WarnStringAt (InitString ('cbratokpos'), cbratokpos)
    END ;
-   valtok := MakeVirtualTok (typetok, typetok, cbratokpos) ;
+   PopTtok (value, valtok) ;
+   IF DebugTokPos
+   THEN
+      WarnStringAt (InitString ('value valtok'), valtok)
+   END ;
+   valtok := MakeVirtual2Tok (startpos, cbratokpos) ;
    PutDeclared (valtok, value) ;
    PushTtok (value, valtok) ;   (* Use valtok as we now know it was a constructor.  *)
-   PopConstructor
-   (* ; ErrorStringAt (Mark (InitString ('aggregate constant')), valtok) *)
+   PopConstructor ;
+   IF DebugTokPos
+   THEN
+      WarnStringAt (InitString ('aggregate constant'), valtok)
+   END
 END BuildConstructorEnd ;
 
 
@@ -12574,19 +12591,21 @@ BEGIN
    IF Operator = OrTok
    THEN
       CheckBooleanId ;
-      PopBool (t1, f1) ;
+      PopBooltok (t1, f1, rightpos) ;
       PopTtok (Operator, OperatorPos) ;
-      PopBool (t2, f2) ;
+      PopBooltok (t2, f2, leftpos) ;
       Assert (f2=0) ;
-      PushBool (Merge (t1, t2), f1)
+      OperatorPos := MakeVirtualTok (OperatorPos, leftpos, rightpos) ;
+      PushBooltok (Merge (t1, t2), f1, OperatorPos)
    ELSIF (Operator = AndTok) OR (Operator = AmbersandTok)
    THEN
       CheckBooleanId ;
-      PopBool (t1, f1) ;
+      PopBooltok (t1, f1, rightpos) ;
       PopTtok (Operator, OperatorPos) ;
-      PopBool (t2, f2) ;
+      PopBooltok (t2, f2, leftpos) ;
       Assert (t2=0) ;
-      PushBool (t1, Merge (f1, f2))
+      OperatorPos := MakeVirtualTok (OperatorPos, leftpos, rightpos) ;
+      PushBooltok (t1, Merge (f1, f2), OperatorPos)
    ELSE
       PopTFrwtok (right, righttype, rightrw, rightpos) ;
       PopTtok (Operator, OperatorPos) ;
@@ -12893,10 +12912,10 @@ BEGIN
          GenQuadO (tokpos, Operator, Operand1, Operand2, 0, FALSE)
       END ;
       GenQuadO (tokpos, GotoOp, NulSym, NulSym, 0, FALSE) ;
-      PushBool (Merge (NextQuad-1, t1), Merge (NextQuad-2, f1))
+      PushBooltok (Merge (NextQuad-1, t1), Merge (NextQuad-2, f1), tokpos)
    ELSIF (OperandT (2) = HashTok) OR (OperandT (2) = LessGreaterTok)
    THEN
-      (* are the two boolean expressions the different? *)
+      (* are the two boolean expressions different? *)
       PopBool (t1, f1) ;
       PopT (Tok) ;
       PopBool (t2, f2) ;
@@ -12909,7 +12928,7 @@ BEGIN
          GenQuadO (tokpos, Operator, Operand1, Operand2, 0, FALSE)
       END ;
       GenQuadO (tokpos, GotoOp, NulSym, NulSym, 0, FALSE) ;
-      PushBool (Merge (NextQuad-2, f1), Merge (NextQuad-1, t1))
+      PushBooltok (Merge (NextQuad-2, f1), Merge (NextQuad-1, t1), tokpos)
    ELSE
       MetaError0 ('only allowed to use the relation operators {%Ek=} {%Ek#} rather than {%Ek<} or {%Ek>} on {%EkBOOLEAN} expressions as these do not imply an ordinal value for {%kTRUE} or {%kFALSE}')
    END
@@ -13061,7 +13080,7 @@ BEGIN
       GenQuadOtok (combinedTok, MakeOp (Op), left, right, 0, FALSE,
                    leftpos, rightpos, UnknownTokenNo) ;  (* True  Exit *)
       GenQuadO (combinedTok, GotoOp, NulSym, NulSym, 0, FALSE) ;  (* False Exit *)
-      PushBool (NextQuad-2, NextQuad-1)
+      PushBooltok (NextQuad-2, NextQuad-1, combinedTok)
    END
 END BuildRelOp ;
 

@@ -1,3 +1,34 @@
+2024-03-16  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/112631
+	* cp-tree.h (named_module_attach_p): New function.
+	* decl.cc (start_decl): Check for attachment not purview.
+	(grokmethod): Likewise.
+
+2024-03-14  Chung-Lin Tang  <cltang@baylibre.com>
+
+	* parser.cc (cp_parser_oacc_data_clause): Add parsing support for
+	'readonly' modifier, set OMP_CLAUSE_MAP_READONLY if readonly modifier
+	found, update comments.
+	(cp_parser_oacc_cache): Add parsing support for 'readonly' modifier,
+	set OMP_CLAUSE__CACHE__READONLY if readonly modifier found, update
+	comments.
+
+2024-03-12  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/98645
+	PR c++/98688
+	PR c++/111224
+	* module.cc (enum tree_tag): Add new tag for builtin types.
+	(trees_out::start): POLY_INT_CSTs can be emitted.
+	(trees_in::start): Likewise.
+	(trees_out::core_vals): Stream POLY_INT_CSTs.
+	(trees_in::core_vals): Likewise.
+	(trees_out::type_node): Handle vectors with multiple coeffs.
+	(trees_in::tree_node): Likewise.
+	(init_modules): Register target-specific builtin types. Bump
+	initial capacity slightly.
+
 2024-03-08  Jakub Jelinek  <jakub@redhat.com>
 
 	* pt.cc (tsubst_expr): Handle MEM_REF.
