@@ -1,3 +1,39 @@
+2024-04-04  centurion  <centurion009@proton.me>
+
+	PR c++/114377
+	* pt.cc (find_template_parameter_info::found): Use TREE_TYPE for
+	TEMPLATE_DECL instead of DECL_INITIAL.
+
+2024-04-02  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/114479
+	* semantics.cc (trait_expr_value) <case CPTK_IS_ARRAY>: Return false
+	for zero-sized arrays.
+
+2024-04-02  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/103825
+	* typeck.cc (is_bitfield_expr_with_lowered_type): Handle
+	CLEANUP_POINT_EXPR.
+
+2024-04-02  Jason Merrill  <jason@redhat.com>
+
+	PR c++/114561
+	PR c++/114562
+	* call.cc (convert_like_internal): Avoid adding qualification
+	conversion in direct reference binding.
+
+2024-04-01  Jason Merrill  <jason@redhat.com>
+
+	* typeck.cc (maybe_warn_about_returning_address_of_local):
+	Permerror in C++26.
+
+2024-03-28  Jason Merrill  <jason@redhat.com>
+
+	PR c++/100667
+	* semantics.cc (same_type_ref_bind_p): New.
+	(finish_trait_expr): Use it.
+
 2024-03-26  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/112724

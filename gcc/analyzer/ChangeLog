@@ -1,3 +1,19 @@
+2024-04-02  David Malcolm  <dmalcolm@redhat.com>
+
+	* region-model-manager.cc (maybe_undo_optimize_bit_field_compare):
+	Guard against null types.
+	* region-model.cc (apply_constraints_for_gswitch): Likewise.
+
+2024-03-27  David Malcolm  <dmalcolm@redhat.com>
+
+	PR analyzer/114473
+	* call-summary.cc
+	(call_summary_replay::convert_svalue_from_summary): Assert that
+	the types match.
+	(call_summary_replay::convert_region_from_summary): Likewise.
+	(call_summary_replay::convert_region_from_summary_1): Add missing
+	cast for the deref of RK_SYMBOLIC case.
+
 2024-03-23  David Malcolm  <dmalcolm@redhat.com>
 
 	PR analyzer/114408
