@@ -13204,7 +13204,9 @@ proc check_effective_target_powerpc_as_p10_htm { } {
     }]
 }
 
-# return 1 if LRA is supported.
+# Return 1 if LRA is supported.  This must not be called (results in ERROR) for
+# targets that don't do register allocation, and therefore neither use nor
+# don't use LRA.
 
 proc check_effective_target_lra { } {
     # Start with heavily used targets which are known to always use LRA.
@@ -13218,6 +13220,15 @@ proc check_effective_target_lra { } {
     return [check_no_messages_and_pattern lra "\\\*{9} Local #1: \\\*{9}" rtl-reload {
         void foo (void) {}
     } {-O2 -fdump-rtl-reload-details}] ;# LRA notes requires a detailed dump.
+}
+
+# Return 1 if 'asm goto' with outputs is supported, 0 otherwise.
+
+proc check_effective_target_asm_goto_with_outputs { } {
+    if { [istarget nvptx-*-*] } {
+	return 1
+    }
+    return [check_effective_target_lra]
 }
 
 # Test whether optimizations are enabled ('__OPTIMIZE__') per the
@@ -13399,6 +13410,18 @@ proc check_effective_target_loongarch_sx { } {
        #if !defined(__loongarch_sx)
        #error "LSX not defined"
        #endif
+    } "-mlsx"]
+}
+
+proc check_effective_target_loongarch_sx_as { } {
+    return [check_no_compiler_messages loongarch_sx_as object {
+        #include <lsxintrin.h>
+        int main (void)
+        {
+          __m128i a, b, c;
+          c = __lsx_vand_v (a, b);
+          return 0;
+        }
     } "-mlsx"]
 }
 
