@@ -178,7 +178,6 @@ gimple_range_op_handler::gimple_range_op_handler (gimple *s)
 bool
 gimple_range_op_handler::calc_op1 (vrange &r, const vrange &lhs_range)
 {
-  gcc_checking_assert (gimple_num_ops (m_stmt) < 3);
   // Give up on empty ranges.
   if (lhs_range.undefined_p ())
     return false;
@@ -853,7 +852,7 @@ public:
     // __builtin_ffs* and __builtin_popcount* return [0, prec].
     int prec = TYPE_PRECISION (lh.type ());
     // If arg is non-zero, then ffs or popcount are non-zero.
-    int mini = range_includes_zero_p (&lh) ? 0 : 1;
+    int mini = range_includes_zero_p (lh) ? 0 : 1;
     int maxi = prec;
 
     // If some high bits are known to be zero, decrease the maximum.
@@ -945,7 +944,7 @@ cfn_clz::fold_range (irange &r, tree type, const irange &lh,
       if (mini == -2)
 	mini = 0;
     }
-  else if (!range_includes_zero_p (&lh))
+  else if (!range_includes_zero_p (lh))
     {
       mini = 0;
       maxi = prec - 1;
@@ -1007,7 +1006,7 @@ cfn_ctz::fold_range (irange &r, tree type, const irange &lh,
 	mini = -2;
     }
   // If arg is non-zero, then use [0, prec - 1].
-  if (!range_includes_zero_p (&lh))
+  if (!range_includes_zero_p (lh))
     {
       mini = 0;
       maxi = prec - 1;
@@ -1213,7 +1212,8 @@ gimple_range_op_handler::maybe_builtin_call ()
   if (func == CFN_LAST)
     return;
   tree type = gimple_range_type (call);
-  gcc_checking_assert (type);
+  if (!type)
+    return;
   if (!Value_Range::supports_type_p (type))
     return;
 

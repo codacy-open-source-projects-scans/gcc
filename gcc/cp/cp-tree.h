@@ -7401,7 +7401,7 @@ inline bool module_exporting_p ()
 
 extern module_state *get_module (tree name, module_state *parent = NULL,
 				 bool partition = false);
-extern bool module_may_redeclare (tree decl);
+extern bool module_may_redeclare (tree olddecl, tree newdecl = NULL);
 
 extern bool module_global_init_needed ();
 extern bool module_determine_import_inits ();
@@ -7417,6 +7417,7 @@ extern unsigned get_importing_module (tree, bool = false) ATTRIBUTE_PURE;
 extern void set_instantiating_module (tree);
 extern void set_defining_module (tree);
 extern void maybe_key_decl (tree ctx, tree decl);
+extern void propagate_defining_module (tree decl, tree orig);
 
 extern void mangle_module (int m, bool include_partition);
 extern void mangle_module_fini ();
@@ -7447,6 +7448,7 @@ extern bool handle_module_option (unsigned opt, const char *arg, int value);
 /* In optimize.cc */
 extern tree clone_attrs				(tree);
 extern bool maybe_clone_body			(tree);
+extern void maybe_optimize_cdtor		(tree);
 
 /* In parser.cc */
 extern tree cp_convert_range_for (tree, tree, tree, cp_decomp *, bool,
@@ -7649,6 +7651,7 @@ extern bool template_guide_p			(const_tree);
 extern bool builtin_guide_p			(const_tree);
 extern void store_explicit_specifier		(tree, tree);
 extern tree lookup_explicit_specifier		(tree);
+extern tree lookup_imported_hidden_friend	(tree);
 extern void walk_specializations		(bool,
 						 void (*)(bool, spec_entry *,
 							  void *),

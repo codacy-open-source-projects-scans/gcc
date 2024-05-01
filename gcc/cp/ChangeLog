@@ -1,3 +1,121 @@
+2024-04-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/114456
+	* parser.cc (cp_parser_decomposition_declaration): Implement C++26
+	P0609R3 - Attributes for Structured Bindings.  Parse attributed
+	identifier lists for structured binding declarations, pass the
+	attributes to start_decl.
+
+2024-04-30  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/105320
+	PR c++/114275
+	* cp-tree.h (propagate_defining_module): Declare.
+	(lookup_imported_hidden_friend): Declare.
+	* decl.cc (duplicate_decls): Also check if hidden decls can be
+	redeclared in this module.
+	* module.cc (imported_temploid_friends): New.
+	(init_modules): Initialize it.
+	(trees_out::decl_value): Write it; don't consider imported
+	temploid friends as attached to a module.
+	(trees_in::decl_value): Read it.
+	(get_originating_module_decl): Follow the owning decl for an
+	imported temploid friend.
+	(propagate_defining_module): New.
+	* name-lookup.cc (get_mergeable_namespace_binding): New.
+	(lookup_imported_hidden_friend): New.
+	* pt.cc (tsubst_friend_function): Propagate defining module for
+	new friend functions.
+	(tsubst_friend_class): Lookup imported hidden friends.  Check
+	for valid module attachment of existing names.  Propagate
+	defining module for new classes.
+
+2024-04-30  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	* cp-tree.h (module_may_redeclare): Add default parameter.
+	* decl.cc (duplicate_decls): Don't emit errors for failed
+	module_may_redeclare.
+	(xref_tag): Likewise.
+	(start_enum): Likewise.
+	* semantics.cc (begin_class_definition): Likewise.
+	* module.cc (module_may_redeclare): Clean up logic. Emit error
+	messages on failure.
+
+2024-04-30  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/114889
+	* module.cc (trees_in::read_class_def): Look through
+	TEMPLATE_DECL when adding to CLASSTYPE_BEFRIENDING_CLASSES.
+
+2024-04-30  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/114888
+	* typeck.cc (cp_build_binary_op) <case *_DIV_*>: Add missing
+	dependence check for the second sizeof operand.
+
+2024-04-26  Patrick Palka  <ppalka@redhat.com>
+
+	* error.cc (print_instantiation_partial_context_line): Clear the
+	pretty printer prefix around the call to diagnostic_show_locus.
+
+2024-04-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/111284
+	* constexpr.cc (cxx_bind_parameters_in_call): For PARM_DECLs with
+	TREE_ADDRESSABLE types use vc_glvalue rather than vc_prvalue for
+	cxx_eval_constant_expression and if it doesn't have the same
+	type as it should, cast the reference type to reference to type
+	before convert_from_reference and instead of adjust_temp_type
+	take address of the arg, cast to reference to type and then
+	convert_from_reference.
+	(cxx_eval_constant_expression) <case PARM_DECL>: For lval case
+	on parameters with TREE_ADDRESSABLE types lookup result in
+	ctx->globals if possible.  Otherwise if lookup in ctx->globals
+	was successful for parameter with TREE_ADDRESSABLE type,
+	recurse with vc_prvalue on the returned value.
+
+2024-04-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR lto/113208
+	* cp-tree.h (maybe_optimize_cdtor): Declare.
+	* decl2.cc (import_export_decl): Call it for cloned cdtors.
+	* optimize.cc (maybe_optimize_cdtor): New function.
+
+2024-04-24  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/114709
+	* constexpr.cc (cxx_fold_indirect_ref): Restrict object/offset
+	canonicalization to RECORD_TYPE member accesses.
+
+2024-04-23  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	* parser.cc (cp_parser_parameter_declaration): Check if
+	decl_specifiers.type is null.
+
+2024-04-23  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/114795
+	* module.cc (trees_in::is_matching_decl): Propagate deduced
+	function return type.
+
+2024-04-23  Jakub Jelinek  <jakub@redhat.com>
+
+	* parser.cc (cp_parser_using_declaration): Spelling fix: favour
+	-> favor.
+
+2024-04-23  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/114784
+	* method.cc (implicitly_declare_fn): Call clone_attrs
+	on DECL_ATTRIBUTES on STRIP_TEMPLATE (inherited_ctor) rather than
+	inherited_ctor.  Also copy DECL_DISREGARD_INLINE_LIMITS flag from it.
+
+2024-04-23  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/114078
+	* decl.cc (grokdeclarator): Check allocation functions for xobj
+	parameters.
+
 2024-04-16  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/114706
