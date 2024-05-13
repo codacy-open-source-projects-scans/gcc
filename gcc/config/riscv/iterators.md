@@ -75,6 +75,8 @@
 ;; Iterator for floating-point modes that can be loaded into X registers.
 (define_mode_iterator SOFTF [SF (DF "TARGET_64BIT") (HF "TARGET_ZFHMIN")])
 
+;; Iterator for floating-point modes of BF16
+(define_mode_iterator HFBF [HF BF])
 
 ;; -------------------------------------------------------------------
 ;; Mode attributes
@@ -147,6 +149,14 @@
 ;; This code iterator allows signed and unsigned widening multiplications
 ;; to use the same template.
 (define_code_iterator any_extend [sign_extend zero_extend])
+
+;; These code iterators allow unsigned and signed extraction to be generated
+;; from the same template.
+(define_code_iterator any_extract [sign_extract zero_extract])
+(define_code_attr extract_sidi_shift [(sign_extract "sraiw")
+				      (zero_extract "srliw")])
+(define_code_attr extract_shift [(sign_extract "ashiftrt")
+				 (zero_extract "lshiftrt")])
 
 ;; This code iterator allows the two right shift instructions to be
 ;; generated from the same template.
@@ -253,6 +263,8 @@
 			 (us_minus "ussub")
 			 (sign_extend "extend")
 			 (zero_extend "zero_extend")
+			 (sign_extract "extract")
+			 (zero_extract "zero_extract")
 			 (fix "fix_trunc")
 			 (unsigned_fix "fixuns_trunc")])
 

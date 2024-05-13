@@ -50,11 +50,11 @@
 	(sign_extend:DI (div:SI (plus:SI (ashift:SI (subreg:SI (match_operand:DI 1 "register_operand") 0)
 						    (match_operand:QI 2 "imm123_operand"))
 					 (subreg:SI (match_operand:DI 3 "register_operand") 0))
-				(subreg:SI (match_operand:DI 4 "register_operand") 0))))
+				(match_operand:SI 4 "register_operand"))))
    (clobber (match_operand:DI 5 "register_operand"))]
   "TARGET_64BIT && TARGET_ZBA"
    [(set (match_dup 5) (plus:DI (ashift:DI (match_dup 1) (match_dup 2)) (match_dup 3)))
-    (set (match_dup 0) (sign_extend:DI (div:SI (subreg:SI (match_dup 5) 0) (subreg:SI (match_dup 4) 0))))])
+    (set (match_dup 0) (sign_extend:DI (div:SI (subreg:SI (match_dup 5) 0) (match_dup 4))))])
 
 ; Zba does not provide W-forms of sh[123]add(.uw)?, which leads to an
 ; interesting irregularity: we can generate a signed 32-bit result
@@ -183,6 +183,23 @@
   "slli.uw\t%0,%1,%2"
   [(set_attr "type" "bitmanip")
    (set_attr "mode" "DI")])
+
+;; Combine will reassociate the operands in the most useful way here.  We
+;; just have to give it guidance on where to split the result to facilitate
+;; shNadd.uw generation.
+(define_split
+  [(set (match_operand:DI 0 "register_operand")
+	(plus:DI (plus:DI (and:DI (ashift:DI (match_operand:DI 1 "register_operand")
+					     (match_operand:QI 2 "imm123_operand"))
+				  (match_operand 3 "consecutive_bits32_operand"))
+			  (match_operand:DI 4 "register_operand"))
+		 (match_operand 5 "immediate_operand")))]
+  "TARGET_64BIT && TARGET_ZBA"
+  [(set (match_dup 0)
+	(plus:DI (and:DI (ashift:DI (match_dup 1) (match_dup 2))
+			 (match_dup 3))
+		 (match_dup 4)))
+   (set (match_dup 0) (plus:DI (match_dup 0) (match_dup 5)))])
 
 ;; ZBB extension.
 
@@ -694,6 +711,49 @@
   "bext\t%0,%1,%2"
   [(set_attr "type" "bitmanip")])
 
+;; This is a bext followed by a seqz.  Normally this would be a 3->2 split
+;; But the and-not pattern with a constant operand is a define_insn_and_split,
+;; so this looks like a 2->2 split, which combine rejects.  So implement it
+;; as a define_insn_and_split as well.
+(define_insn_and_split "*bextseqzdisi"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+	(and:DI
+	  (not:DI
+	    (subreg:DI
+	      (lshiftrt:SI
+		(match_operand:SI 1 "register_operand" "r")
+		(match_operand:QI 2 "register_operand" "r")) 0))
+	  (const_int 1)))]
+  "TARGET_64BIT && TARGET_ZBS"
+  "#"
+  "&& 1"
+  [(set (match_dup 0)
+	(zero_extract:DI (match_dup 1)
+			 (const_int 1)
+			 (zero_extend:DI (match_dup 2))))
+   (set (match_dup 0) (eq:DI (match_dup 0) (const_int 0)))]
+  "operands[1] = gen_lowpart (word_mode, operands[1]);"
+  [(set_attr "type" "bitmanip")])
+
+(define_insn_and_split "*bextseqzdisi"
+  [(set (match_operand:X 0 "register_operand" "=r")
+	(and:X
+	  (not:X
+	    (lshiftrt:X
+	      (match_operand:X 1 "register_operand" "r")
+	      (match_operand:QI 2 "register_operand" "r")))
+	  (const_int 1)))]
+  "TARGET_ZBS"
+  "#"
+  "&& 1"
+  [(set (match_dup 0)
+	(zero_extract:X (match_dup 1)
+			(const_int 1)
+			(zero_extend:X (match_dup 2))))
+   (set (match_dup 0) (eq:X (match_dup 0) (const_int 0)))]
+  "operands[1] = gen_lowpart (word_mode, operands[1]);"
+  [(set_attr "type" "bitmanip")])
+
 ;; When performing `(a & (1UL << bitno)) ? 0 : -1` the combiner
 ;; usually has the `bitno` typed as X-mode (i.e. no further
 ;; zero-extension is performed around the bitno).
@@ -722,13 +782,14 @@
 (define_split
   [(set (match_operand:X 0 "register_operand")
 	(and:X (not:X (lshiftrt:X (match_operand:X 1 "register_operand")
-				  (subreg:QI (match_operand:X 2 "register_operand") 0)))
+				  (match_operand:QI 2 "register_operand")))
 	       (const_int 1)))]
   "TARGET_ZBS"
   [(set (match_dup 0) (zero_extract:X (match_dup 1)
 				      (const_int 1)
 				      (match_dup 2)))
-   (set (match_dup 0) (xor:X (match_dup 0) (const_int 1)))])
+   (set (match_dup 0) (xor:X (match_dup 0) (const_int 1)))]
+  "operands[2] = gen_lowpart (<MODE>mode, operands[2]);")
 
 ;; We can create a polarity-reversed mask (i.e. bit N -> { set = 0, clear = -1 })
 ;; using a bext(i) followed by an addi instruction.

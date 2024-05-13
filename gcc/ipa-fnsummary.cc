@@ -515,7 +515,7 @@ evaluate_conditions_for_known_args (struct cgraph_node *node,
 		    }
 		  else if (!op->val[1])
 		    {
-		      Value_Range op0 (op->type);
+		      Value_Range op0 (TREE_TYPE (op->val[0]));
 		      range_op_handler handler (op->code);
 
 		      ipa_range_set_and_normalize (op0, op->val[0]);
@@ -681,8 +681,12 @@ evaluate_properties_for_edge (struct cgraph_edge *e, bool inline_p,
 		    if (!vr.undefined_p () && !vr.varying_p ())
 		      {
 			if (!avals->m_known_value_ranges.length ())
-			  avals->m_known_value_ranges.safe_grow_cleared (count,
-									 true);
+			  {
+			    avals->m_known_value_ranges.safe_grow_cleared (count,
+									   true);
+			    for (int i = 0; i < count; ++i)
+			      avals->m_known_value_ranges[i].set_type (void_type_node);
+			  }
 			avals->m_known_value_ranges[i] = vr;
 		      }
 		  }

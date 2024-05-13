@@ -289,8 +289,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
 /* The name of a constructor that does not construct virtual base classes.  */
 #define base_ctor_identifier		cp_global_trees[CPTI_BASE_CTOR_IDENTIFIER]
 /* The name of a destructor that takes an in-charge parameter to
-   decide whether or not to destroy virtual base classes and whether
-   or not to delete the object.  */
+   decide whether or not to destroy virtual base classes.  */
 #define dtor_identifier			cp_global_trees[CPTI_DTOR_IDENTIFIER]
 /* The name of a destructor that destroys virtual base classes.  */
 #define complete_dtor_identifier	cp_global_trees[CPTI_COMPLETE_DTOR_IDENTIFIER]
@@ -369,8 +368,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
 #define throw_fn			cp_global_trees[CPTI_THROW_FN]
 #define rethrow_fn			cp_global_trees[CPTI_RETHROW_FN]
 
-/* The type of the function-pointer argument to "__cxa_atexit" (or
-   "std::atexit", if "__cxa_atexit" is not being used).  */
+/* The type of the function-pointer argument to "std::atexit".  */
 #define atexit_fn_ptr_type_node         cp_global_trees[CPTI_ATEXIT_FN_PTR_TYPE]
 
 /* A pointer to `std::atexit'.  */
@@ -385,7 +383,8 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
 /* The declaration of the dynamic_cast runtime.  */
 #define dynamic_cast_node		cp_global_trees[CPTI_DCAST]
 
-/* The type of a destructor.  */
+/* The type of a destructor, passed to __cxa_atexit, __cxa_thread_atexit
+   or __cxa_throw.  */
 #define cleanup_type			cp_global_trees[CPTI_CLEANUP_TYPE]
 
 /* The type of the vtt parameter passed to subobject constructors and
@@ -2617,7 +2616,7 @@ struct GTY(()) lang_type {
 
 /* True iff NODE is the CLASSTYPE_AS_BASE version of some type.  */
 #define IS_FAKE_BASE_TYPE(NODE)					\
-  (TREE_CODE (NODE) == RECORD_TYPE				\
+  (RECORD_OR_UNION_TYPE_P (NODE)				\
    && TYPE_CONTEXT (NODE) && CLASS_TYPE_P (TYPE_CONTEXT (NODE))	\
    && CLASSTYPE_AS_BASE (TYPE_CONTEXT (NODE)) == (NODE))
 
@@ -4478,7 +4477,10 @@ get_vec_init_expr (tree t)
        && DECL_DECLARED_CONSTEXPR_P (NODE)			\
        && DECL_CLASS_SCOPE_P (NODE)))
 
-/* Nonzero if DECL was declared with '= delete'.  */
+/* Nonzero if DECL was declared with '= delete'.
+   = delete("reason") is represented in addition to this flag by DECL_INITIAL
+   being STRING_CST with the reason and TREE_TYPE of the STRING_CST the
+   RID_DELETE IDENTIFIER_NODE.  */
 #define DECL_DELETED_FN(DECL) \
   (LANG_DECL_FN_CHECK (DECL)->min.base.threadprivate_or_deleted_p)
 
@@ -7065,6 +7067,7 @@ extern tree check_default_argument		(tree, tree, tsubst_flags_t);
 extern int wrapup_namespace_globals		();
 extern tree create_implicit_typedef		(tree, tree);
 extern int local_variable_p			(const_tree);
+extern tree get_cxa_atexit_fn_ptr_type		();
 extern tree register_dtor_fn			(tree);
 extern tmpl_spec_kind current_tmpl_spec_kind	(int);
 extern tree cxx_builtin_function		(tree decl);
@@ -7338,6 +7341,8 @@ extern tree get_copy_assign			(tree);
 extern tree get_default_ctor			(tree);
 extern tree get_dtor				(tree, tsubst_flags_t);
 extern tree build_stub_object			(tree);
+extern tree build_invoke			(tree, const_tree,
+						 tsubst_flags_t);
 extern tree strip_inheriting_ctors		(tree);
 extern tree inherited_ctor_binfo		(tree);
 extern bool base_ctor_omit_inherited_parms	(tree);
@@ -7418,6 +7423,7 @@ extern void set_instantiating_module (tree);
 extern void set_defining_module (tree);
 extern void maybe_key_decl (tree ctx, tree decl);
 extern void propagate_defining_module (tree decl, tree orig);
+extern void remove_defining_module (tree decl);
 
 extern void mangle_module (int m, bool include_partition);
 extern void mangle_module_fini ();
@@ -7522,8 +7528,9 @@ extern tree push_template_decl			(tree, bool is_friend = false);
 extern tree add_inherited_template_parms	(tree, tree);
 extern void template_parm_level_and_index	(tree, int*, int*);
 extern bool redeclare_class_template		(tree, tree, tree);
+extern tree adjust_type_for_entering_scope	(tree);
 extern tree lookup_template_class		(tree, tree, tree, tree,
-						 int, tsubst_flags_t);
+						 tsubst_flags_t);
 extern tree lookup_template_function		(tree, tree);
 extern tree lookup_template_variable		(tree, tree, tsubst_flags_t);
 extern bool uses_template_parms			(tree);
@@ -8408,6 +8415,7 @@ extern int abstract_virtuals_error		(abstract_class_use, tree,
 						 tsubst_flags_t = tf_warning_or_error);
 
 extern tree store_init_value			(tree, tree, vec<tree, va_gc>**, int);
+extern tree build_disable_temp_cleanup		(tree);
 extern tree split_nonconstant_init		(tree, tree);
 extern bool check_narrowing			(tree, tree, tsubst_flags_t,
 						 bool = false);

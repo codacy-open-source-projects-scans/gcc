@@ -1,3 +1,346 @@
+2024-05-11  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __is_nothrow_invocable.
+	* constraint.cc (diagnose_trait_expr): Handle
+	CPTK_IS_NOTHROW_INVOCABLE.
+	* semantics.cc (trait_expr_value): Likewise.
+	(finish_trait_expr): Likewise.
+
+2024-05-11  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __is_invocable.
+	* constraint.cc (diagnose_trait_expr): Handle CPTK_IS_INVOCABLE.
+	* semantics.cc (trait_expr_value): Likewise.
+	(finish_trait_expr): Likewise.
+	* cp-tree.h (build_invoke): New function.
+	* method.cc (build_invoke): New function.
+
+2024-05-11  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __array_rank.
+	* constraint.cc (diagnose_trait_expr): Handle CPTK_RANK.
+	* semantics.cc (trait_expr_value): Likewise.
+	(finish_trait_expr): Likewise.
+
+2024-05-11  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __decay.
+	* semantics.cc (finish_trait_type): Handle CPTK_DECAY.
+
+2024-05-11  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __add_rvalue_reference.
+	* semantics.cc (finish_trait_type): Handle
+	CPTK_ADD_RVALUE_REFERENCE.
+
+2024-05-11  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __add_lvalue_reference.
+	* semantics.cc (finish_trait_type): Handle
+	CPTK_ADD_LVALUE_REFERENCE.
+
+2024-05-11  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __remove_all_extents.
+	* semantics.cc (finish_trait_type): Handle
+	CPTK_REMOVE_ALL_EXTENTS.
+
+2024-05-11  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __remove_extent.
+	* semantics.cc (finish_trait_type): Handle CPTK_REMOVE_EXTENT.
+
+2024-05-11  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __add_pointer.
+	* semantics.cc (finish_trait_type): Handle CPTK_ADD_POINTER.
+	(object_type_p): New function.
+	(referenceable_type_p): Likewise.
+	(trait_expr_value): Use object_type_p.
+
+2024-05-11  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __is_unbounded_array.
+	* constraint.cc (diagnose_trait_expr): Handle
+	CPTK_IS_UNBOUNDED_ARRAY.
+	* semantics.cc (trait_expr_value): Likewise.
+	(finish_trait_expr): Likewise.
+
+2024-05-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/114968
+	* cp-tree.h (atexit_fn_ptr_type_node, cleanup_type): Adjust macro
+	comments.
+	(get_cxa_atexit_fn_ptr_type): Declare.
+	* decl.cc (get_atexit_fn_ptr_type): Adjust function comment, only
+	build type for atexit argument.
+	(get_cxa_atexit_fn_ptr_type): New function.
+	(get_atexit_node): Call get_cxa_atexit_fn_ptr_type rather than
+	get_atexit_fn_ptr_type when using __cxa_atexit.
+	(get_thread_atexit_node): Call get_cxa_atexit_fn_ptr_type
+	rather than get_atexit_fn_ptr_type.
+	(start_cleanup_fn): Add ob_parm argument, call
+	get_cxa_atexit_fn_ptr_type or get_atexit_fn_ptr_type depending
+	on it and create PARM_DECL also based on that argument.
+	(register_dtor_fn): Adjust start_cleanup_fn caller, use
+	get_cxa_atexit_fn_ptr_type rather than get_atexit_fn_ptr_type
+	for use_dtor casts.
+	* except.cc (build_throw): Use get_cxa_atexit_fn_ptr_type ().
+
+2024-05-09  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/114983
+	* pt.cc (tsubst_expr) <case SIZEOF_EXPR>: Use copy_warning.
+	* semantics.cc (finish_parenthesized_expr): Also suppress
+	-Wsizeof-array-div.
+
+2024-05-09  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/85889
+	* lambda.cc (add_capture): Add a pedwarn for capturing structured
+	bindings.
+
+2024-05-08  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/113582
+	* parser.cc (cp_parser_label_for_labeled_statement): suppress_warning
+	if it's not enabled at input_location.
+	* pt.cc (tsubst_stmt): Call copy_warning.
+
+2024-05-07  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/114856
+	* call.cc (make_temporary_var_for_ref_to_temp): Set context for
+	temporaries with linkage.
+	* init.cc (create_temporary_var): Revert to only set context
+	when in a function decl.
+
+2024-05-07  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR c++/89224
+	* constexpr.cc (cxx_eval_array_reference): Compare main variants
+	for the vector/array types instead of the types directly.
+
+2024-05-07  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/114459
+	* parser.cc (cp_parser_member_declaration): Implement C++26
+	P2893R3 - Variadic friends.  Parse friend type declarations
+	with ... or with more than one friend type specifier.
+	* friend.cc (make_friend_class): Allow TYPE_PACK_EXPANSION.
+	* pt.cc (instantiate_class_template): Handle PACK_EXPANSION_P
+	in friend classes.
+
+2024-05-07  Marek Polacek  <polacek@redhat.com>
+
+	* decl.cc (duplicate_decls): Don't check VAR_P before
+	DECL_DECOMPOSITION_P.
+	* init.cc (build_aggr_init): Likewise.
+	* parser.cc (cp_parser_range_for): Likewise.
+	(do_range_for_auto_deduction): Likewise.
+	(cp_convert_range_for): Likewise.
+	(cp_convert_omp_range_for): Likewise.
+	(cp_finish_omp_range_for): Likewise.
+	* pt.cc (extract_locals_r): Likewise.
+	(tsubst_omp_for_iterator): Likewise.
+	(tsubst_decomp_names): Likewise.
+	(tsubst_stmt): Likewise.
+	* typeck.cc (maybe_warn_about_returning_address_of_local): Likewise.
+
+2024-05-07  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* Make-lang.in (cc1plus$(exeext)): Remove $(NETLIBS).
+
+2024-05-07  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/114954
+	* cp-tree.h (IS_FAKE_BASE_TYPE): Also apply to unions.
+
+2024-05-07  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/114275
+	* cp-tree.h (remove_defining_module): Declare.
+	* decl.cc (duplicate_decls): Call remove_defining_module on
+	to-be-freed newdecl.
+	* module.cc (imported_temploid_friends): Mark as GTY root...
+	(init_modules): ...and allocate from ggc.
+	(trees_in::decl_value): Only track for declarations that won't
+	be discarded.
+	(remove_defining_module): New function.
+
+2024-05-06  Qing Zhao  <qing.zhao@oracle.com>
+
+	PR c/53548
+	* decl.cc (layout_var_decl): Handle the cases when the DECL is
+	union with a flexible array member initializer.
+
+2024-05-06  Qing Zhao  <qing.zhao@oracle.com>
+
+	PR c/53548
+	* class.cc (diagnose_flexarrays): Change error to pdewarn for the case
+	flexible array members alone in structures.
+	* decl.cc (grokdeclarator): Change error to pdewarn for the case
+	flexible array members in unions.
+
+2024-05-03  Jason Merrill  <jason@redhat.com>
+
+	PR c++/114935
+	* cp-gimplify.cc (cp_genericize_init): Add flags parm.
+	(cp_genericize_init_expr): Pass nullptr.
+	(cp_genericize_target_expr): Handle cleanup flags.
+	* typeck2.cc (build_disable_temp_cleanup): Factor out of...
+	(split_nonconstant_init): ...here.
+	* cp-tree.h (build_disable_temp_cleanup): Declare.
+
+2024-05-03  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __is_pointer.
+	* constraint.cc (diagnose_trait_expr): Handle CPTK_IS_POINTER.
+	* semantics.cc (trait_expr_value): Likewise.
+	(finish_trait_expr): Likewise.
+
+2024-05-03  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __is_volatile.
+	* constraint.cc (diagnose_trait_expr): Handle CPTK_IS_VOLATILE.
+	* semantics.cc (trait_expr_value): Likewise.
+	(finish_trait_expr): Likewise.
+
+2024-05-03  Ken Matsui  <kmatsui@gcc.gnu.org>
+
+	* cp-trait.def: Define __is_const.
+	* constraint.cc (diagnose_trait_expr): Handle CPTK_IS_CONST.
+	* semantics.cc (trait_expr_value): Likewise.
+	(finish_trait_expr): Likewise.
+
+2024-05-03  Patrick Palka  <ppalka@redhat.com>
+
+	* coroutines.cc (instantiate_coro_traits): Adjust call to
+	lookup_template_class.
+	(instantiate_coro_handle_for_promise_type): Likewise.
+	* cp-tree.h (adjust_type_for_entering_scope): Declare.
+	(lookup_template_class): Adjust declaration.
+	* decl.cc (make_typename_type): Adjust call to
+	lookup_template_class. Likewise.
+	(get_tuple_size): Likewise.
+	(get_tuple_element_type): Likewise.
+	* pt.cc (adjust_type_for_entering_scope): Define.
+	(tsubst_entering_scope): Define.
+	(lookup_template_class): Remove entering_scope parameter.
+	Replace tsubst_aggr_type call with tsubst_entering_scope.
+	(tsubst_aggr_type): Remove.
+	(tsubst_aggr_type_1): Inline into tsubst.
+	(tsubst_function_decl): Replace tsubst_aggr_type call
+	with tsubst_entering_scope.
+	(tsubst_template_decl): Likewise.
+	(tsubst_decl): Likewise.
+	(tsubst) <case RECORD_TYPE, UNION_TYPE, ENUMERAL_TYPE>:
+	Inlined from tsubst_aggr_type_1.
+	<case BOUND_TEMPLATE_TEMPLATE_PARM>: Adjust calls to
+	lookup_template_class.
+	<case TYPENAME_TYPE>: Replace tsubst_aggr_type call with
+	tsubst_entering_scope.
+	<case UNBOUND_CLASS_TEMPLATE>: Likewise.
+	Increment processing_template_decl when substituting the
+	context.
+	(tsubst_expr) <case FIELD_DECL>: Replace tsubst_aggr_type
+	call with tsubst_entering_scope.
+	<case TEMPLATE_DECL>: Likewise.
+	(instantiate_template): Likewise.
+	(resolve_typename_type): Adjust lookup_template_class call
+	and call adjust_type_for_entering_scope afterward.
+	(listify): Adjust lookup_template_class call.
+	(alias_ctad_tweaks): Likewise.
+	* semantics.cc (finish_template_type): Adjust lookup_template_class
+	call and maybe call adjust_type_for_entering_scope afterward.
+
+2024-05-02  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/114917
+	* parser.cc (cp_parser_declaration_seq_opt): Clear
+	parser->in_unbraced_* flags when parsing toplevel declarations.
+
+2024-05-02  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/114458
+	* parser.cc (cp_parser_pure_specifier): Implement C++26 P2573R2
+	- = delete("should have a reason");.  Parse deleted-function-body.
+	* decl.cc (duplicate_decls): Copy DECL_INITIAL from DECL_DELETED_FN
+	olddecl to newdecl if it is a STRING_CST.
+	(cp_finish_decl): Handle deleted init with a reason.
+	* decl2.cc: Include "escaped_string.h".
+	(grokfield): Handle deleted init with a reason.
+	(mark_used): Emit DECL_DELETED_FN reason in the message if any.
+	* cp-tree.h (DECL_DELETED_FN): Document representation of
+	= delete("reason") on a DECL.
+
+2024-05-02  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/114630
+	* module.cc (depset::hash::add_partial_entities): Mark GM
+	specializations as unreached.
+	(depset::hash::find_dependencies): Also reach entities in the
+	DECL_TEMPLATE_SPECIALIZATIONS list.
+
+2024-05-02  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/105224
+	* class.cc (finish_struct_1): Also push classes attached to a
+	module into the 'keyed_classes' list.
+	* decl.cc (record_key_method_defined): Don't push classes
+	attached to a named module into the 'keyed_classes' list.
+	* module.cc (trees_in::read_class_def): Likewise.
+	* decl2.cc (import_export_class): Uniquely emit vtables for
+	non-template classes attached to a named module.
+	(vtables_uniquely_emitted): New function.
+	(import_export_decl): Update comments. Update with knowledge
+	about new kinds of uniquely emitted vtables.
+
+2024-05-01  Jason Merrill  <jason@redhat.com>
+
+	* cp-tree.h (base_ctor_identifier): Adjust comment.
+	* call.cc (in_charge_arg_for_name): Abort on deleting dtor.
+	* decl2.cc (maybe_retrofit_in_chrg): Don't add it for
+	destructors without vbases, either.
+	* constexpr.cc (cxx_eval_call_expression): Remove workaround.
+
+2024-05-01  Jason Merrill  <jason@redhat.com>
+
+	PR c++/113706
+	* decl.cc (decls_match): Handle memchr return type being
+	const-qualified.
+
+2024-05-01  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	* name-lookup.cc (walk_module_binding): Use the
+	partition-specific hidden flag instead of the top-level
+	decl_hidden.
+
+2024-05-01  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/114868
+	* module.cc (depset::hash::add_binding_entity): Propagate
+	OVL_USING_P for using-declarations.
+
+2024-05-01  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/107688
+	* name-lookup.cc (push_namespace): Error when exporting
+	namespace with internal linkage.
+	* parser.h (struct cp_parser): Add new flag
+	'in_unbraced_export_declaration_p'.
+	* parser.cc (cp_debug_parser): Print the new flag.
+	(cp_parser_new): Initialise the new flag.
+	(cp_parser_module_export): Set the new flag.
+	(cp_parser_class_specifier): Clear and restore the new flag.
+	(cp_parser_import_declaration): Imports can now appear directly
+	in a linkage specification.
+	(cp_parser_declaration): Categorise declarations as "name" or
+	"special"; error on the later in contexts where the former is
+	required.
+	(cp_parser_class_head): Error when exporting a partial
+	specialisation.
+
 2024-04-30  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/114456

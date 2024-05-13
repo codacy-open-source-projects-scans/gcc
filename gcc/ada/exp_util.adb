@@ -937,11 +937,11 @@ package body Exp_Util is
           and then not No_Heap_Finalization (Ptr_Typ);
 
       --  The allocation/deallocation of a controlled object must be associated
-      --  with an attachment to/detachment from a finalization master, but the
-      --  implementation cannot guarantee this property for every anonymous
-      --  access tyoe, see Build_Anonymous_Collection.
+      --  with an attachment to/detachment from a finalization collection, but
+      --  the implementation cannot guarantee this property for every anonymous
+      --  access type, see Build_Anonymous_Collection.
 
-      if Needs_Fin and then No (Finalization_Master (Ptr_Typ)) then
+      if Needs_Fin and then No (Finalization_Collection (Ptr_Typ)) then
          pragma Assert (Ekind (Ptr_Typ) = E_Anonymous_Access_Type);
          Needs_Fin := False;
       end if;
@@ -975,8 +975,8 @@ package body Exp_Util is
          Alloc_Nod    : Node_Id := Empty;
          Alloc_Expr   : Node_Id := Empty;
          Fin_Addr_Id  : Entity_Id;
-         Fin_Mas_Act  : Node_Id;
-         Fin_Mas_Id   : Entity_Id;
+         Fin_Coll_Act : Node_Id;
+         Fin_Coll_Id  : Entity_Id;
          Proc_To_Call : Entity_Id;
          Subpool      : Node_Id := Empty;
 
@@ -1035,21 +1035,21 @@ package body Exp_Util is
                Append_To (Actuals, Make_Null (Loc));
             end if;
 
-            --  c) Finalization master
+            --  c) Finalization collection
 
             if Needs_Fin then
-               Fin_Mas_Id  := Finalization_Master (Ptr_Typ);
-               Fin_Mas_Act := New_Occurrence_Of (Fin_Mas_Id, Loc);
+               Fin_Coll_Id  := Finalization_Collection (Ptr_Typ);
+               Fin_Coll_Act := New_Occurrence_Of (Fin_Coll_Id, Loc);
 
-               --  Handle the case where the master is actually a pointer to a
-               --  master. This case arises in build-in-place functions.
+               --  Handle the case where the collection is actually a pointer
+               --  to a collection. This arises in build-in-place functions.
 
-               if Is_Access_Type (Etype (Fin_Mas_Id)) then
-                  Append_To (Actuals, Fin_Mas_Act);
+               if Is_Access_Type (Etype (Fin_Coll_Id)) then
+                  Append_To (Actuals, Fin_Coll_Act);
                else
                   Append_To (Actuals,
                     Make_Attribute_Reference (Loc,
-                      Prefix         => Fin_Mas_Act,
+                      Prefix         => Fin_Coll_Act,
                       Attribute_Name => Name_Unrestricted_Access));
                end if;
             else
@@ -1293,6 +1293,7 @@ package body Exp_Util is
                   New_Occurrence_Of (RTE (RE_Storage_Count), Loc)));
 
             Formal_Params : List_Id;
+
          begin
             if Use_Secondary_Stack_Pool then
                --  Gigi expects a different profile in the Secondary_Stack_Pool
@@ -4775,136 +4776,6 @@ package body Exp_Util is
       return Alloc_Obj;
    end Build_Temporary_On_Secondary_Stack;
 
-   ---------------------------------------
-   -- Build_Transient_Object_Statements --
-   ---------------------------------------
-
-   procedure Build_Transient_Object_Statements
-     (Obj_Decl     : Node_Id;
-      Fin_Call     : out Node_Id;
-      Hook_Assign  : out Node_Id;
-      Hook_Clear   : out Node_Id;
-      Hook_Decl    : out Node_Id;
-      Ptr_Decl     : out Node_Id;
-      Finalize_Obj : Boolean := True)
-   is
-      Loc     : constant Source_Ptr := Sloc (Obj_Decl);
-      Obj_Id  : constant Entity_Id  := Defining_Entity (Obj_Decl);
-      Obj_Typ : constant Entity_Id  := Base_Type (Etype (Obj_Id));
-
-      Desig_Typ : Entity_Id;
-      Hook_Expr : Node_Id;
-      Hook_Id   : Entity_Id;
-      Obj_Ref   : Node_Id;
-      Ptr_Typ   : Entity_Id;
-
-   begin
-      --  Recover the type of the object
-
-      Desig_Typ := Obj_Typ;
-
-      if Is_Access_Type (Desig_Typ) then
-         Desig_Typ := Available_View (Designated_Type (Desig_Typ));
-      end if;
-
-      --  Create an access type which provides a reference to the transient
-      --  object. Generate:
-
-      --    type Ptr_Typ is access all Desig_Typ;
-
-      Ptr_Typ := Make_Temporary (Loc, 'A');
-      Mutate_Ekind (Ptr_Typ, E_General_Access_Type);
-      Set_Directly_Designated_Type (Ptr_Typ, Desig_Typ);
-
-      Ptr_Decl :=
-        Make_Full_Type_Declaration (Loc,
-          Defining_Identifier => Ptr_Typ,
-          Type_Definition     =>
-            Make_Access_To_Object_Definition (Loc,
-              All_Present        => True,
-              Subtype_Indication => New_Occurrence_Of (Desig_Typ, Loc)));
-
-      --  Create a temporary check which acts as a hook to the transient
-      --  object. Generate:
-
-      --    Hook : Ptr_Typ := null;
-
-      Hook_Id := Make_Temporary (Loc, 'T');
-      Mutate_Ekind (Hook_Id, E_Variable);
-      Set_Etype (Hook_Id, Ptr_Typ);
-
-      Hook_Decl :=
-        Make_Object_Declaration (Loc,
-          Defining_Identifier => Hook_Id,
-          Object_Definition   => New_Occurrence_Of (Ptr_Typ, Loc),
-          Expression          => Make_Null (Loc));
-
-      --  Mark the temporary as a hook. This signals the machinery in
-      --  Build_Finalizer to recognize this special case.
-
-      Set_Status_Flag_Or_Transient_Decl (Hook_Id, Obj_Decl);
-
-      --  Hook the transient object to the temporary. Generate:
-
-      --    Hook := Ptr_Typ (Obj_Id);
-      --      <or>
-      --    Hool := Obj_Id'Unrestricted_Access;
-
-      if Is_Access_Type (Obj_Typ) then
-         Hook_Expr :=
-           Unchecked_Convert_To (Ptr_Typ, New_Occurrence_Of (Obj_Id, Loc));
-      else
-         Hook_Expr :=
-           Make_Attribute_Reference (Loc,
-             Prefix         => New_Occurrence_Of (Obj_Id, Loc),
-             Attribute_Name => Name_Unrestricted_Access);
-      end if;
-
-      Hook_Assign :=
-        Make_Assignment_Statement (Loc,
-          Name       => New_Occurrence_Of (Hook_Id, Loc),
-          Expression => Hook_Expr);
-
-      --  Crear the hook prior to finalizing the object. Generate:
-
-      --    Hook := null;
-
-      Hook_Clear :=
-        Make_Assignment_Statement (Loc,
-          Name       => New_Occurrence_Of (Hook_Id, Loc),
-          Expression => Make_Null (Loc));
-
-      --  Finalize the object. Generate:
-
-      --    [Deep_]Finalize (Obj_Ref[.all]);
-
-      if Finalize_Obj then
-         Obj_Ref := New_Occurrence_Of (Obj_Id, Loc);
-
-         if Is_Access_Type (Obj_Typ) then
-            Obj_Ref := Make_Explicit_Dereference (Loc, Obj_Ref);
-            Set_Etype (Obj_Ref, Desig_Typ);
-         end if;
-
-         Fin_Call :=
-           Make_Final_Call
-             (Obj_Ref => Obj_Ref,
-              Typ     => Desig_Typ);
-
-      --  Otherwise finalize the hook. Generate:
-
-      --    [Deep_]Finalize (Hook.all);
-
-      else
-         Fin_Call :=
-           Make_Final_Call (
-             Obj_Ref =>
-               Make_Explicit_Dereference (Loc,
-                 Prefix => New_Occurrence_Of (Hook_Id, Loc)),
-             Typ     => Desig_Typ);
-      end if;
-   end Build_Transient_Object_Statements;
-
    -----------------------------
    -- Check_Float_Op_Overflow --
    -----------------------------
@@ -7396,6 +7267,32 @@ package body Exp_Util is
       return False;
    end In_Unconditional_Context;
 
+   ----------------------------
+   -- Init_Proc_Level_Formal --
+   ----------------------------
+
+   function Init_Proc_Level_Formal (Proc : Entity_Id) return Entity_Id is
+      Form : Entity_Id;
+
+   begin
+      --  Go through the formals of the initialization procedure Proc to find
+      --  the extra accessibility level parameter associated with the object
+      --  being initialized.
+
+      Form := First_Formal (Proc);
+      while Present (Form) loop
+         if Chars (Form) = Name_uInit_Level then
+            return Form;
+         end if;
+
+         Next_Formal (Form);
+      end loop;
+
+      --  No formal was found, return Empty
+
+      return Empty;
+   end Init_Proc_Level_Formal;
+
    -------------------
    -- Insert_Action --
    -------------------
@@ -8881,7 +8778,7 @@ package body Exp_Util is
           and then not Is_Aliased (Obj_Id, Decl)
 
           --  Do not consider transient objects allocated on the heap since
-          --  they are attached to a finalization master.
+          --  they are attached to a finalization collection.
 
           and then not Is_Allocated (Obj_Id)
 
@@ -12047,7 +11944,7 @@ package body Exp_Util is
 
                         --  When this routine is called while the itype
                         --  is being created, the entity might not yet be
-                        --  decorated with the associated node, but should
+                        --  decorated with the associated node, but will
                         --  have the related expression.
 
                         if Present (Associated_Node_For_Itype (Subt)) then
@@ -12055,21 +11952,10 @@ package body Exp_Util is
                              Possible_Side_Effect_In_SPARK
                                (Associated_Node_For_Itype (Subt));
 
-                        elsif Present (Related_Expression (Subt)) then
+                        else
                            return
                              Possible_Side_Effect_In_SPARK
                                (Related_Expression (Subt));
-
-                        --  When the itype doesn't have any indication of its
-                        --  origin (which currently only happens for packed
-                        --  array types created by freezing that shouldn't
-                        --  be picked by GNATprove anyway), then we can
-                        --  conservatively assume that the expression can
-                        --  be kept as it appears in the source code.
-
-                        else
-                           pragma Assert (Is_Packed_Array_Impl_Type (Subt));
-                           return False;
                         end if;
                      else
                         return True;
@@ -13092,6 +12978,14 @@ package body Exp_Util is
             elsif Is_Ignored_For_Finalization (Obj_Id) then
                null;
 
+            --  Conversely, if one of the above cases created a Master_Node,
+            --  finalization actions are required for the associated object.
+
+            elsif Ekind (Obj_Id) = E_Variable
+              and then Is_RTE (Obj_Typ, RE_Master_Node)
+            then
+               return True;
+
             --  Ignored Ghost objects do not need any cleanup actions because
             --  they will not appear in the final tree.
 
@@ -13132,31 +13026,12 @@ package body Exp_Util is
             then
                return True;
 
-            --  Processing for "hook" objects generated for transient objects
-            --  declared inside an Expression_With_Actions.
-
-            elsif Is_Access_Type (Obj_Typ)
-              and then Present (Status_Flag_Or_Transient_Decl (Obj_Id))
-              and then Nkind (Status_Flag_Or_Transient_Decl (Obj_Id)) =
-                                                        N_Object_Declaration
-            then
-               return True;
-
-            --  Processing for intermediate results of if expressions where
-            --  one of the alternatives uses a controlled function call.
-
-            elsif Is_Access_Type (Obj_Typ)
-              and then Present (Status_Flag_Or_Transient_Decl (Obj_Id))
-              and then Nkind (Status_Flag_Or_Transient_Decl (Obj_Id)) =
-                                                        N_Defining_Identifier
-              and then Present (Expr)
-              and then Nkind (Expr) = N_Null
-            then
-               return True;
-
-            --  Simple protected objects which use type System.Tasking.
+            --  Simple protected objects which use the type System.Tasking.
             --  Protected_Objects.Protection to manage their locks should be
-            --  treated as controlled since they require manual cleanup.
+            --  treated as controlled since they require manual cleanup, but
+            --  not for restricted run-time libraries (Ravenscar), see also
+            --  Cleanup_Protected_Object in Exp_Ch7.
+
             --  The only exception is illustrated in the following example:
 
             --     package Pkg is
@@ -13189,6 +13064,7 @@ package body Exp_Util is
             elsif Ekind (Obj_Id) = E_Variable
               and then not In_Library_Level_Package_Body (Obj_Id)
               and then Has_Simple_Protected_Object (Obj_Typ)
+              and then not Restricted_Profile
             then
                return True;
             end if;
@@ -13211,28 +13087,18 @@ package body Exp_Util is
 
             elsif Is_Ignored_Ghost_Entity (Obj_Id) then
                null;
-
-            --  Return object of extended return statements. This case is
-            --  recognized and marked by the expansion of extended return
-            --  statements (see Expand_N_Extended_Return_Statement).
-
-            elsif Needs_Finalization (Obj_Typ)
-              and then Is_Return_Object (Obj_Id)
-              and then Present (Status_Flag_Or_Transient_Decl (Obj_Id))
-            then
-               return True;
             end if;
 
          --  Inspect the freeze node of an access-to-controlled type and look
-         --  for a delayed finalization master. This case arises when the
+         --  for a delayed finalization collection. This case arises when the
          --  freeze actions are inserted at a later time than the expansion of
          --  the context. Since Build_Finalizer is never called on a single
-         --  construct twice, the master will be ultimately left out and never
-         --  finalized. This is also needed for freeze actions of designated
-         --  types themselves, since in some cases the finalization master is
-         --  associated with a designated type's freeze node rather than that
-         --  of the access type (see handling for freeze actions in
-         --  Build_Finalization_Master).
+         --  construct twice, the collection would be ultimately left out and
+         --  never finalized. This is also needed for the freeze actions of
+         --  designated types themselves, since in some cases the finalization
+         --  collection is associated with a designated type's freeze node
+         --  rather than that of the access type (see handling for freeze
+         --  actions in Build_Finalization_Collection).
 
          elsif Nkind (Decl) = N_Freeze_Entity
            and then Present (Actions (Decl))

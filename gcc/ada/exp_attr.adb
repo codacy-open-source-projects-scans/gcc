@@ -2701,13 +2701,14 @@ package body Exp_Attr is
          --  activation record object where the component corresponds to
          --  prefix of the attribute (for back ends that require "unnesting"
          --  of nested subprograms), since the address needs to be assigned
-         --  as-is to such components.
+         --  as-is to such components. Likewise for a return object.
 
          elsif Tagged_Type_Expansion
            and then Is_Class_Wide_Type (Ptyp)
            and then Is_Interface (Underlying_Type (Ptyp))
-           and then not (Nkind (Pref) in N_Has_Entity
-                          and then Is_Subprogram (Entity (Pref)))
+           and then not (Is_Entity_Name (Pref)
+                          and then (Is_Subprogram (Entity (Pref))
+                                     or else Is_Return_Object (Entity (Pref))))
            and then not Is_Unnested_Component_Init (N)
          then
             Rewrite (N,
@@ -3562,6 +3563,14 @@ package body Exp_Attr is
       --  Start of processing for Finalization_Size
 
       begin
+         --  If the prefix is the dereference of an access value subject to
+         --  pragma No_Heap_Finalization, then no header has been added.
+
+         if Nkind (Pref) = N_Explicit_Dereference
+           and then No_Heap_Finalization (Etype (Prefix (Pref)))
+         then
+            Rewrite (N, Make_Integer_Literal (Loc, 0));
+
          --  An object of a class-wide type first requires a runtime check to
          --  determine whether it is actually controlled or not. Depending on
          --  the outcome of this check, the Finalization_Size of the object
@@ -3577,7 +3586,7 @@ package body Exp_Attr is
          --
          --  and the attribute reference is replaced with a reference to Size.
 
-         if Is_Class_Wide_Type (Ptyp) then
+         elsif Is_Class_Wide_Type (Ptyp) then
             Size := Make_Temporary (Loc, 'S');
 
             Insert_Actions (N, New_List (
@@ -4979,7 +4988,6 @@ package body Exp_Attr is
          CW_Typ  : Entity_Id;
          Decl    : Node_Id;
          Ins_Nod : Node_Id;
-         Subp    : Node_Id;
          Temp    : Entity_Id;
 
          use Old_Attr_Util.Conditional_Evaluation;
@@ -4998,27 +5006,6 @@ package body Exp_Attr is
             return;
          end if;
 
-         --  Climb the parent chain looking for subprogram _Wrapped_Statements
-
-         Subp := N;
-         while Present (Subp) loop
-            exit when Nkind (Subp) = N_Subprogram_Body
-              and then Chars (Defining_Entity (Subp))
-                         = Name_uWrapped_Statements;
-
-            --  If assertions are disabled, no need to create the declaration
-            --  that preserves the value. The postcondition pragma in which
-            --  'Old appears will be checked or disabled according to the
-            --  current policy in effect.
-
-            if Nkind (Subp) = N_Pragma and then not Is_Checked (Subp) then
-               return;
-            end if;
-
-            Subp := Parent (Subp);
-         end loop;
-         Subp := Empty;
-
          --  'Old can only appear in the case where local contract-related
          --  wrapper has been generated with the purpose of wrapping the
          --  original declarations and statements.
@@ -5031,44 +5018,20 @@ package body Exp_Attr is
          Mutate_Ekind (Temp, E_Constant);
          Set_Stores_Attribute_Old_Prefix (Temp);
 
-         --  Push the scope of the related subprogram where _Postcondition
-         --  resides as this ensures that the object will be analyzed in the
-         --  proper context.
-
-         if Present (Subp) then
-            Push_Scope (Scope (Defining_Entity (Subp)));
-
-         --  No need to push the scope when generating C code since the
-         --  _Postcondition procedure has been inlined.
-
-         else
-            null;
-         end if;
-
          --  Locate the insertion place of the internal temporary that saves
          --  the 'Old value.
 
-         if Present (Subp) then
-            Ins_Nod := Subp;
+         Ins_Nod := N;
+         while Nkind (Ins_Nod) /= N_Subprogram_Body loop
+            Ins_Nod := Parent (Ins_Nod);
+         end loop;
 
-         --  General case where the postcondition checks occur after the call
-         --  to _Wrapped_Statements.
+         pragma Assert (Present (Wrapped_Statements
+           (if Acts_As_Spec (Ins_Nod)
+              then Defining_Unit_Name (Specification (Ins_Nod))
+              else Corresponding_Spec (Ins_Nod))));
 
-         else
-            Ins_Nod := N;
-            while Nkind (Ins_Nod) /= N_Subprogram_Body loop
-               Ins_Nod := Parent (Ins_Nod);
-            end loop;
-
-            if Present (Corresponding_Spec (Ins_Nod))
-              and then Present
-                         (Wrapped_Statements (Corresponding_Spec (Ins_Nod)))
-            then
-               Ins_Nod := Last (Declarations (Ins_Nod));
-            else
-               Ins_Nod := First (Declarations (Ins_Nod));
-            end if;
-         end if;
+         Ins_Nod := Last (Declarations (Ins_Nod));
 
          if Eligible_For_Conditional_Evaluation (N) then
             declare
@@ -5113,10 +5076,6 @@ package body Exp_Attr is
                              (Temp => Temp,
                               Typ  => Etype (Pref),
                               Loc  => Loc));
-
-               if Present (Subp) then
-                  Pop_Scope;
-               end if;
                return;
             end;
 
@@ -5168,10 +5127,6 @@ package body Exp_Attr is
 
             Insert_Before_And_Analyze (Ins_Nod, Decl);
 
-         end if;
-
-         if Present (Subp) then
-            Pop_Scope;
          end if;
 
          --  Ensure that the prefix of attribute 'Old is valid. The check must

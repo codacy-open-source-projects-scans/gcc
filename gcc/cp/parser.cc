@@ -560,6 +560,8 @@ cp_debug_parser (FILE *file, cp_parser *parser)
 			       & THIS_FORBIDDEN));
   cp_debug_print_flag (file, "In unbraced linkage specification",
 			      parser->in_unbraced_linkage_specification_p);
+  cp_debug_print_flag (file, "In unbraced export declaration",
+			      parser->in_unbraced_export_declaration_p);
   cp_debug_print_flag (file, "Parsing a declarator",
 			      parser->in_declarator_p);
   cp_debug_print_flag (file, "In template argument list",
@@ -4424,6 +4426,9 @@ cp_parser_new (cp_lexer *lexer)
 
   /* We are not processing an `extern "C"' declaration.  */
   parser->in_unbraced_linkage_specification_p = false;
+
+  /* We aren't parsing an export-declaration.  */
+  parser->in_unbraced_export_declaration_p = false;
 
   /* We are not processing a declarator.  */
   parser->in_declarator_p = false;
@@ -13103,7 +13108,11 @@ cp_parser_label_for_labeled_statement (cp_parser* parser, tree attributes)
       /* Anything else must be an ordinary label.  */
       label = finish_label_stmt (cp_parser_identifier (parser));
       if (label && TREE_CODE (label) == LABEL_DECL)
-	FALLTHROUGH_LABEL_P (label) = fallthrough_p;
+	{
+	  FALLTHROUGH_LABEL_P (label) = fallthrough_p;
+	  if (!warning_enabled_at (input_location, OPT_Wunused_label))
+	    suppress_warning (label, OPT_Wunused_label);
+	}
       break;
     }
 
@@ -14117,7 +14126,6 @@ cp_parser_range_for (cp_parser *parser, tree scope, tree init, tree range_decl,
 	  /* For decomposition declaration get all of the corresponding
 	     declarations out of the way.  */
 	  if (TREE_CODE (v) == ARRAY_REF
-	      && VAR_P (TREE_OPERAND (v, 0))
 	      && DECL_DECOMPOSITION_P (TREE_OPERAND (v, 0)))
 	    {
 	      tree d = range_decl;
@@ -14238,7 +14246,7 @@ do_range_for_auto_deduction (tree decl, tree range_expr, cp_decomp *decomp)
 						iter_decl, auto_node,
 						tf_warning_or_error,
 						adc_variable_type);
-	  if (VAR_P (decl) && DECL_DECOMPOSITION_P (decl))
+	  if (DECL_DECOMPOSITION_P (decl))
 	    cp_finish_decomp (decl, decomp);
 	}
     }
@@ -14437,7 +14445,7 @@ cp_convert_range_for (tree statement, tree range_decl, tree range_expr,
   cp_finish_decl (range_decl, deref_begin,
 		  /*is_constant_init*/false, NULL_TREE,
 		  LOOKUP_ONLYCONVERTING, decomp);
-  if (VAR_P (range_decl) && DECL_DECOMPOSITION_P (range_decl))
+  if (DECL_DECOMPOSITION_P (range_decl))
     cp_finish_decomp (range_decl, decomp);
 
   warn_for_range_copy (range_decl, deref_begin);
@@ -15249,10 +15257,6 @@ cp_parser_import_declaration (cp_parser *parser, module_parse mp_state,
 	goto skip_eol;
       cp_parser_require_pragma_eol (parser, token);
 
-      if (parser->in_unbraced_linkage_specification_p)
-	error_at (token->location, "import cannot appear directly in"
-		  " a linkage-specification");
-
       if (mp_state == MP_PURVIEW_IMPORTS || mp_state == MP_PRIVATE_IMPORTS)
 	{
 	  /* Module-purview imports must not be from source inclusion
@@ -15273,7 +15277,7 @@ cp_parser_import_declaration (cp_parser *parser, module_parse mp_state,
 
 /*  export-declaration.
 
-    export declaration
+    export name-declaration
     export { declaration-seq-opt }  */
 
 static void
@@ -15315,7 +15319,13 @@ cp_parser_module_export (cp_parser *parser)
 	  || cp_lexer_next_token_is_keyword (parser->lexer, RID__EXPORT))
 	error_at (token->location, "%<export%> not part of following"
 		  " module-directive");
+
+      bool saved_in_unbraced_export_declaration_p
+	= parser->in_unbraced_export_declaration_p;
+      parser->in_unbraced_export_declaration_p = true;
       cp_parser_declaration (parser, NULL_TREE);
+      parser->in_unbraced_export_declaration_p
+	= saved_in_unbraced_export_declaration_p;
     }
 
   module_kind = mk;
@@ -15334,6 +15344,16 @@ cp_parser_module_export (cp_parser *parser)
 static void
 cp_parser_declaration_seq_opt (cp_parser* parser)
 {
+  bool saved_in_unbraced_linkage_specification_p
+    = parser->in_unbraced_linkage_specification_p;
+  bool saved_in_unbraced_export_declaration_p
+    = parser->in_unbraced_export_declaration_p;
+
+  /* We're not in an unbraced linkage-specification
+     or export-declaration anymore.  */
+  parser->in_unbraced_linkage_specification_p = false;
+  parser->in_unbraced_export_declaration_p = false;
+
   while (true)
     {
       cp_token *token = cp_lexer_peek_token (parser->lexer);
@@ -15344,29 +15364,36 @@ cp_parser_declaration_seq_opt (cp_parser* parser)
       else
 	cp_parser_toplevel_declaration (parser);
     }
+
+  parser->in_unbraced_linkage_specification_p
+    = saved_in_unbraced_linkage_specification_p;
+  parser->in_unbraced_export_declaration_p
+    = saved_in_unbraced_export_declaration_p;
 }
 
-/* Parse a declaration.
+/* Parse a declaration.  The distinction between name-declaration
+   and special-declaration is only since C++20.
 
    declaration:
+     name-declaration
+     special-declaration
+
+   name-declaration:
      block-declaration
+     nodeclspec-function-declaration
      function-definition
      template-declaration
-     explicit-instantiation
-     explicit-specialization
+     deduction-guide  (C++17)
      linkage-specification
      namespace-definition
+     empty-declaration
+     attribute-declaration
+     module-import-declaration  (modules)
 
-   C++17:
-     deduction-guide
-
-   modules:
-     (all these are only allowed at the outermost level, check
-   	that semantically, for better diagnostics)
-     module-declaration
-     module-export-declaration
-     module-import-declaration
-     export-declaration
+   special-declaration:
+     explicit-instantiation
+     explicit-specialization
+     export-declaration   (modules)
 
    GNU extension:
 
@@ -15388,6 +15415,13 @@ cp_parser_declaration (cp_parser* parser, tree prefix_attrs)
 
       return;
     }
+
+  /* P2615: Determine if we're parsing a name-declaration specifically,
+     or if special-declarations are OK too.  */
+  bool require_name_decl_p
+    = (parser->in_unbraced_export_declaration_p
+       || (parser->in_unbraced_linkage_specification_p
+	   && cxx_dialect >= cxx20));
 
   /* Try to figure out what kind of declaration is present.  */
   cp_token *token1 = cp_lexer_peek_token (parser->lexer);
@@ -15496,13 +15530,30 @@ cp_parser_declaration (cp_parser* parser, tree prefix_attrs)
       /* `template <>' indicates a template specialization.  */
       if (token2->type == CPP_LESS
 	  && cp_lexer_peek_nth_token (parser->lexer, 3)->type == CPP_GREATER)
-	cp_parser_explicit_specialization (parser);
+	{
+	  if (require_name_decl_p)
+	    {
+	      auto_diagnostic_group d;
+	      cp_token *token3 = cp_lexer_peek_nth_token (parser->lexer, 3);
+	      location_t loc = make_location (token1, token1, token3);
+	      error_at (loc, "explicit specializations are not permitted here");
+	      if (parser->in_unbraced_export_declaration_p)
+		inform (loc, "a specialization is always exported alongside "
+			"its primary template");
+	    }
+	  cp_parser_explicit_specialization (parser);
+	}
       /* `template <' indicates a template declaration.  */
       else if (token2->type == CPP_LESS)
 	cp_parser_template_declaration (parser, /*member_p=*/false);
       /* Anything else must be an explicit instantiation.  */
       else
-	cp_parser_explicit_instantiation (parser);
+	{
+	  if (require_name_decl_p)
+	    error_at (token1->location,
+		     "explicit instantiations are not permitted here");
+	  cp_parser_explicit_instantiation (parser);
+	}
     }
   /* If the next token is `export', it's new-style modules or
      old-style template.  */
@@ -15511,7 +15562,14 @@ cp_parser_declaration (cp_parser* parser, tree prefix_attrs)
       if (!modules_p ())
 	cp_parser_template_declaration (parser, /*member_p=*/false);
       else
-	cp_parser_module_export (parser);
+	{
+	  /* We check for nested exports in cp_parser_module_export.  */
+	  if (require_name_decl_p
+	      && !parser->in_unbraced_export_declaration_p)
+	    error_at (token1->location,
+		      "export-declarations are not permitted here");
+	  cp_parser_module_export (parser);
+	}
     }
   else if (cp_token_is_module_directive (token1))
     {
@@ -16836,7 +16894,7 @@ cp_parser_function_specifier_opt (cp_parser* parser,
 
    linkage-specification:
      extern string-literal { declaration-seq [opt] }
-     extern string-literal declaration  */
+     extern string-literal name-declaration  */
 
 static void
 cp_parser_linkage_specification (cp_parser* parser, tree prefix_attr)
@@ -26795,6 +26853,7 @@ cp_parser_class_specifier (cp_parser* parser)
   unsigned char in_statement;
   bool in_switch_statement_p;
   bool saved_in_unbraced_linkage_specification_p;
+  bool saved_in_unbraced_export_declaration_p;
   tree old_scope = NULL_TREE;
   tree scope = NULL_TREE;
   cp_token *closing_brace;
@@ -26846,6 +26905,10 @@ cp_parser_class_specifier (cp_parser* parser)
   saved_in_unbraced_linkage_specification_p
     = parser->in_unbraced_linkage_specification_p;
   parser->in_unbraced_linkage_specification_p = false;
+  /* Or in an export-declaration.  */
+  saved_in_unbraced_export_declaration_p
+    = parser->in_unbraced_export_declaration_p;
+  parser->in_unbraced_export_declaration_p = false;
   /* 'this' from an enclosing non-static member function is unavailable.  */
   tree saved_ccp = current_class_ptr;
   tree saved_ccr = current_class_ref;
@@ -27228,6 +27291,8 @@ cp_parser_class_specifier (cp_parser* parser)
     = saved_num_template_parameter_lists;
   parser->in_unbraced_linkage_specification_p
     = saved_in_unbraced_linkage_specification_p;
+  parser->in_unbraced_export_declaration_p
+    = saved_in_unbraced_export_declaration_p;
   current_class_ptr = saved_ccp;
   current_class_ref = saved_ccr;
 
@@ -27514,6 +27579,20 @@ cp_parser_class_head (cp_parser* parser,
       if (scope == nested_name_specifier)
 	permerror (nested_name_specifier_token_start->location,
 		   "extra qualification not allowed");
+    }
+  /* The name-declaration of an export-declaration shall not declare
+     a partial specialization.  */
+  if (template_id_p
+      && parser->in_unbraced_export_declaration_p
+      && !processing_specialization
+      && !processing_explicit_instantiation)
+    {
+      auto_diagnostic_group d;
+      location_t loc = type_start_token->location;
+      error_at (loc, "declaration of partial specialization in unbraced "
+		"export-declaration");
+      inform (loc, "a specialization is always exported alongside its "
+	      "primary template");
     }
   /* An explicit-specialization must be preceded by "template <>".  If
      it is not, try to recover gracefully.  */
@@ -28025,8 +28104,17 @@ cp_parser_member_declaration (cp_parser* parser)
       && cp_parser_parse_and_diagnose_invalid_type_name (parser))
     goto out;
   /* If there is no declarator, then the decl-specifier-seq should
-     specify a type.  */
-  if (cp_lexer_next_token_is (parser->lexer, CPP_SEMICOLON))
+     specify a type.  For C++26 Variadic friends don't just check for
+     a semicolon, but also for a comma and in both cases optionally
+     preceded by ellipsis.  */
+  if (cp_lexer_next_token_is (parser->lexer, CPP_SEMICOLON)
+      || (cp_parser_friend_p (&decl_specifiers)
+	  && cxx_dialect >= cxx11
+	  && (cp_lexer_next_token_is (parser->lexer, CPP_COMMA)
+	      || (cp_lexer_next_token_is (parser->lexer, CPP_ELLIPSIS)
+		  && (cp_lexer_nth_token_is (parser->lexer, 2, CPP_SEMICOLON)
+		      || cp_lexer_nth_token_is (parser->lexer, 2,
+						CPP_COMMA))))))
     {
       /* If there was no decl-specifier-seq, and the next token is a
 	 `;', then we have something like:
@@ -28061,44 +28149,81 @@ cp_parser_member_declaration (cp_parser* parser)
 	    {
 	      /* If the `friend' keyword was present, the friend must
 		 be introduced with a class-key.  */
-	       if (!declares_class_or_enum && cxx_dialect < cxx11)
-		 pedwarn (decl_spec_token_start->location, OPT_Wpedantic,
-			  "in C++03 a class-key must be used "
-			  "when declaring a friend");
-	       /* In this case:
+	      if (!declares_class_or_enum && cxx_dialect < cxx11)
+		pedwarn (decl_spec_token_start->location, OPT_Wpedantic,
+			 "in C++03 a class-key must be used "
+			 "when declaring a friend");
+	      if (!cp_lexer_next_token_is (parser->lexer, CPP_SEMICOLON)
+		  && cxx_dialect < cxx26)
+		pedwarn (cp_lexer_peek_token (parser->lexer)->location,
+			 OPT_Wc__26_extensions,
+			 "variadic friends or friend type declarations with "
+			 "multiple types only available with "
+			 "%<-std=c++2c%> or %<-std=gnu++2c%>");
+	      location_t friend_loc = decl_specifiers.locations[ds_friend];
+	      do
+		{
+		  /* In this case:
 
-		    template <typename T> struct A {
-		      friend struct A<T>::B;
-		    };
+		     template <typename T> struct A {
+		       friend struct A<T>::B;
+		     };
 
-		  A<T>::B will be represented by a TYPENAME_TYPE, and
-		  therefore not recognized by check_tag_decl.  */
-	       if (!type)
-		 {
-		   type = decl_specifiers.type;
-		   if (type && TREE_CODE (type) == TYPE_DECL)
-		     type = TREE_TYPE (type);
-		 }
-	       /* Warn if an attribute cannot appear here, as per
-		  [dcl.attr.grammar]/5.  But not when declares_class_or_enum:
-		  we ignore attributes in elaborated-type-specifiers.  */
-	       if (!declares_class_or_enum
-		   && cxx11_attribute_p (decl_specifiers.attributes))
-		 {
-		   decl_specifiers.attributes = NULL_TREE;
-		   if (warning_at (decl_spec_token_start->location,
-				   OPT_Wattributes, "attribute ignored"))
-		     inform (decl_spec_token_start->location, "an attribute "
-			     "that appertains to a friend declaration that "
-			     "is not a definition is ignored");
-		 }
-	       if (!type || !TYPE_P (type))
-		 error_at (decl_spec_token_start->location,
-			   "friend declaration does not name a class or "
-			   "function");
-	       else
-		 make_friend_class (current_class_type, type,
-				    /*complain=*/true);
+		     A<T>::B will be represented by a TYPENAME_TYPE, and
+		     therefore not recognized by check_tag_decl.  */
+		  if (!type)
+		    {
+		      type = decl_specifiers.type;
+		      if (type && TREE_CODE (type) == TYPE_DECL)
+			type = TREE_TYPE (type);
+		    }
+		  /* Warn if an attribute cannot appear here, as per
+		     [dcl.attr.grammar]/5.  But not when
+		     declares_class_or_enum: we ignore attributes in
+		     elaborated-type-specifiers.  */
+		  if (!declares_class_or_enum
+		      && cxx11_attribute_p (decl_specifiers.attributes))
+		    {
+		      decl_specifiers.attributes = NULL_TREE;
+		      if (warning_at (decl_spec_token_start->location,
+				      OPT_Wattributes, "attribute ignored"))
+			inform (decl_spec_token_start->location, "an attribute "
+				"that appertains to a friend declaration that "
+				"is not a definition is ignored");
+		    }
+		  bool ellipsis = cp_lexer_next_token_is (parser->lexer,
+							  CPP_ELLIPSIS);
+		  if (ellipsis)
+		    cp_lexer_consume_token (parser->lexer);
+		  if (!type || !TYPE_P (type))
+		    error_at (decl_spec_token_start->location,
+			      "friend declaration does not name a class or "
+			      "function");
+		  else
+		    {
+		      if (ellipsis)
+			type = make_pack_expansion (type);
+		      if (type != error_mark_node)
+			make_friend_class (current_class_type, type,
+					   /*complain=*/true);
+		    }
+		  if (!cp_lexer_next_token_is (parser->lexer, CPP_COMMA))
+		    break;
+		  cp_lexer_consume_token (parser->lexer);
+		  clear_decl_specs (&decl_specifiers);
+		  decl_specifiers.locations[ds_friend] = friend_loc;
+		  decl_specifiers.any_specifiers_p = true;
+		  declares_class_or_enum = false;
+		  cp_parser_type_specifier (parser,
+					    CP_PARSER_FLAGS_TYPENAME_OPTIONAL,
+					    &decl_specifiers,
+					    /*is_declaration=*/true,
+					    &declares_class_or_enum, NULL);
+		  type = check_tag_decl (&decl_specifiers,
+					 /*explicit_type_instantiation_p=*/
+					 false);
+		}
+	      while (1);
 	    }
 	  /* If there is no TYPE, an error message will already have
 	     been issued.  */
@@ -28573,6 +28698,27 @@ cp_parser_pure_specifier (cp_parser* parser)
       || token->keyword == RID_DELETE)
     {
       maybe_warn_cpp0x (CPP0X_DEFAULTED_DELETED);
+      if (cp_lexer_next_token_is (parser->lexer, CPP_OPEN_PAREN))
+	{
+	  if (cxx_dialect >= cxx11 && cxx_dialect < cxx26)
+	    pedwarn (cp_lexer_peek_token (parser->lexer)->location,
+		     OPT_Wc__26_extensions,
+		     "%<delete%> reason only available with "
+		     "%<-std=c++2c%> or %<-std=gnu++2c%>");
+
+	  /* Consume the `('.  */
+	  matching_parens parens;
+	  parens.consume_open (parser);
+	  tree reason = cp_parser_unevaluated_string_literal (parser);
+	  /* Consume the `)'.  */
+	  parens.require_close (parser);
+	  if (TREE_CODE (reason) == STRING_CST)
+	    {
+	      TREE_TYPE (reason) = token->u.value;
+	      return reason;
+	    }
+	}
+
       return token->u.value;
     }
 
@@ -44343,7 +44489,6 @@ cp_convert_omp_range_for (tree &this_pre_body, tree &sl,
 	    {
 	      tree v = DECL_VALUE_EXPR (decl);
 	      if (TREE_CODE (v) == ARRAY_REF
-		  && VAR_P (TREE_OPERAND (v, 0))
 		  && DECL_DECOMPOSITION_P (TREE_OPERAND (v, 0)))
 		{
 		  d = TREE_OPERAND (v, 0);
@@ -44448,7 +44593,6 @@ cp_convert_omp_range_for (tree &this_pre_body, tree &sl,
     {
       tree v = DECL_VALUE_EXPR (orig_decl);
       if (TREE_CODE (v) == ARRAY_REF
-	  && VAR_P (TREE_OPERAND (v, 0))
 	  && DECL_DECOMPOSITION_P (TREE_OPERAND (v, 0)))
 	{
 	  tree d = orig_decl;
@@ -44526,7 +44670,7 @@ cp_finish_omp_range_for (tree orig, tree begin)
   tree decl = TREE_VEC_ELT (TREE_CHAIN (orig), 2);
   cp_decomp decomp_d, *decomp = NULL;
 
-  if (VAR_P (decl) && DECL_DECOMPOSITION_P (decl))
+  if (DECL_DECOMPOSITION_P (decl))
     {
       decomp = &decomp_d;
       decomp_d.decl = TREE_VEC_ELT (TREE_CHAIN (orig), 3);
@@ -44552,7 +44696,7 @@ cp_finish_omp_range_for (tree orig, tree begin)
 					NULL_TREE, tf_warning_or_error),
 		  /*is_constant_init*/false, NULL_TREE,
 		  LOOKUP_ONLYCONVERTING, decomp);
-  if (VAR_P (decl) && DECL_DECOMPOSITION_P (decl))
+  if (DECL_DECOMPOSITION_P (decl))
     cp_finish_decomp (decl, decomp);
 }
 

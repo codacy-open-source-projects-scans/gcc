@@ -1085,9 +1085,9 @@ combine_reg_notes (insn_info *i1, insn_info *i2, bool load_p)
   bool found_eh_region = false;
   rtx result = NULL_RTX;
   result = filter_notes (REG_NOTES (i2->rtl ()), result,
-			 &found_eh_region, fr_expr);
-  result = filter_notes (REG_NOTES (i1->rtl ()), result,
 			 &found_eh_region, fr_expr + 1);
+  result = filter_notes (REG_NOTES (i1->rtl ()), result,
+			 &found_eh_region, fr_expr);
 
   if (!load_p)
     {
@@ -1722,11 +1722,11 @@ ldp_bb_info::fuse_pair (bool load_p,
 	adjust_amt *= -1;
 
       rtx change_reg = XEXP (change_pat, !load_p);
-      machine_mode mode_for_mem = GET_MODE (change_mem);
       rtx effective_base = drop_writeback (base_mem);
-      rtx new_mem = adjust_address_nv (effective_base,
-				       mode_for_mem,
-				       adjust_amt);
+      rtx adjusted_addr = plus_constant (Pmode,
+					 XEXP (effective_base, 0),
+					 adjust_amt);
+      rtx new_mem = replace_equiv_address_nv (change_mem, adjusted_addr);
       rtx new_set = load_p
 	? gen_rtx_SET (change_reg, new_mem)
 	: gen_rtx_SET (new_mem, change_reg);

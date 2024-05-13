@@ -5957,6 +5957,11 @@ gfc_array_init_size (tree descriptor, int rank, int corank, tree * poffset,
       tmp = gfc_conv_descriptor_dtype (descriptor);
       gfc_add_modify (pblock, tmp, gfc_get_dtype_rank_type (rank, type));
     }
+  else if (expr3_desc && GFC_DESCRIPTOR_TYPE_P (TREE_TYPE (expr3_desc)))
+    {
+      tmp = gfc_conv_descriptor_dtype (descriptor);
+      gfc_add_modify (pblock, tmp, gfc_conv_descriptor_dtype (expr3_desc));
+    }
   else
     {
       tmp = gfc_conv_descriptor_dtype (descriptor);
@@ -11278,6 +11283,19 @@ gfc_alloc_allocatable_for_assignment (gfc_loopinfo *loop,
 	gfc_add_modify (&fblock, linfo->delta[dim], tmp);
     }
 
+  /* Take into account _len of unlimited polymorphic entities, so that span
+     for array descriptors and allocation sizes are computed correctly.  */
+  if (UNLIMITED_POLY (expr2))
+    {
+      tree len = gfc_class_len_get (TREE_OPERAND (desc2, 0));
+      len = fold_build2_loc (input_location, MAX_EXPR, size_type_node,
+			     fold_convert (size_type_node, len),
+			     size_one_node);
+      elemsize2 = fold_build2_loc (input_location, MULT_EXPR,
+				   gfc_array_index_type, elemsize2,
+				   fold_convert (gfc_array_index_type, len));
+    }
+
   if (GFC_DESCRIPTOR_TYPE_P (TREE_TYPE (desc)))
     gfc_conv_descriptor_span_set (&fblock, desc, elemsize2);
 
@@ -11324,6 +11342,9 @@ gfc_alloc_allocatable_for_assignment (gfc_loopinfo *loop,
 	    gfc_add_modify (&fblock, tmp,
 			    fold_convert (TREE_TYPE (tmp),
 					  TYPE_SIZE_UNIT (type)));
+	  else if (UNLIMITED_POLY (expr2))
+	    gfc_add_modify (&fblock, tmp,
+			    gfc_class_len_get (TREE_OPERAND (desc2, 0)));
 	  else
 	    gfc_add_modify (&fblock, tmp,
 			    build_int_cst (TREE_TYPE (tmp), 0));

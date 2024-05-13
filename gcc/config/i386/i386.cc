@@ -5976,12 +5976,10 @@ ix86_setup_frame_addresses (void)
   cfun->machine->accesses_prev_frame = 1;
 }
 
-#ifndef USE_HIDDEN_LINKONCE
-# if defined(HAVE_GAS_HIDDEN) && (SUPPORTS_ONE_ONLY - 0)
-#  define USE_HIDDEN_LINKONCE 1
-# else
-#  define USE_HIDDEN_LINKONCE 0
-# endif
+#if defined(HAVE_GAS_HIDDEN) && (SUPPORTS_ONE_ONLY - 0)
+# define USE_HIDDEN_LINKONCE 1
+#else
+# define USE_HIDDEN_LINKONCE 0
 #endif
 
 /* Label count for call and return thunks.  It is used to make unique
@@ -20357,7 +20355,8 @@ ix86_hardreg_mov_ok (rtx dst, rtx src)
 	   ? standard_sse_constant_p (src, GET_MODE (dst))
 	   : x86_64_immediate_operand (src, GET_MODE (dst)))
       && ix86_class_likely_spilled_p (REGNO_REG_CLASS (REGNO (dst)))
-      && !reload_completed)
+      && !reload_completed
+      && !lra_in_progress)
     return false;
   return true;
 }
@@ -22134,6 +22133,8 @@ ix86_rtx_costs (rtx x, machine_mode mode, int outer_code_i, int opno,
 	*total = cost->fabs;
       else if (FLOAT_MODE_P (mode))
 	*total = ix86_vec_cost (mode, cost->sse_op);
+      else if (GET_MODE_CLASS (mode) == MODE_VECTOR_INT)
+	*total = cost->sse_op;
       return false;
 
     case SQRT:
@@ -22237,7 +22238,7 @@ ix86_rtx_costs (rtx x, machine_mode mode, int outer_code_i, int opno,
 	{
 	  /* cmov.  */
 	  *total = COSTS_N_INSNS (1);
-	  if (!REG_P (XEXP (x, 0)))
+	  if (!COMPARISON_P (XEXP (x, 0)) && !REG_P (XEXP (x, 0)))
 	    *total += rtx_cost (XEXP (x, 0), mode, code, 0, speed);
 	  if (!REG_P (XEXP (x, 1)))
 	    *total += rtx_cost (XEXP (x, 1), mode, code, 1, speed);
@@ -25799,6 +25800,20 @@ ix86_bitint_type_info (int n, struct bitint_info *info)
   return true;
 }
 
+/* Returns modified FUNCTION_TYPE for cdtor callabi.  */
+tree
+ix86_cxx_adjust_cdtor_callabi_fntype (tree fntype)
+{
+  if (TARGET_64BIT
+      || TARGET_RTD
+      || ix86_function_type_abi (fntype) != MS_ABI)
+    return fntype;
+  /* For 32-bit MS ABI add thiscall attribute.  */
+  tree attribs = tree_cons (get_identifier ("thiscall"), NULL_TREE,
+			    TYPE_ATTRIBUTES (fntype));
+  return build_type_attribute_variant (fntype, attribs);
+}
+
 /* Implement PUSH_ROUNDING.  On 386, we have pushw instruction that
    decrements by exactly 2 no matter what the position was, there is no pushb.
 
@@ -26410,6 +26425,8 @@ static const scoped_attribute_specs *const ix86_attribute_table[] =
 #define TARGET_C_EXCESS_PRECISION ix86_get_excess_precision
 #undef TARGET_C_BITINT_TYPE_INFO
 #define TARGET_C_BITINT_TYPE_INFO ix86_bitint_type_info
+#undef TARGET_CXX_ADJUST_CDTOR_CALLABI_FNTYPE
+#define TARGET_CXX_ADJUST_CDTOR_CALLABI_FNTYPE ix86_cxx_adjust_cdtor_callabi_fntype
 #undef TARGET_PROMOTE_PROTOTYPES
 #define TARGET_PROMOTE_PROTOTYPES hook_bool_const_tree_true
 #undef TARGET_PUSH_ARGUMENT

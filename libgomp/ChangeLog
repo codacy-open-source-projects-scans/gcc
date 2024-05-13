@@ -1,3 +1,19 @@
+2024-05-07  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* Makefile.am [LIBGOMP_BUILD_VERSIONED_SHLIB_SUN]
+	(libgomp.ver-sun): Pass $(libgomp_la_OBJECTS),
+	$(libgomp_la_LIBADD) to make_sunver.pl unmodified.
+	* Makefile.in: Regenerate.
+
+2024-05-02  Jakub Jelinek  <jakub@redhat.com>
+
+	* testsuite/libgomp.c/declare-variant-4.h (gfx90c, gfx1036, gfx1103):
+	New functions.
+	(f): Add #pragma omp declare variant directives for those.
+	* testsuite/libgomp.c/declare-variant-4-gfx90c.c: New test.
+	* testsuite/libgomp.c/declare-variant-4-gfx1036.c: New test.
+	* testsuite/libgomp.c/declare-variant-4-gfx1103.c: New test.
+
 2024-04-26  Frederik Harwath  <frederik@harwath.name>
 
 	* plugin/plugin-gcn.c (isa_hsa_name): Handle EF_AMDGPU_MACH_AMDGCN_GFX90c.
