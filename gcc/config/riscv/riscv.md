@@ -87,8 +87,7 @@
   UNSPEC_STRLEN
 
   ;; Workaround for HFmode and BFmode without hardware extension
-  UNSPEC_FMV_SFP16_X
-  UNSPEC_FMV_SBF16_X
+  UNSPEC_FMV_FP16_X
 
   ;; XTheadFmv moves
   UNSPEC_XTHEADFMV
@@ -702,6 +701,46 @@
   "add%i2\t%0,%1,%2"
   [(set_attr "type" "arith")
    (set_attr "mode" "DI")])
+
+;; Special case of adding a reg and constant if latter is sum of two S12
+;; values (in range -2048 to 2047). Avoid materialized the const and fuse
+;; into the add (with an additional add for 2nd value). Makes a 3 insn
+;; sequence into 2 insn.
+
+(define_insn_and_split "*add<mode>3_const_sum_of_two_s12"
+  [(set (match_operand:P	 0 "register_operand" "=r,r")
+	(plus:P (match_operand:P 1 "register_operand" " r,r")
+		(match_operand:P 2 "const_two_s12"    " MiG,r")))]
+  "!riscv_reg_frame_related (operands[0])"
+{
+  /* operand matching MiG constraint is always meant to be split.  */
+  if (which_alternative == 0)
+    return "#";
+  else
+    return "add %0,%1,%2";
+}
+  ""
+  [(set (match_dup 0)
+	(plus:P (match_dup 1) (match_dup 3)))
+   (set (match_dup 0)
+	(plus:P (match_dup 0) (match_dup 4)))]
+{
+  int val = INTVAL (operands[2]);
+  if (SUM_OF_TWO_S12_P (val))
+    {
+       operands[3] = GEN_INT (2047);
+       operands[4] = GEN_INT (val - 2047);
+    }
+  else if (SUM_OF_TWO_S12_N (val))
+    {
+       operands[3] = GEN_INT (-2048);
+       operands[4] = GEN_INT (val + 2048);
+    }
+  else
+      gcc_unreachable ();
+}
+  [(set_attr "type" "arith")
+   (set_attr "mode" "<P:MODE>")])
 
 (define_expand "addv<mode>4"
   [(set (match_operand:GPR           0 "register_operand" "=r,r")
@@ -1919,19 +1958,11 @@
    (set_attr "type" "fmove,move,load,store,mtc,mfc")
    (set_attr "mode" "<MODE>")])
 
-(define_insn "*movhf_softfloat_boxing"
-  [(set (match_operand:HF 0 "register_operand"            "=f")
-        (unspec:HF [(match_operand:X 1 "register_operand" " r")] UNSPEC_FMV_SFP16_X))]
+(define_insn "*mov<HFBF:mode>_softfloat_boxing"
+  [(set (match_operand:HFBF 0 "register_operand"	    "=f")
+	(unspec:HFBF [(match_operand:X 1 "register_operand" " r")]
+	 UNSPEC_FMV_FP16_X))]
   "!TARGET_ZFHMIN"
-  "fmv.w.x\t%0,%1"
-  [(set_attr "type" "fmove")
-   (set_attr "mode" "SF")])
-
-(define_insn "*movbf_softfloat_boxing"
-  [(set (match_operand:BF 0 "register_operand"		  "=f")
-	(unspec:BF [(match_operand:X 1 "register_operand" " r")]
-	 UNSPEC_FMV_SBF16_X))]
-  "!TARGET_ZFBFMIN"
   "fmv.w.x\t%0,%1"
   [(set_attr "type" "fmove")
    (set_attr "mode" "SF")])
@@ -2595,6 +2626,21 @@
   DONE;
 })
 
+(define_expand "cmpmemsi"
+  [(parallel [(set (match_operand:SI 0)
+               (compare:SI (match_operand:BLK 1)
+                           (match_operand:BLK 2)))
+	      (use (match_operand:SI 3))
+	      (use (match_operand:SI 4))])]
+  "!optimize_size"
+{
+  if (riscv_expand_block_compare (operands[0], operands[1], operands[2],
+                                  operands[3]))
+    DONE;
+  else
+    FAIL;
+})
+
 (define_expand "cpymem<mode>"
   [(parallel [(set (match_operand:BLK 0 "general_operand")
 		   (match_operand:BLK 1 "general_operand"))
@@ -2607,6 +2653,30 @@
   else
     FAIL;
 })
+
+;; Fill memory with constant byte.
+;; Argument 0 is the destination
+;; Argument 1 is the constant byte
+;; Argument 2 is the length
+;; Argument 3 is the alignment
+
+(define_expand "setmem<mode>"
+  [(parallel [(set (match_operand:BLK 0 "memory_operand")
+		   (match_operand:QI 2 "const_int_operand"))
+	      (use (match_operand:P 1 ""))
+	      (use (match_operand:SI 3 "const_int_operand"))])]
+ ""
+ {
+  /* If value to set is not zero, use the library routine.  */
+  if (operands[2] != const0_rtx)
+    FAIL;
+
+  if (riscv_expand_block_clear (operands[0], operands[1]))
+    DONE;
+  else
+    FAIL;
+})
+
 
 ;; Expand in-line code to clear the instruction cache between operand[0] and
 ;; operand[1].
@@ -4055,6 +4125,98 @@
   "ld\t%0,%1"
   [(set_attr "type" "load")
    (set (attr "length") (const_int 8))])
+
+;; The AND is redunant here.  It always turns off the high 32 bits  and the
+;; low number of bits equal to the shift count.  Those upper 32 bits will be
+;; reset by the SIGN_EXTEND at the end.
+;;
+;; One could argue combine should have realized this and simplified what it
+;; presented to the backend.  But we can obviously cope with what it gave us.
+(define_insn_and_split ""
+  [(set (match_operand:DI 0 "register_operand" "=r")
+	(sign_extend:DI
+	  (plus:SI (subreg:SI
+		     (and:DI
+		       (ashift:DI (match_operand:DI 1 "register_operand" "r")
+				  (match_operand 2 "const_int_operand" "n"))
+		       (match_operand 3 "const_int_operand" "n")) 0)
+		   (match_operand:SI 4 "register_operand" "r"))))
+   (clobber (match_scratch:DI 5 "=&r"))]
+  "TARGET_64BIT
+   && (INTVAL (operands[3]) | ((1 << INTVAL (operands[2])) - 1)) == 0xffffffff"
+  "#"
+  "&& reload_completed"
+  [(set (match_dup 5) (ashift:DI (match_dup 1) (match_dup 2)))
+   (set (match_dup 0) (sign_extend:DI (plus:SI (match_dup 6) (match_dup 4))))]
+  "{ operands[6] = gen_lowpart (SImode, operands[5]); }"
+  [(set_attr "type" "arith")])
+
+(define_expand "usadd<mode>3"
+  [(match_operand:ANYI 0 "register_operand")
+   (match_operand:ANYI 1 "register_operand")
+   (match_operand:ANYI 2 "register_operand")]
+  ""
+  {
+    riscv_expand_usadd (operands[0], operands[1], operands[2]);
+    DONE;
+  }
+)
+
+;; These are forms of (x << C1) + C2, potentially canonicalized from
+;; ((x + C2') << C1.  Depending on the cost to load C2 vs C2' we may
+;; want to go ahead and recognize this form as C2 may be cheaper to
+;; synthesize than C2'.
+;;
+;; It might be better to refactor riscv_const_insns a bit so that we
+;; can have an API that passes integer values around rather than
+;; constructing a lot of garbage RTL.
+;;
+;; The mvconst_internal pattern in effect requires this pattern to
+;; also be a define_insn_and_split due to insn count costing when
+;; splitting in combine.
+(define_insn_and_split ""
+  [(set (match_operand:DI 0 "register_operand" "=r")
+	(plus:DI (ashift:DI (match_operand:DI 1 "register_operand" "r")
+			    (match_operand 2 "const_int_operand" "n"))
+		 (match_operand 3 "const_int_operand" "n")))
+   (clobber (match_scratch:DI 4 "=&r"))]
+  "(TARGET_64BIT
+    && riscv_const_insns (operands[3])
+    && ((riscv_const_insns (operands[3])
+	 < riscv_const_insns (GEN_INT (INTVAL (operands[3]) >> INTVAL (operands[2]))))
+	|| riscv_const_insns (GEN_INT (INTVAL (operands[3]) >> INTVAL (operands[2]))) == 0))"
+  "#"
+  "&& reload_completed"
+  [(set (match_dup 0) (ashift:DI (match_dup 1) (match_dup 2)))
+   (set (match_dup 4) (match_dup 3))
+   (set (match_dup 0) (plus:DI (match_dup 0) (match_dup 4)))]
+  ""
+  [(set_attr "type" "arith")])
+
+(define_insn_and_split ""
+  [(set (match_operand:DI 0 "register_operand" "=r")
+	(sign_extend:DI (plus:SI (ashift:SI
+				   (match_operand:SI 1 "register_operand" "r")
+				   (match_operand 2 "const_int_operand" "n"))
+				 (match_operand 3 "const_int_operand" "n"))))
+   (clobber (match_scratch:DI 4 "=&r"))]
+  "(TARGET_64BIT
+    && riscv_const_insns (operands[3])
+    && ((riscv_const_insns (operands[3])
+	 < riscv_const_insns (GEN_INT (INTVAL (operands[3]) >> INTVAL (operands[2]))))
+	|| riscv_const_insns (GEN_INT (INTVAL (operands[3]) >> INTVAL (operands[2]))) == 0))"
+  "#"
+  "&& reload_completed"
+  [(set (match_dup 0) (ashift:DI (match_dup 1) (match_dup 2)))
+   (set (match_dup 4) (match_dup 3))
+   (set (match_dup 0) (sign_extend:DI (plus:SI (match_dup 5) (match_dup 6))))]
+  "{
+     operands[1] = gen_lowpart (DImode, operands[1]);
+     operands[5] = gen_lowpart (SImode, operands[0]);
+     operands[6] = gen_lowpart (SImode, operands[4]);
+   }"
+  [(set_attr "type" "arith")])
+
 
 (include "bitmanip.md")
 (include "crypto.md")

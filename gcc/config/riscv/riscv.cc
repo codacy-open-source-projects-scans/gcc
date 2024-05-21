@@ -367,6 +367,13 @@ static const common_vector_cost rvv_vls_vector_cost = {
   1, /* fp_stmt_cost  */
   1, /* gather_load_cost  */
   1, /* scatter_store_cost  */
+  1, /* segment_permute (2) */
+  1, /* segment_permute (3) */
+  1, /* segment_permute (4) */
+  1, /* segment_permute (5) */
+  1, /* segment_permute (6) */
+  1, /* segment_permute (7) */
+  1, /* segment_permute (8) */
   1, /* vec_to_scalar_cost  */
   1, /* scalar_to_vec_cost  */
   1, /* permute_cost  */
@@ -383,6 +390,13 @@ static const scalable_vector_cost rvv_vla_vector_cost = {
     1, /* fp_stmt_cost  */
     1, /* gather_load_cost  */
     1, /* scatter_store_cost  */
+    1, /* segment_permute (2) */
+    1, /* segment_permute (3) */
+    1, /* segment_permute (4) */
+    1, /* segment_permute (5) */
+    1, /* segment_permute (6) */
+    1, /* segment_permute (7) */
+    1, /* segment_permute (8) */
     1, /* vec_to_scalar_cost  */
     1, /* scalar_to_vec_cost  */
     1, /* permute_cost  */
@@ -2451,6 +2465,7 @@ mem_shadd_or_shadd_rtx_p (rtx x)
 {
   return ((GET_CODE (x) == ASHIFT
 	   || GET_CODE (x) == MULT)
+	  && register_operand (XEXP (x, 0), GET_MODE (x))
 	  && CONST_INT_P (XEXP (x, 1))
 	  && ((GET_CODE (x) == ASHIFT && IN_RANGE (INTVAL (XEXP (x, 1)), 1, 3))
 	      || (GET_CODE (x) == MULT
@@ -3178,13 +3193,12 @@ riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
      (set (reg:SI/DI mask) (const_int -65536)
      (set (reg:SI/DI temp) (zero_extend:SI/DI (subreg:HI (reg:HF/BF src) 0)))
      (set (reg:SI/DI temp) (ior:SI/DI (reg:SI/DI mask) (reg:SI/DI temp)))
-     (set (reg:HF/BF dest) (unspec:HF/BF[ (reg:SI/DI temp) ]
-			    UNSPEC_FMV_SFP16_X/UNSPEC_FMV_SBF16_X))
-     */
+     (set (reg:HF/BF dest) (unspec:HF/BF[ (reg:SI/DI temp) ] UNSPEC_FMV_FP16_X))
+  */
 
   if (TARGET_HARD_FLOAT
-      && ((!TARGET_ZFHMIN && mode == HFmode)
-	  || (!TARGET_ZFBFMIN && mode == BFmode))
+      && !TARGET_ZFHMIN
+      && (mode == HFmode || mode == BFmode)
       && REG_P (dest) && FP_REG_P (REGNO (dest))
       && REG_P (src) && !FP_REG_P (REGNO (src))
       && can_create_pseudo_p ())
@@ -3199,10 +3213,8 @@ riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
       else
 	emit_insn (gen_iordi3 (temp, mask, temp));
 
-      riscv_emit_move (dest,
-		       gen_rtx_UNSPEC (mode, gen_rtvec (1, temp),
-				       mode == HFmode ? UNSPEC_FMV_SFP16_X
-						      : UNSPEC_FMV_SBF16_X));
+      riscv_emit_move (dest, gen_rtx_UNSPEC (mode, gen_rtvec (1, temp),
+					     UNSPEC_FMV_FP16_X));
 
       return true;
     }
@@ -7145,6 +7157,17 @@ riscv_can_eliminate (const int from ATTRIBUTE_UNUSED, const int to)
   return (to == HARD_FRAME_POINTER_REGNUM || to == STACK_POINTER_REGNUM);
 }
 
+/* Helper to determine if reg X pertains to stack.  */
+bool
+riscv_reg_frame_related (rtx x)
+{
+  return REG_P (x)
+	 && (REGNO (x) == FRAME_POINTER_REGNUM
+	     || REGNO (x) == HARD_FRAME_POINTER_REGNUM
+	     || REGNO (x) == ARG_POINTER_REGNUM
+	     || REGNO (x) == VIRTUAL_STACK_VARS_REGNUM);
+}
+
 /* Implement INITIAL_ELIMINATION_OFFSET.  FROM is either the frame pointer
    or argument pointer.  TO is either the stack pointer or hard frame
    pointer.  */
@@ -10251,7 +10274,7 @@ riscv_asan_shadow_offset (void)
 static const char *
 riscv_mangle_type (const_tree type)
 {
-  /* Half-precision float, _Float16 is "DF16_" and _Bfloat16 is "DF16b".  */
+  /* Half-precision float, _Float16 is "DF16_" and __bf16 is "DF16b".  */
   if (SCALAR_FLOAT_TYPE_P (type) && TYPE_PRECISION (type) == 16)
     {
       if (TYPE_MODE (type) == HFmode)
@@ -11268,6 +11291,61 @@ riscv_get_raw_result_mode (int regno)
     return as_a <fixed_size_mode> (VOIDmode);
 
   return default_get_reg_raw_mode (regno);
+}
+
+/* Implements the unsigned saturation add standard name usadd for int mode.
+
+   z = SAT_ADD(x, y).
+   =>
+   1. sum = x + y.
+   2. sum = truncate (sum) for QI and HI only.
+   3. lt = sum < x.
+   4. lt = -lt.
+   5. z = sum | lt.  */
+
+void
+riscv_expand_usadd (rtx dest, rtx x, rtx y)
+{
+  machine_mode mode = GET_MODE (dest);
+  rtx xmode_sum = gen_reg_rtx (Xmode);
+  rtx xmode_lt = gen_reg_rtx (Xmode);
+  rtx xmode_x = gen_lowpart (Xmode, x);
+  rtx xmode_y = gen_lowpart (Xmode, y);
+  rtx xmode_dest = gen_reg_rtx (Xmode);
+
+  /* Step-1: sum = x + y  */
+  if (mode == SImode && mode != Xmode)
+    { /* Take addw to avoid the sum truncate.  */
+      rtx simode_sum = gen_reg_rtx (SImode);
+      riscv_emit_binary (PLUS, simode_sum, x, y);
+      emit_move_insn (xmode_sum, gen_lowpart (Xmode, simode_sum));
+    }
+  else
+    riscv_emit_binary (PLUS, xmode_sum, xmode_x, xmode_y);
+
+  /* Step-1.1: truncate sum for HI and QI as we have no insn for add QI/HI.  */
+  if (mode == HImode || mode == QImode)
+    {
+      int shift_bits = GET_MODE_BITSIZE (Xmode)
+	- GET_MODE_BITSIZE (mode).to_constant ();
+
+      gcc_assert (shift_bits > 0);
+
+      riscv_emit_binary (ASHIFT, xmode_sum, xmode_sum, GEN_INT (shift_bits));
+      riscv_emit_binary (LSHIFTRT, xmode_sum, xmode_sum, GEN_INT (shift_bits));
+    }
+
+  /* Step-2: lt = sum < x  */
+  riscv_emit_binary (LTU, xmode_lt, xmode_sum, xmode_x);
+
+  /* Step-3: lt = -lt  */
+  riscv_emit_unary (NEG, xmode_lt, xmode_lt);
+
+  /* Step-4: xmode_dest = sum | lt  */
+  riscv_emit_binary (IOR, xmode_dest, xmode_lt, xmode_sum);
+
+  /* Step-5: dest = xmode_dest */
+  emit_move_insn (dest, gen_lowpart (mode, xmode_dest));
 }
 
 /* Initialize the GCC target structure.  */

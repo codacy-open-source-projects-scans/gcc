@@ -1,3 +1,88 @@
+2024-05-17  Björn Schäpers  <bjoern@hazardy.de>
+
+	* acinclude.m4 (GLIBCXX_ENABLE_BACKTACE): Add check for
+	tlhelp32.h, matching libbacktrace.
+	* config.h.in: Regenerate.
+	* configure: Regenerate.
+
+2024-05-17  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/115119
+	* include/bits/unicode.h (_Iterator::operator++(int)): Fix typo
+	in increment expression.
+	* testsuite/ext/unicode/grapheme_view.cc: Check post-increment
+	on view's iterator.
+
+2024-05-15  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/77704
+	* include/bits/basic_ios.h (basic_ios::fill()): Do not modify
+	_M_fill and _M_fill_init in a const member function.
+	(basic_ios::fill(char_type)): Use _M_fill directly instead of
+	calling fill(). Set _M_fill_init to true.
+	* include/bits/basic_ios.tcc (basic_ios::init): Set _M_fill and
+	_M_fill_init here instead.
+	* testsuite/27_io/basic_ios/fill/char/1.cc: New test.
+	* testsuite/27_io/basic_ios/fill/wchar_t/1.cc: New test.
+
+2024-05-15  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/std/variant (__detail::__variant::__compare): New
+	function template.
+	(operator==, operator!=, operator<, operator>, operator<=)
+	(operator>=): Replace macro definition with handwritten function
+	calling __detail::__variant::__compare.
+	(operator<=>): Call __detail::__variant::__compare.
+
+2024-05-15  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/89624
+	* include/bits/atomic_base.h (memory_order): Use int as
+	underlying type.
+	* testsuite/29_atomics/atomic/89624.cc: New test.
+
+2024-05-14  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/115015
+	* src/c++23/print.cc (__open_terminal(streambuf*)) [!__cpp_rtti]:
+	Do not use dynamic_cast.
+
+2024-05-14  Jonathan Wakely  <jwakely@redhat.com>
+
+	* doc/xml/manual/strings.xml: Clarify that GCC 4.5 added
+	std::string::shrink_to_fit.
+	* doc/html/manual/strings.html: Regenerate.
+
+2024-05-14  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/115063
+	* include/std/stacktrace (basic_stacktrace::max_size): Fix typo
+	in reference to _M_alloc member.
+	* testsuite/19_diagnostics/stacktrace/stacktrace.cc: Check
+	max_size() compiles.
+
+2024-05-13  Matthias Kretz  <m.kretz@gsi.de>
+
+	PR libstdc++/114958
+	* include/experimental/bits/simd.h (__as_vector): Return scalar
+	simd as one-element vector. Return vector from single-vector
+	fixed_size simd.
+	(__vec_shuffle): New.
+	(__extract_part): Adjust return type signature.
+	(split): Use __extract_part for any split into non-fixed_size
+	simds.
+	(concat): If the return type stores a single vector, use
+	__vec_shuffle (which calls __builtin_shufflevector) to produce
+	the return value.
+	* include/experimental/bits/simd_builtin.h
+	(__shift_elements_right): Removed.
+	(__extract_part): Return single elements directly. Use
+	__vec_shuffle (which calls __builtin_shufflevector) to for all
+	non-trivial cases.
+	* include/experimental/bits/simd_fixed_size.h (__extract_part):
+	Return single elements directly.
+	* testsuite/experimental/simd/pr114958.cc: New test.
+
 2024-05-07  Jonathan Wakely  <jwakely@redhat.com>
 
 	* include/bits/unicode.h (_Unicode_view::_M_read_utf8): Ensure

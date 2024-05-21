@@ -7098,6 +7098,7 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
   bool mergeable_seen = false;
   bool implicit_moved = false;
   bool target_in_reduction_seen = false;
+  bool num_tasks_seen = false;
 
   bitmap_obstack_initialize (NULL);
   bitmap_initialize (&generic_head, &bitmap_default_obstack);
@@ -7656,6 +7657,10 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	  /* FALLTHRU */
 
 	case OMP_CLAUSE_NUM_TASKS:
+	  if (OMP_CLAUSE_CODE (c) == OMP_CLAUSE_NUM_TASKS)
+	    num_tasks_seen = true;
+	  /* FALLTHRU */
+
 	case OMP_CLAUSE_NUM_TEAMS:
 	case OMP_CLAUSE_NUM_THREADS:
 	case OMP_CLAUSE_NUM_GANGS:
@@ -9241,6 +9246,17 @@ finish_omp_clauses (tree clauses, enum c_omp_region_type ort)
 	      error_at (OMP_CLAUSE_LOCATION (c),
 			"%<nogroup%> clause must not be used together with "
 			"%<reduction%> clause");
+	      *pc = OMP_CLAUSE_CHAIN (c);
+	      continue;
+	    }
+	  pc = &OMP_CLAUSE_CHAIN (c);
+	  continue;
+	case OMP_CLAUSE_GRAINSIZE:
+	  if (num_tasks_seen)
+	    {
+	      error_at (OMP_CLAUSE_LOCATION (c),
+			"%<grainsize%> clause must not be used together with "
+			"%<num_tasks%> clause");
 	      *pc = OMP_CLAUSE_CHAIN (c);
 	      continue;
 	    }
@@ -12914,10 +12930,10 @@ finish_trait_expr (location_t loc, cp_trait_kind kind, tree type1, tree type2)
   tree val;
   if (kind == CPTK_RANK)
     {
-      size_t __array_rank = 0;
+      size_t rank = 0;
       for (; TREE_CODE (type1) == ARRAY_TYPE; type1 = TREE_TYPE (type1))
-	++__array_rank;
-      val = build_int_cst (size_type_node, __array_rank);
+	++rank;
+      val = build_int_cst (size_type_node, rank);
     }
   else
     val = (trait_expr_value (kind, type1, type2)

@@ -29,22 +29,17 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Exceptions;           use Ada.Exceptions;
-with Ada.Unchecked_Conversion;
+with Ada.Exceptions; use Ada.Exceptions;
 
 with System.Address_Image;
-with System.Finalization_Primitives; use System.Finalization_Primitives;
-with System.IO;                      use System.IO;
-with System.Soft_Links;              use System.Soft_Links;
-with System.Storage_Elements;        use System.Storage_Elements;
+with System.IO;               use System.IO;
+with System.Soft_Links;       use System.Soft_Links;
+with System.Storage_Elements; use System.Storage_Elements;
 
 with System.Storage_Pools.Subpools.Finalization;
 use  System.Storage_Pools.Subpools.Finalization;
 
 package body System.Storage_Pools.Subpools is
-
-   function To_Collection_Node_Ptr is
-     new Ada.Unchecked_Conversion (Address, Collection_Node_Ptr);
 
    procedure Attach (N : not null SP_Node_Ptr; L : not null SP_Node_Ptr);
    --  Attach a subpool node to a pool
@@ -61,12 +56,12 @@ package body System.Storage_Pools.Subpools is
       Header_And_Padding : constant Storage_Offset :=
                              Header_Size_With_Padding (Alignment);
    begin
-      --  Expose the collection node and its padding by shifting the address
-      --  from the start of the object to the beginning pf the padding.
+      --  Expose the header and its padding by shifting the address from the
+      --  start of the object to the beginning of the padding.
 
       Addr := Addr - Header_And_Padding;
 
-      --  Update the size to include the collection node and its padding
+      --  Update the size to include the header and its padding
 
       Storage_Size := Storage_Size + Header_And_Padding;
    end Adjust_Controlled_Dereference;
@@ -99,29 +94,29 @@ package body System.Storage_Pools.Subpools is
    -----------------------------
 
    procedure Allocate_Any_Controlled
-     (Pool               : in out Root_Storage_Pool'Class;
-      Context_Subpool    : Subpool_Handle;
-      Context_Collection : Finalization_Primitives.Finalization_Collection_Ptr;
-      Fin_Address        : Finalization_Primitives.Finalize_Address_Ptr;
-      Addr               : out System.Address;
-      Storage_Size       : System.Storage_Elements.Storage_Count;
-      Alignment          : System.Storage_Elements.Storage_Count;
-      Is_Controlled      : Boolean;
-      On_Subpool         : Boolean)
+     (Pool          : in out Root_Storage_Pool'Class;
+      Named_Subpool : Subpool_Handle;
+      Collection    : in out
+                        Finalization_Primitives.Finalization_Collection_Ptr;
+      Addr          : out System.Address;
+      Storage_Size  : System.Storage_Elements.Storage_Count;
+      Alignment     : System.Storage_Elements.Storage_Count;
+      Is_Controlled : Boolean;
+      On_Subpool    : Boolean)
    is
+      use type System.Finalization_Primitives.Finalization_Collection_Ptr;
+
       Is_Subpool_Allocation : constant Boolean :=
                                 Pool in Root_Storage_Pool_With_Subpools'Class;
 
-      Collection : Finalization_Collection_Ptr := null;
-      N_Addr     : Address;
-      N_Ptr      : Collection_Node_Ptr;
-      N_Size     : Storage_Count;
-      Subpool    : Subpool_Handle := null;
-      Lock_Taken : Boolean := False;
+      N_Addr      : Address;
+      N_Alignment : Storage_Count;
+      N_Size      : Storage_Count;
+      Subpool     : Subpool_Handle;
 
       Header_And_Padding : Storage_Offset;
-      --  This offset includes the size of a collection node plus an additional
-      --  padding due to a larger alignment.
+      --  This offset includes the size of a header plus an additional padding
+      --  due to a larger alignment of the object.
 
    begin
       --  Step 1: Pool-related runtime checks
@@ -134,7 +129,7 @@ package body System.Storage_Pools.Subpools is
          --  Case of an allocation without a Subpool_Handle. Dispatch to the
          --  implementation of Default_Subpool_For_Pool.
 
-         if Context_Subpool = null then
+         if Named_Subpool = null then
             Subpool :=
               Default_Subpool_For_Pool
                 (Root_Storage_Pool_With_Subpools'Class (Pool));
@@ -142,7 +137,7 @@ package body System.Storage_Pools.Subpools is
          --  Allocation with a Subpool_Handle
 
          else
-            Subpool := Context_Subpool;
+            Subpool := Named_Subpool;
          end if;
 
          --  Ensure proper ownership and chaining of the subpool
@@ -166,13 +161,13 @@ package body System.Storage_Pools.Subpools is
          --  type has failed to create one. This is a compiler bug.
 
          pragma Assert
-           (Context_Collection /= null, "no collection in pool allocation");
+           (Collection /= null, "no collection in pool allocation");
 
          --  If a subpool is present, then this is the result of erroneous
          --  allocator expansion. This is not a serious error, but it should
          --  still be detected.
 
-         if Context_Subpool /= null then
+         if Named_Subpool /= null then
             raise Program_Error
               with "subpool not required in pool allocation";
          end if;
@@ -185,50 +180,33 @@ package body System.Storage_Pools.Subpools is
             raise Program_Error
               with "pool of access type does not support subpools";
          end if;
-
-         Collection := Context_Collection;
       end if;
 
-      --  Step 2: Collection, Finalize_Address-related runtime checks and size
-      --  calculations.
+      --  Step 2: Size and alignment calculations
 
       --  Allocation of a descendant from [Limited_]Controlled, a class-wide
       --  object or a record with controlled components.
 
       if Is_Controlled then
-         Lock_Taken := True;
-         Lock_Task.all;
-
-         --  Do not allow the allocation of controlled objects while the
-         --  associated collection is being finalized.
-
-         --  Synchronization:
-         --    Read  - allocation, finalization
-         --    Write - finalization
-
-         if Finalization_Started (Collection.all) then
-            raise Program_Error with "allocation after finalization started";
-         end if;
-
-         --  Check whether primitive Finalize_Address is available. If it is
-         --  not, then either the expansion of the designated type failed or
-         --  the expansion of the allocator failed. This is a compiler bug.
-
-         pragma Assert
-           (Fin_Address /= null, "primitive Finalize_Address not available");
-
-         --  The size must account for the hidden header preceding the object.
+         --  The size must account for the hidden header before the object.
          --  Account for possible padding space before the header due to a
-         --  larger alignment.
+         --  larger alignment of the object.
 
          Header_And_Padding := Header_Size_With_Padding (Alignment);
 
          N_Size := Storage_Size + Header_And_Padding;
 
+         --  The alignment must account for the hidden header before the object
+
+         N_Alignment :=
+           System.Storage_Elements.Storage_Count'Max
+             (Alignment, System.Finalization_Primitives.Header_Alignment);
+
       --  Non-controlled allocation
 
       else
-         N_Size := Storage_Size;
+         N_Size      := Storage_Size;
+         N_Alignment := Alignment;
       end if;
 
       --  Step 3: Allocation of object
@@ -239,71 +217,41 @@ package body System.Storage_Pools.Subpools is
       if Is_Subpool_Allocation then
          Allocate_From_Subpool
            (Root_Storage_Pool_With_Subpools'Class (Pool),
-            N_Addr, N_Size, Alignment, Subpool);
+            N_Addr, N_Size, N_Alignment, Subpool);
 
       --  For descendants of Root_Storage_Pool, dispatch to the implementation
       --  of Allocate.
 
       else
-         Allocate (Pool, N_Addr, N_Size, Alignment);
+         Allocate (Pool, N_Addr, N_Size, N_Alignment);
       end if;
 
-      --  Step 4: Attachment
+      --  Step 4: Displacement of address
 
       if Is_Controlled then
-
-         --  Note that we already did "Lock_Task.all;" in Step 2 above
-
-         --  Map the allocated memory into a collection node. This converts the
-         --  top of the allocated bits into a list header. If there is padding
-         --  due to larger alignment, the padding is placed at the beginning:
-
-         --     N_Addr  N_Ptr
-         --     |       |
-         --     V       V
-         --     +-------+---------------+----------------------+
-         --     |Padding|    Header     |        Object        |
-         --     +-------+---------------+----------------------+
-         --     ^       ^               ^
-         --     |       +- Header_Size -+
-         --     |                       |
-         --     +- Header_And_Padding --+
-
-         N_Ptr :=
-           To_Collection_Node_Ptr (N_Addr + Header_And_Padding - Header_Size);
-
-         --  Attach the allocated object to the finalization collection
-
-         --  Synchronization:
-         --    Write - allocation, deallocation, finalization
-
-         Attach_Node_To_Collection (N_Ptr, Fin_Address, Collection.all);
-
          --  Move the address from the hidden list header to the start of the
-         --  object. This operation effectively hides the list header.
+         --  object. If there is padding due to larger alignment of the object,
+         --  the padding is placed at the beginning. This effectively hides the
+         --  list header:
+
+         --    N_Addr                  Addr
+         --    |                       |
+         --    V                       V
+         --    +-------+---------------+----------------------+
+         --    |Padding|    Header     |        Object        |
+         --    +-------+---------------+----------------------+
+         --    ^       ^               ^
+         --    |       +- Header_Size -+
+         --    |                       |
+         --    +- Header_And_Padding --+
 
          Addr := N_Addr + Header_And_Padding;
-
-         Unlock_Task.all;
-         Lock_Taken := False;
 
       --  Non-controlled allocation
 
       else
          Addr := N_Addr;
       end if;
-
-   exception
-      when others =>
-
-         --  Unlock the task in case the allocation step failed and reraise the
-         --  exception.
-
-         if Lock_Taken then
-            Unlock_Task.all;
-         end if;
-
-         raise;
    end Allocate_Any_Controlled;
 
    ------------
@@ -340,83 +288,61 @@ package body System.Storage_Pools.Subpools is
       Alignment     : System.Storage_Elements.Storage_Count;
       Is_Controlled : Boolean)
    is
-      N_Addr : Address;
-      N_Ptr  : Collection_Node_Ptr;
-      N_Size : Storage_Count;
+      N_Addr      : Address;
+      N_Alignment : Storage_Count;
+      N_Size      : Storage_Count;
 
       Header_And_Padding : Storage_Offset;
-      --  This offset includes the size of a collection node plus an additional
-      --  padding due to a larger alignment.
+      --  This offset includes the size of a header plus an additional padding
+      --  due to a larger alignment of the object.
 
    begin
-      --  Step 1: Detachment
+      --  Step 1: Displacement of address
 
       if Is_Controlled then
-         Lock_Task.all;
+         --  Account for possible padding space before the header due to a
+         --  larger alignment.
 
-         begin
-            --  Account for possible padding space before the header due to a
-            --  larger alignment.
+         Header_And_Padding := Header_Size_With_Padding (Alignment);
 
-            Header_And_Padding := Header_Size_With_Padding (Alignment);
+         --    N_Addr                  Addr
+         --    |                       |
+         --    V                       V
+         --    +-------+---------------+----------------------+
+         --    |Padding|    Header     |        Object        |
+         --    +-------+---------------+----------------------+
+         --    ^       ^               ^
+         --    |       +- Header_Size -+
+         --    |                       |
+         --    +- Header_And_Padding --+
 
-            --    N_Addr  N_Ptr           Addr (from input)
-            --    |       |               |
-            --    V       V               V
-            --    +-------+---------------+----------------------+
-            --    |Padding|    Header     |        Object        |
-            --    +-------+---------------+----------------------+
-            --    ^       ^               ^
-            --    |       +- Header_Size -+
-            --    |                       |
-            --    +- Header_And_Padding --+
+         --  Move the address from the object to the beginning of the header
 
-            --  Convert the bits preceding the object into a list header
+         N_Addr := Addr - Header_And_Padding;
 
-            N_Ptr := To_Collection_Node_Ptr (Addr - Header_Size);
+         --  The size of the deallocated object must include that of the header
 
-            --  Detach the object from the related finalization collection.
-            --  This action does not need to know the context used during
-            --  allocation.
+         N_Size := Storage_Size + Header_And_Padding;
 
-            --  Synchronization:
-            --    Write - allocation, deallocation, finalization
+         --  The alignment must account for the hidden header before the object
 
-            Detach_Node_From_Collection (N_Ptr);
+         N_Alignment :=
+           System.Storage_Elements.Storage_Count'Max
+             (Alignment, System.Finalization_Primitives.Header_Alignment);
 
-            --  Move the address from the object to the beginning of the list
-            --  header.
-
-            N_Addr := Addr - Header_And_Padding;
-
-            --  The size of the deallocated object must include the size of the
-            --  hidden list header.
-
-            N_Size := Storage_Size + Header_And_Padding;
-
-            Unlock_Task.all;
-
-         exception
-            when others =>
-
-               --  Unlock the task in case the computations performed above
-               --  fail for some reason.
-
-               Unlock_Task.all;
-               raise;
-         end;
       else
-         N_Addr := Addr;
-         N_Size := Storage_Size;
+         N_Addr      := Addr;
+         N_Size      := Storage_Size;
+         N_Alignment := Alignment;
       end if;
 
-      --  Step 2: Deallocation
+      --  Step 2: Deallocation of object
 
       --  Dispatch to the proper implementation of Deallocate. This action
       --  covers both Root_Storage_Pool and Root_Storage_Pool_With_Subpools
       --  implementations.
 
-      Deallocate (Pool, N_Addr, N_Size, Alignment);
+      Deallocate (Pool, N_Addr, N_Size, N_Alignment);
    end Deallocate_Any_Controlled;
 
    ------------------------------
@@ -542,7 +468,8 @@ package body System.Storage_Pools.Subpools is
      (Alignment : System.Storage_Elements.Storage_Count)
       return System.Storage_Elements.Storage_Count
    is
-      Size : constant Storage_Count := Header_Size;
+      Size : constant Storage_Count :=
+               System.Finalization_Primitives.Header_Size;
 
    begin
       if Size mod Alignment = 0 then
