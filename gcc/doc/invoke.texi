@@ -1429,7 +1429,7 @@ See RS/6000 and PowerPC Options.
 -mbig-switch}
 
 @emph{VAX Options}
-@gccoptlist{-mg  -mgnu  -munix  -mlra}
+@gccoptlist{-munix  -mgnu  -md  -md-float  -mg  -mg-float  -mlra}
 
 @emph{Visium Options}
 @gccoptlist{-mdebug  -msim  -mfpu  -mno-fpu  -mhard-float  -msoft-float
@@ -21382,6 +21382,7 @@ performance of the code.  Permissible values for this option are:
 @samp{cortex-a65}, @samp{cortex-a65ae}, @samp{cortex-a34},
 @samp{cortex-a78}, @samp{cortex-a78ae}, @samp{cortex-a78c},
 @samp{ares}, @samp{exynos-m1}, @samp{emag}, @samp{falkor},
+@samp{oryon-1},
 @samp{neoverse-512tvb}, @samp{neoverse-e1}, @samp{neoverse-n1},
 @samp{neoverse-n2}, @samp{neoverse-v1}, @samp{neoverse-v2}, @samp{qdf24xx},
 @samp{saphira}, @samp{phecda}, @samp{xgene1}, @samp{vulcan},
@@ -34128,9 +34129,19 @@ ranges.
 Do output those jump instructions, on the assumption that the
 GNU assembler is being used.
 
+@opindex md
+@opindex md-float
+@item -md
+@itemx -md-float
+Use the D_floating data format for double-precision floating-point numbers
+instead of G_floating.
+
 @opindex mg
+@opindex mg-float
 @item -mg
-Output code for G-format floating-point numbers instead of D-format.
+@itemx -mg-float
+Use the G_floating data format for double-precision floating-point numbers
+instead of D_floating.
 
 @opindex mlra
 @opindex mno-lra
@@ -37646,7 +37657,7 @@ not get debugging information for routines in the precompiled header.
 @cindex speed of compilation
 
 Modules are a C++20 language feature.  As the name suggests, they
-provides a modular compilation system, intending to provide both
+provide a modular compilation system, intending to provide both
 faster builds and better library isolation.  The ``Merging Modules''
 paper @uref{https://wg21.link/p1103}, provides the easiest to read set
 of changes to the standard, although it does not capture later

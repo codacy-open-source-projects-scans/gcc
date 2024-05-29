@@ -79,6 +79,16 @@ types_match (tree t1, tree t2)
   return types_compatible_p (t1, t2);
 }
 
+/* Routine to determine if the types T1, T2 and T3 are effectively
+   the same for GIMPLE.  If T1, T2 or T2 is not a type, the test
+   applies to their TREE_TYPE.  */
+
+static inline bool
+types_match (tree t1, tree t2, tree t3)
+{
+  return types_match (t1, t2) && types_match (t2, t3);
+}
+
 /* Return if T has a single use.  For GIMPLE, we also allow any
    non-SSA_NAME (ie constants) and zero uses to cope with uses
    that aren't linked up yet.  */
@@ -284,8 +294,10 @@ gimple_bitwise_inverted_equal_p (tree expr1, tree expr2, bool &wascmp, tree (*va
     return false;
   if (!tree_nop_conversion_p (TREE_TYPE (expr1), TREE_TYPE (expr2)))
     return false;
-  if (TREE_CODE (expr1) == INTEGER_CST && TREE_CODE (expr2) == INTEGER_CST)
-    return wi::to_wide (expr1) == ~wi::to_wide (expr2);
+  tree cst1 = uniform_integer_cst_p (expr1);
+  tree cst2 = uniform_integer_cst_p (expr2);
+  if (cst1 && cst2)
+    return wi::to_wide (cst1) == ~wi::to_wide (cst2);
   if (operand_equal_p (expr1, expr2, 0))
     return false;
 
