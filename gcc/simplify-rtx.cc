@@ -2256,14 +2256,25 @@ simplify_const_unary_operation (enum rtx_code code, machine_mode mode,
       switch (code)
 	{
 	case FIX:
+	  /* According to IEEE standard, for conversions from floating point to
+	     integer. When a NaN or infinite operand cannot be represented in
+	     the destination format and this cannot otherwise be indicated, the
+	     invalid operation exception shall be signaled. When a numeric
+	     operand would convert to an integer outside the range of the
+	     destination format, the invalid operation exception shall be
+	     signaled if this situation cannot otherwise be indicated.  */
 	  if (REAL_VALUE_ISNAN (*x))
-	    return const0_rtx;
+	    return flag_trapping_math ? NULL_RTX : const0_rtx;
+
+	  if (REAL_VALUE_ISINF (*x) && flag_trapping_math)
+	    return NULL_RTX;
 
 	  /* Test against the signed upper bound.  */
 	  wmax = wi::max_value (width, SIGNED);
 	  real_from_integer (&t, VOIDmode, wmax, SIGNED);
 	  if (real_less (&t, x))
-	    return immed_wide_int_const (wmax, mode);
+	    return (flag_trapping_math
+		    ? NULL_RTX : immed_wide_int_const (wmax, mode));
 
 	  /* Test against the signed lower bound.  */
 	  wmin = wi::min_value (width, SIGNED);
@@ -2276,13 +2287,17 @@ simplify_const_unary_operation (enum rtx_code code, machine_mode mode,
 
 	case UNSIGNED_FIX:
 	  if (REAL_VALUE_ISNAN (*x) || REAL_VALUE_NEGATIVE (*x))
-	    return const0_rtx;
+	    return flag_trapping_math ? NULL_RTX : const0_rtx;
+
+	  if (REAL_VALUE_ISINF (*x) && flag_trapping_math)
+	    return NULL_RTX;
 
 	  /* Test against the unsigned upper bound.  */
 	  wmax = wi::max_value (width, UNSIGNED);
 	  real_from_integer (&t, VOIDmode, wmax, UNSIGNED);
 	  if (real_less (&t, x))
-	    return immed_wide_int_const (wmax, mode);
+	    return (flag_trapping_math
+		    ? NULL_RTX : immed_wide_int_const (wmax, mode));
 
 	  return immed_wide_int_const (real_to_integer (x, &fail, width),
 				       mode);
@@ -4048,6 +4063,31 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 	  tem = simplify_distributive_operation (code, mode, op0, op1);
 	  if (tem)
 	    return tem;
+	}
+
+      /* (and:v4si
+	   (ashiftrt:v4si A 16)
+	   (const_vector: 0xffff x4))
+	 is just (lshiftrt:v4si A 16).  */
+      if (VECTOR_MODE_P (mode) && GET_CODE (op0) == ASHIFTRT
+	  && (CONST_INT_P (XEXP (op0, 1))
+	      || (GET_CODE (XEXP (op0, 1)) == CONST_VECTOR
+		  && CONST_VECTOR_DUPLICATE_P (XEXP (op0, 1))))
+	  && GET_CODE (op1) == CONST_VECTOR
+	  && CONST_VECTOR_DUPLICATE_P (op1))
+	{
+	  unsigned HOST_WIDE_INT shift_count
+	    = (CONST_INT_P (XEXP (op0, 1))
+	       ? UINTVAL (XEXP (op0, 1))
+	       : UINTVAL (XVECEXP (XEXP (op0, 1), 0, 0)));
+	  unsigned HOST_WIDE_INT inner_prec
+	    = GET_MODE_PRECISION (GET_MODE_INNER (mode));
+
+	  /* Avoid UD shift count.  */
+	  if (shift_count < inner_prec
+	      && (UINTVAL (XVECEXP (op1, 0, 0))
+		  == (HOST_WIDE_INT_1U << (inner_prec - shift_count)) - 1))
+	    return simplify_gen_binary (LSHIFTRT, mode, XEXP (op0, 0), XEXP (op0, 1));
 	}
 
       tem = simplify_byte_swapping_operation (code, mode, op0, op1);

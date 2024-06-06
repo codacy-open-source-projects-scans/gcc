@@ -1,3 +1,109 @@
+2024-06-05  Jakub Jelinek  <jakub@redhat.com>
+	    Frederik Harwath  <frederik@codesourcery.com>
+	    Sandra Loosemore  <sandra@codesourcery.com>
+
+	* cp-tree.h (dependent_omp_for_p): Add another tree argument.
+	* parser.cc (check_omp_intervening_code): Reject imperfectly nested
+	tile.
+	(cp_parser_statement_seq_opt): If want_nested_loop, use
+	cp_parser_next_tokens_can_be_canon_loop instead of just checking
+	for RID_FOR keyword.
+	(cp_parser_omp_clause_name): Handle full and partial clause names.
+	(cp_parser_omp_clause_full, cp_parser_omp_clause_partial): New
+	functions.
+	(cp_parser_omp_all_clauses): Formatting fix.  Handle
+	PRAGMA_OMP_CLAUSE_PARTIAL and PRAGMA_OMP_CLAUSE_FULL.
+	(cp_parser_next_tokens_can_be_canon_loop): New function.
+	(cp_parser_omp_loop_nest): Parse C++11 attributes.  Handle tile/unroll
+	constructs.  Use cp_parser_next_tokens_can_be_canon_loop instead
+	of just checking for RID_FOR keyword.  Only add_stmt
+	cp_parser_omp_loop_nest result if it is non-NULL.
+	(cp_parser_omp_for_loop): Rename tiling variable to oacc_tiling.  For
+	OMP_CLAUSE_SIZES set collapse to list length of OMP_CLAUSE_SIZES_LIST.
+	Use cp_parser_next_tokens_can_be_canon_loop instead of just
+	checking for RID_FOR keyword.  Remove spurious semicolon.  Don't call
+	c_omp_check_loop_binding_exprs if stmt is NULL.  Skip and/or handle
+	generated loops.  Remove spurious ()s around & operands.
+	(cp_parser_omp_tile_sizes, cp_parser_omp_tile): New functions.
+	(OMP_UNROLL_CLAUSE_MASK): Define.
+	(cp_parser_omp_unroll): New function.
+	(cp_parser_omp_construct): Handle PRAGMA_OMP_TILE and
+	PRAGMA_OMP_UNROLL.
+	(cp_parser_pragma): Likewise.
+	* semantics.cc (finish_omp_clauses): Don't call
+	fold_build_cleanup_point_expr for cases which obviously won't need it,
+	like checked INTEGER_CSTs.  Handle OMP_CLAUSE_{FULL,PARTIAL,SIZES}
+	and diagnose full vs. partial conflict.  Adjust wording of some of the
+	conflicting clause diagnostic messages to include word clause.
+	(finish_omp_for): Use decl equal to global_namespace as a marker for
+	generated loop.  Pass also body to dependent_omp_for_p.  Skip
+	generated loops.
+	(finish_omp_for_block): Skip generated loops.
+	* pt.cc (tsubst_omp_clauses): Handle OMP_CLAUSE_{FULL,PARTIAL,SIZES}.
+	(tsubst_stmt): Handle OMP_TILE and OMP_UNROLL.  Handle or skip
+	generated loops.
+	(dependent_omp_for_p): Add body argument.  If declv vector element
+	is NULL, find generated loop.
+	* cp-gimplify.cc (cp_gimplify_expr): Handle OMP_TILE and OMP_UNROLL.
+	(cp_fold_r): Likewise.
+	(cp_genericize_r): Likewise.  Skip generated loops.
+
+2024-06-04  Simon Martin  <simon@nasilyan.com>
+
+	* pt.cc (tsubst_expr): Add missing space after seen_error.
+	(dependent_type_p): Likewise.
+
+2024-06-04  Simon Martin  <simon@nasilyan.com>
+
+	PR c++/111106
+	* pt.cc (dependent_type_p): Don't fail assert during error recovery.
+
+2024-06-03  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/115012
+	* parser.cc (cp_parser_direct_declarator): Handle
+	abstract declarator starting with ... followed by opening paren.
+
+2024-06-02  Simon Martin  <simon@nasilyan.com>
+
+	PR c++/109958
+	* typeck.cc (build_class_member_access_expr): Handle single OVERLOADs.
+	(cp_build_addr_expr_1): Likewise.
+
+2024-06-01  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/114867
+	* cp-tree.h (OVL_PURVIEW_P): New.
+	(ovl_iterator::purview_p): New.
+	* module.cc (depset::hash::add_binding_entity): Only ignore
+	entities not within module purview. Set OVL_PURVIEW_P on new
+	OVERLOADs for emitted declarations.
+	(module_state::read_cluster): Imported using-decls are always
+	in purview, mark as OVL_PURVIEW_P.
+	* name-lookup.h (enum WMB_Flags): New WMB_Purview flag.
+	* name-lookup.cc (walk_module_binding): Set WMB_Purview as
+	needed.
+	(do_nonmember_using_decl): Don't remove from existing OVERLOADs.
+	Also reveal non-exported decls. Also reveal 'extern "C"' decls.
+	Add workaround to reveal non-function decls.
+	* tree.cc (ovl_insert): Adjust to also set OVL_PURVIEW_P when
+	needed.
+
+2024-05-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/109753
+	* decl.cc (start_preparsed_function): Call decl_attributes.
+
+2024-05-29  Jason Merrill  <jason@redhat.com>
+
+	* lang-specs.h: Add module interface extensions.
+
+2024-05-29  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/115223
+	* tree.cc (build_cp_fntype_variant): Propagate structural
+	equality of the exception-less variant.
+
 2024-05-28  Marek Polacek  <polacek@redhat.com>
 
 	PR c++/109396

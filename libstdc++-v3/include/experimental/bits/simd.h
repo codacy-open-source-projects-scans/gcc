@@ -606,19 +606,12 @@ template <size_t _Bytes>
     static_assert(_Bytes > 0);
     if constexpr (_Bytes == sizeof(int))
       return int();
-  #ifdef __clang__
-    else if constexpr (_Bytes == sizeof(char))
-      return char();
-  #else
     else if constexpr (_Bytes == sizeof(_SChar))
       return _SChar();
-  #endif
     else if constexpr (_Bytes == sizeof(short))
       return short();
-  #ifndef __clang__
     else if constexpr (_Bytes == sizeof(long))
       return long();
-  #endif
     else if constexpr (_Bytes == sizeof(_LLong))
       return _LLong();
   #ifdef __SIZEOF_INT128__
@@ -1665,7 +1658,12 @@ template <typename _V>
 	  {
 	    static_assert(is_simd<_V>::value);
 	    using _Tp = typename _V::value_type;
+#ifdef __i386__
+	    constexpr auto __bytes = sizeof(_Tp) == 8 ? 16 : sizeof(_Tp);
+	    using _RV [[__gnu__::__vector_size__(__bytes)]] = _Tp;
+#else
 	    using _RV [[__gnu__::__vector_size__(sizeof(_Tp))]] = _Tp;
+#endif
 	    return _RV{__data(__x)};
 	  }
       }
@@ -1715,7 +1713,7 @@ template <typename _To, typename _From>
 	  __builtin_memcpy(&__r, &__v, sizeof(_To));
 	  return __r;
 	}
-#if _GLIBCXX_SIMD_X86INTRIN && !defined __clang__
+#if _GLIBCXX_SIMD_X86INTRIN && !defined _GLIBCXX_CLANG
     else if constexpr (__have_avx && sizeof(_From) == 16 && sizeof(_To) == 32)
       return reinterpret_cast<_To>(__builtin_ia32_ps256_ps(
 	reinterpret_cast<__vector_type_t<float, 4>>(__v)));
@@ -1970,7 +1968,7 @@ template <typename _TW>
 
 // }}}
 // __andnot{{{
-#if _GLIBCXX_SIMD_X86INTRIN && !defined __clang__
+#if _GLIBCXX_SIMD_X86INTRIN && !defined _GLIBCXX_CLANG
 static constexpr struct
 {
   _GLIBCXX_SIMD_INTRINSIC __v4sf
@@ -2030,7 +2028,7 @@ static constexpr struct
   operator()(__v8di __a, __v8di __b) const noexcept
   { return _mm512_andnot_si512(__a, __b); }
 } _S_x86_andnot;
-#endif // _GLIBCXX_SIMD_X86INTRIN && !__clang__
+#endif // _GLIBCXX_SIMD_X86INTRIN && !_GLIBCXX_CLANG
 
 template <typename _TW>
   _GLIBCXX_SIMD_INTRINSIC constexpr _TW
@@ -2041,7 +2039,7 @@ template <typename _TW>
 	using _TVT = conditional_t<__is_simd_wrapper_v<_TW>, _TW,
 				   _VectorTraitsImpl<_TW>>;
 	using _Tp = typename _TVT::value_type;
-#if _GLIBCXX_SIMD_X86INTRIN && !defined __clang__
+#if _GLIBCXX_SIMD_X86INTRIN && !defined _GLIBCXX_CLANG
 	if constexpr (sizeof(_TW) >= 16)
 	  {
 	    const auto __ai = __to_intrin(__a);
@@ -2081,13 +2079,16 @@ template <typename _Tp, typename _TVT = _VectorTraits<_Tp>>
 // }}}
 // __vec_shuffle{{{
 template <typename _T0, typename _T1, typename _Fun, size_t... _Is>
-  _GLIBCXX_SIMD_INTRINSIC constexpr auto
+  _GLIBCXX_SIMD_INTRINSIC constexpr
+  __vector_type_t<remove_reference_t<decltype(declval<_T0>()[0])>, sizeof...(_Is)>
   __vec_shuffle(_T0 __x, _T1 __y, index_sequence<_Is...> __seq, _Fun __idx_perm)
   {
     constexpr int _N0 = sizeof(__x) / sizeof(__x[0]);
     constexpr int _N1 = sizeof(__y) / sizeof(__y[0]);
+    using _Tp = remove_reference_t<decltype(declval<_T0>()[0])>;
+    using _RV [[maybe_unused]] = __vector_type_t<_Tp, sizeof...(_Is)>;
 #if __has_builtin(__builtin_shufflevector)
-#ifdef __clang__
+#ifdef _GLIBCXX_CLANG
     // Clang requires _T0 == _T1
     if constexpr (sizeof(__x) > sizeof(__y) and _N1 == 1)
       return __vec_shuffle(__x, _T0{__y[0]}, __seq, __idx_perm);
@@ -2105,14 +2106,23 @@ template <typename _T0, typename _T1, typename _Fun, size_t... _Is>
 	     });
     else
 #endif
-      return __builtin_shufflevector(__x, __y, [=] {
-	       constexpr int __j = __idx_perm(_Is);
-	       static_assert(__j < _N0 + _N1);
-	       return __j;
-	     }()...);
+      {
+	const auto __r = __builtin_shufflevector(__x, __y, [=] {
+			   constexpr int __j = __idx_perm(_Is);
+			   static_assert(__j < _N0 + _N1);
+			   return __j;
+			 }()...);
+#ifdef __i386__
+	if constexpr (sizeof(__r) == sizeof(_RV))
+	  return __r;
+	else
+	  return _RV {__r[_Is]...};
 #else
-    using _Tp = __remove_cvref_t<decltype(__x[0])>;
-    return __vector_type_t<_Tp, sizeof...(_Is)> {
+	return __r;
+#endif
+      }
+#else
+    return _RV {
       [=]() -> _Tp {
 	constexpr int __j = __idx_perm(_Is);
 	static_assert(__j < _N0 + _N1);
@@ -2730,6 +2740,8 @@ template <typename _BuiltinType>
 
 // }}}
 // _SimdWrapper{{{
+struct _DisabledSimdWrapper;
+
 template <typename _Tp, size_t _Width>
   struct _SimdWrapper<
     _Tp, _Width,
@@ -2739,16 +2751,17 @@ template <typename _Tp, size_t _Width>
 			      == sizeof(__vector_type_t<_Tp, _Width>),
 		       __vector_type_t<_Tp, _Width>>
   {
-    using _Base
-      = _SimdWrapperBase<__has_iec559_behavior<__signaling_NaN, _Tp>::value
-			   && sizeof(_Tp) * _Width
-				== sizeof(__vector_type_t<_Tp, _Width>),
-			 __vector_type_t<_Tp, _Width>>;
+    static constexpr bool _S_need_default_init
+      = __has_iec559_behavior<__signaling_NaN, _Tp>::value
+	  and sizeof(_Tp) * _Width == sizeof(__vector_type_t<_Tp, _Width>);
+
+    using _BuiltinType = __vector_type_t<_Tp, _Width>;
+
+    using _Base = _SimdWrapperBase<_S_need_default_init, _BuiltinType>;
 
     static_assert(__is_vectorizable_v<_Tp>);
     static_assert(_Width >= 2); // 1 doesn't make sense, use _Tp directly then
 
-    using _BuiltinType = __vector_type_t<_Tp, _Width>;
     using value_type = _Tp;
 
     static inline constexpr size_t _S_full_size
@@ -2784,13 +2797,26 @@ template <typename _Tp, size_t _Width>
     _GLIBCXX_SIMD_INTRINSIC constexpr _SimdWrapper&
     operator=(_SimdWrapper&&) = default;
 
-    template <typename _V, typename = enable_if_t<disjunction_v<
-			     is_same<_V, __vector_type_t<_Tp, _Width>>,
-			     is_same<_V, __intrinsic_type_t<_Tp, _Width>>>>>
+    // Convert from exactly matching __vector_type_t
+    using _SimdWrapperBase<_S_need_default_init, _BuiltinType>::_SimdWrapperBase;
+
+    // Convert from __intrinsic_type_t if __intrinsic_type_t and __vector_type_t differ, otherwise
+    // this ctor should not exist. Making the argument type unusable is our next best solution.
+    _GLIBCXX_SIMD_INTRINSIC constexpr
+    _SimdWrapper(conditional_t<is_same_v<_BuiltinType, __intrinsic_type_t<_Tp, _Width>>,
+			       _DisabledSimdWrapper, __intrinsic_type_t<_Tp, _Width>> __x)
+    : _Base(__vector_bitcast<_Tp, _Width>(__x)) {}
+
+    // Convert from different __vector_type_t, but only if bit reinterpretation is a correct
+    // conversion of the value_type
+    template <typename _V, typename _TVT = _VectorTraits<_V>,
+	      typename = enable_if_t<sizeof(typename _TVT::value_type) == sizeof(_Tp)
+				       and sizeof(_V) == sizeof(_BuiltinType)
+				       and is_integral_v<_Tp>
+				       and is_integral_v<typename _TVT::value_type>>>
       _GLIBCXX_SIMD_INTRINSIC constexpr
       _SimdWrapper(_V __x)
-      // __vector_bitcast can convert e.g. __m128 to __vector(2) float
-      : _Base(__vector_bitcast<_Tp, _Width>(__x)) {}
+      : _Base(reinterpret_cast<_BuiltinType>(__x)) {}
 
     template <typename... _As,
 	      typename = enable_if_t<((is_same_v<simd_abi::scalar, _As> && ...)
@@ -4393,9 +4419,9 @@ template <typename _Tp, typename... _As, typename = __detail::__odr_helper>
 		__vec_shuffle(__as_vector(__xs)..., std::make_index_sequence<_RW::_S_full_size>(),
 			      [](int __i) {
 				constexpr int __sizes[2] = {int(simd_size_v<_Tp, _As>)...};
-				constexpr int __padding0
-				  = sizeof(__vector_type_t<_Tp, __sizes[0]>) / sizeof(_Tp)
-				      - __sizes[0];
+				constexpr int __vsizes[2]
+				  = {int(sizeof(__as_vector(__xs)) / sizeof(_Tp))...};
+				constexpr int __padding0 = __vsizes[0] - __sizes[0];
 				return __i >= _Np ? -1 : __i < __sizes[0] ? __i : __i + __padding0;
 			      })};
       }

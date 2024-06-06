@@ -2072,16 +2072,22 @@ get_group_load_store_type (vec_info *vinfo, stmt_vec_info stmt_info,
 	  dr_alignment_support alss;
 	  int misalign = dr_misalignment (first_dr_info, vectype);
 	  tree half_vtype;
+	  poly_uint64 remain;
+	  unsigned HOST_WIDE_INT tem, num;
 	  if (overrun_p
 	      && !masked_p
 	      && (((alss = vect_supportable_dr_alignment (vinfo, first_dr_info,
 							  vectype, misalign)))
 		   == dr_aligned
 		  || alss == dr_unaligned_supported)
-	      && known_eq (nunits, (group_size - gap) * 2)
-	      && known_eq (nunits, group_size)
-	      && (vector_vector_composition_type (vectype, 2, &half_vtype)
-		  != NULL_TREE))
+	      && can_div_trunc_p (group_size
+				  * LOOP_VINFO_VECT_FACTOR (loop_vinfo) - gap,
+				  nunits, &tem, &remain)
+	      && (known_eq (remain, 0u)
+		  || (constant_multiple_p (nunits, remain, &num)
+		      && (vector_vector_composition_type (vectype, num,
+							  &half_vtype)
+			  != NULL_TREE))))
 	    overrun_p = false;
 
 	  if (overrun_p && !can_overrun_p)
@@ -2153,6 +2159,23 @@ get_group_load_store_type (vec_info *vinfo, stmt_vec_info stmt_info,
 		  return false;
 		}
 	      overrun_p = true;
+	    }
+
+	  /* If this is single-element interleaving with an element
+	     distance that leaves unused vector loads around punt - we
+	     at least create very sub-optimal code in that case (and
+	     blow up memory, see PR65518).  */
+	  if (loop_vinfo
+	      && *memory_access_type == VMAT_CONTIGUOUS
+	      && SLP_TREE_LOAD_PERMUTATION (slp_node).exists ()
+	      && single_element_p
+	      && maybe_gt (group_size, TYPE_VECTOR_SUBPARTS (vectype)))
+	    {
+	      if (dump_enabled_p ())
+		dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+				 "single-element interleaving not supported "
+				 "for not adjacent vector loads\n");
+	      return false;
 	    }
 	}
     }
@@ -8196,7 +8219,9 @@ vectorizable_store (vec_info *vinfo,
   gcc_assert (ncopies >= 1);
 
   /* FORNOW.  This restriction should be relaxed.  */
-  if (loop && nested_in_vect_loop_p (loop, stmt_info) && ncopies > 1)
+  if (loop
+      && nested_in_vect_loop_p (loop, stmt_info)
+      && (ncopies > 1 || (slp && SLP_TREE_NUMBER_OF_VEC_STMTS (slp_node) > 1)))
     {
       if (dump_enabled_p ())
 	dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
@@ -9939,7 +9964,8 @@ vectorizable_load (vec_info *vinfo,
   gcc_assert (ncopies >= 1);
 
   /* FORNOW. This restriction should be relaxed.  */
-  if (nested_in_vect_loop && ncopies > 1)
+  if (nested_in_vect_loop
+      && (ncopies > 1 || (slp && SLP_TREE_NUMBER_OF_VEC_STMTS (slp_node) > 1)))
     {
       if (dump_enabled_p ())
         dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
@@ -11513,33 +11539,14 @@ vectorizable_load (vec_info *vinfo,
 		    unsigned HOST_WIDE_INT gap = DR_GROUP_GAP (first_stmt_info);
 		    unsigned int vect_align
 		      = vect_known_alignment_in_bytes (first_dr_info, vectype);
-		    unsigned int scalar_dr_size
-		      = vect_get_scalar_dr_size (first_dr_info);
-		    /* If there's no peeling for gaps but we have a gap
-		       with slp loads then load the lower half of the
-		       vector only.  See get_group_load_store_type for
-		       when we apply this optimization.  */
-		    if (slp
-			&& loop_vinfo
-			&& !LOOP_VINFO_PEELING_FOR_GAPS (loop_vinfo) && gap != 0
-			&& known_eq (nunits, (group_size - gap) * 2)
-			&& known_eq (nunits, group_size)
-			&& gap >= (vect_align / scalar_dr_size))
-		      {
-			tree half_vtype;
-			new_vtype
-			  = vector_vector_composition_type (vectype, 2,
-							    &half_vtype);
-			if (new_vtype != NULL_TREE)
-			  ltype = half_vtype;
-		      }
 		    /* Try to use a single smaller load when we are about
 		       to load excess elements compared to the unrolled
-		       scalar loop.
-		       ???  This should cover the above case as well.  */
-		    else if (known_gt ((vec_num * j + i + 1) * nunits,
+		       scalar loop.  */
+		    if (known_gt ((vec_num * j + i + 1) * nunits,
 				       (group_size * vf - gap)))
 		      {
+			poly_uint64 remain = ((group_size * vf - gap)
+					      - (vec_num * j + i) * nunits);
 			if (known_ge ((vec_num * j + i + 1) * nunits
 				      - (group_size * vf - gap), nunits))
 			  /* DR will be unused.  */
@@ -11551,11 +11558,15 @@ vectorizable_load (vec_info *vinfo,
 			     at least one element is accessed in the
 			     scalar loop.  */
 			  ;
+			else if (known_gt (vect_align,
+					   ((nunits - remain)
+					    * vect_get_scalar_dr_size
+						(first_dr_info))))
+			  /* Aligned access to the gap area when there's
+			     at least one element in it is OK.  */
+			  ;
 			else
 			  {
-			    auto remain
-			      = ((group_size * vf - gap)
-				 - (vec_num * j + i) * nunits);
 			    /* remain should now be > 0 and < nunits.  */
 			    unsigned num;
 			    if (constant_multiple_p (nunits, remain, &num))
@@ -11569,6 +11580,13 @@ vectorizable_load (vec_info *vinfo,
 				  ltype = ptype;
 			      }
 			    /* Else use multiple loads or a masked load?  */
+			    /* For loop vectorization we now should have
+			       an alternate type or LOOP_VINFO_PEELING_FOR_GAPS
+			       set.  */
+			    if (loop_vinfo)
+			      gcc_assert (new_vtype
+					  || LOOP_VINFO_PEELING_FOR_GAPS
+					       (loop_vinfo));
 			  }
 		      }
 		    tree offset
@@ -12098,7 +12116,7 @@ vectorizable_condition (vec_info *vinfo,
     = STMT_VINFO_REDUC_DEF (vect_orig_stmt (stmt_info)) != NULL;
   if (for_reduction)
     {
-      if (slp_node)
+      if (slp_node && SLP_TREE_LANES (slp_node) > 1)
 	return false;
       reduc_info = info_for_reduction (vinfo, stmt_info);
       reduction_type = STMT_VINFO_REDUC_TYPE (reduc_info);
@@ -12187,6 +12205,10 @@ vectorizable_condition (vec_info *vinfo,
 	      cond_expr = NULL_TREE;
 	    }
 	}
+      /* ???  The vectorized operand query below doesn't allow swapping
+	 this way for SLP.  */
+      if (slp_node)
+	return false;
       std::swap (then_clause, else_clause);
     }
 
@@ -13237,6 +13259,10 @@ vect_analyze_stmt (vec_info *vinfo,
 			 || relevance == vect_unused_in_scope
 			 || relevance == vect_used_only_live));
          break;
+
+      case vect_double_reduction_def:
+	gcc_assert (!bb_vinfo && node);
+	break;
 
       case vect_induction_def:
       case vect_first_order_recurrence:

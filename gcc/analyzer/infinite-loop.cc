@@ -171,7 +171,7 @@ public:
   {
   }
 
-  label_text get_desc (bool can_colorize) const final override
+  label_text get_desc (bool) const final override
   {
     return label_text::borrow ("looping back...");
   }
@@ -229,7 +229,7 @@ public:
   /* Customize the location where the warning_event appears.  */
   void add_final_event (const state_machine *,
 			const exploded_node *enode,
-			const gimple *,
+			const event_loc_info &,
 			tree,
 			state_machine::state_t,
 			checker_path *emission_path) final override
