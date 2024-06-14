@@ -3194,6 +3194,22 @@ package body Sem_Ch13 is
 
                      Set_Has_Static_Predicate_Aspect (E, False);
 
+                     --  Query the applicable policy since it must rely on the
+                     --  policy applicable in the context of the declaration of
+                     --  entity E; it cannot be done when the built pragma is
+                     --  analyzed because it will be analyzed when E is frozen,
+                     --  and at that point the applicable policy may differ.
+                     --  For example:
+
+                     --  pragma Assertion_Policy (Dynamic_Predicate => Check);
+                     --  type T is ... with Dynamic_Predicate => ...
+                     --  pragma Assertion_Policy (Dynamic_Predicate => Ignore);
+                     --  X : T; --  freezes T
+
+                     Set_Predicates_Ignored (E,
+                       Policy_In_Effect (Name_Dynamic_Predicate)
+                         = Name_Ignore);
+
                   elsif A_Id = Aspect_Static_Predicate then
                      Set_Has_Static_Predicate_Aspect (E);
                   elsif A_Id = Aspect_Ghost_Predicate then
@@ -11107,6 +11123,7 @@ package body Sem_Ch13 is
          elsif A_Id in Aspect_CPU
                      | Aspect_Dynamic_Predicate
                      | Aspect_Ghost_Predicate
+                     | Aspect_Interrupt_Priority
                      | Aspect_Predicate
                      | Aspect_Priority
                      | Aspect_Static_Predicate
@@ -11133,9 +11150,10 @@ package body Sem_Ch13 is
          Error_Msg_NE
            ("!visibility of aspect for& changes after freeze point",
             ASN, Ent);
+         Error_Msg_Sloc := Sloc (Freeze_Node (Ent));
          Error_Msg_NE
-           ("info: & is frozen here, (RM 13.1.1 (13/3))??",
-            Freeze_Node (Ent), Ent);
+           ("\& is frozen #, (RM 13.1.1 (13/3))",
+            ASN, Ent);
       end if;
    end Check_Aspect_At_End_Of_Declarations;
 
@@ -12859,7 +12877,7 @@ package body Sem_Ch13 is
       procedure Hide_Non_Overridden_Subprograms (Typ : Entity_Id);
       --  Inspect the primitive operations of type Typ and hide all pairs of
       --  implicitly declared non-overridden non-fully conformant homographs
-      --  (Ada RM 8.3 12.3/2).
+      --  (RM 8.3(12.3/2)).
 
       -------------------------------------
       -- Hide_Non_Overridden_Subprograms --
@@ -13009,8 +13027,6 @@ package body Sem_Ch13 is
         and then Nongeneric_Case
         and then Ekind (E) = E_Record_Type
         and then Is_Tagged_Type (E)
-        and then not Is_Interface (E)
-        and then Has_Interfaces (E)
       then
          --  This would be a good common place to call the routine that checks
          --  overriding of interface primitives (and thus factorize calls to
@@ -13018,7 +13034,22 @@ package body Sem_Ch13 is
          --  compiler). However, this is not possible because it causes
          --  spurious errors in case of late overriding.
 
-         Add_Internal_Interface_Entities (E);
+         if Has_Interfaces (E)
+           and then not Is_Interface (E)
+         then
+            Add_Internal_Interface_Entities (E);
+         end if;
+
+         --  For a derived tagged type, check strub mode compatibility of
+         --  its primitives and whether inherited primitives might require
+         --  a wrapper to handle class-wide conditions. For derived interface
+         --  check strub mode compatibility of its primitives.
+
+         if Is_Derived_Type (E)
+           and then not In_Generic_Scope (E)
+         then
+            Check_Inherited_Conditions (E);
+         end if;
       end if;
 
       --  After all forms of overriding have been resolved, a tagged type may
@@ -13027,7 +13058,7 @@ package body Sem_Ch13 is
       --  overriding. If this set contains fully conformant homographs, then
       --  one is chosen arbitrarily (already done during resolution), otherwise
       --  all remaining non-fully conformant homographs are hidden from
-      --  visibility (Ada RM 8.3 12.3/2).
+      --  visibility (RM 8.3(12.3/2)).
 
       if Is_Tagged_Type (E) then
          Hide_Non_Overridden_Subprograms (E);
@@ -13366,6 +13397,7 @@ package body Sem_Ch13 is
                   if Get_Aspect_Id (Ritem) in Aspect_CPU
                                             | Aspect_Dynamic_Predicate
                                             | Aspect_Ghost_Predicate
+                                            | Aspect_Interrupt_Priority
                                             | Aspect_Predicate
                                             | Aspect_Static_Predicate
                                             | Aspect_Priority
@@ -14139,9 +14171,7 @@ package body Sem_Ch13 is
                      | Aspect_Size
                   =>
                      if not Has_Size_Clause (Typ)
-                       and then
-                         No (Get_Attribute_Definition_Clause
-                               (Typ, Attribute_Object_Size))
+                       and then No (Object_Size_Clause (Typ))
                      then
                         Set_Esize (Typ, Esize (P));
                      end if;
@@ -15881,7 +15911,10 @@ package body Sem_Ch13 is
                      Set_Must_Not_Freeze (Expr);
                      Preanalyze_Spec_Expression (Expr, E);
 
-                  when Aspect_Priority =>
+                  when Aspect_CPU
+                     | Aspect_Interrupt_Priority
+                     | Aspect_Priority
+                  =>
                      Push_Type (E);
                      Preanalyze_Spec_Expression (Expr, Any_Integer);
                      Pop_Type (E);

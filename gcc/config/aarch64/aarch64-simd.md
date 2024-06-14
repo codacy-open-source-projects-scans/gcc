@@ -377,8 +377,7 @@
 
 (define_insn "aarch64_rbit<mode><vczle><vczbe>"
   [(set (match_operand:VB 0 "register_operand" "=w")
-	(unspec:VB [(match_operand:VB 1 "register_operand" "w")]
-		   UNSPEC_RBIT))]
+	(bitreverse:VB (match_operand:VB 1 "register_operand" "w")))]
   "TARGET_SIMD"
   "rbit\\t%0.<Vbtype>, %1.<Vbtype>"
   [(set_attr "type" "neon_rbit")]
@@ -3132,7 +3131,7 @@
     DONE;
   }
 )
-(define_insn "aarch64_float_extend_lo_<Vwide>"
+(define_insn "extend<mode><Vwide>2"
   [(set (match_operand:<VWIDE> 0 "register_operand" "=w")
 	(float_extend:<VWIDE>
 	  (match_operand:VDF 1 "register_operand" "w")))]
@@ -3197,7 +3196,7 @@
 }
 )
 
-(define_insn "aarch64_float_truncate_lo_<mode><vczle><vczbe>"
+(define_insn "trunc<Vwide><mode>2<vczle><vczbe>"
   [(set (match_operand:VDF 0 "register_operand" "=w")
       (float_truncate:VDF
 	(match_operand:<VWIDE> 1 "register_operand" "w")))]
@@ -3256,7 +3255,7 @@
     int lo = BYTES_BIG_ENDIAN ? 2 : 1;
     int hi = BYTES_BIG_ENDIAN ? 1 : 2;
 
-    emit_insn (gen_aarch64_float_truncate_lo_v2sf (tmp, operands[lo]));
+    emit_insn (gen_truncv2dfv2sf2 (tmp, operands[lo]));
     emit_insn (gen_aarch64_float_truncate_hi_v4sf (operands[0],
 						   tmp, operands[hi]));
     DONE;
@@ -3272,7 +3271,7 @@
   {
     rtx tmp = gen_reg_rtx (V2SFmode);
     emit_insn (gen_aarch64_vec_concatdf (tmp, operands[1], operands[2]));
-    emit_insn (gen_aarch64_float_truncate_lo_v2sf (operands[0], tmp));
+    emit_insn (gen_truncv2dfv2sf2 (operands[0], tmp));
     DONE;
   }
 )

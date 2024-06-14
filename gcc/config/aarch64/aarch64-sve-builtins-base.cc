@@ -1174,7 +1174,7 @@ public:
        Advanced SIMD argument as an SVE vector.  */
     if (!BYTES_BIG_ENDIAN
 	&& is_undef (CALL_EXPR_ARG (e.call_expr, 0)))
-      return simplify_gen_subreg (mode, e.args[1], GET_MODE (e.args[1]), 0);
+      return force_subreg (mode, e.args[1], GET_MODE (e.args[1]), 0);
 
     rtx_vector_builder builder (VNx16BImode, 16, 2);
     for (unsigned int i = 0; i < 16; i++)
@@ -3186,7 +3186,7 @@ FUNCTION (svqincp, svqdecp_svqincp_impl, (SS_PLUS, US_PLUS))
 FUNCTION (svqincw, svqinc_bhwd_impl, (SImode))
 FUNCTION (svqincw_pat, svqinc_bhwd_impl, (SImode))
 FUNCTION (svqsub, rtx_code_function, (SS_MINUS, US_MINUS, -1))
-FUNCTION (svrbit, unspec_based_function, (UNSPEC_RBIT, UNSPEC_RBIT, -1))
+FUNCTION (svrbit, rtx_code_function, (BITREVERSE, BITREVERSE, -1))
 FUNCTION (svrdffr, svrdffr_impl,)
 FUNCTION (svrecpe, unspec_based_function, (-1, UNSPEC_URECPE, UNSPEC_FRECPE))
 FUNCTION (svrecps, unspec_based_function, (-1, -1, UNSPEC_FRECPS))

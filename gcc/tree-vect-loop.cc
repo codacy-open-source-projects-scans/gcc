@@ -6030,25 +6030,14 @@ vect_create_epilog_for_reduction (loop_vec_info loop_vinfo,
 
   tree induc_val = NULL_TREE;
   tree adjustment_def = NULL;
-  if (slp_node)
-    {
-      /* Optimize: for induction condition reduction, if we can't use zero
-	 for induc_val, use initial_def.  */
-      if (STMT_VINFO_REDUC_TYPE (reduc_info) == INTEGER_INDUC_COND_REDUCTION)
-	induc_val = STMT_VINFO_VEC_INDUC_COND_INITIAL_VAL (reduc_info);
-      /* ???  Coverage for 'else' isn't clear.  */
-    }
+  /* Optimize: for induction condition reduction, if we can't use zero
+     for induc_val, use initial_def.  */
+  if (STMT_VINFO_REDUC_TYPE (reduc_info) == INTEGER_INDUC_COND_REDUCTION)
+    induc_val = STMT_VINFO_VEC_INDUC_COND_INITIAL_VAL (reduc_info);
+  else if (double_reduc)
+    ;
   else
-    {
-      /* Optimize: for induction condition reduction, if we can't use zero
-         for induc_val, use initial_def.  */
-      if (STMT_VINFO_REDUC_TYPE (reduc_info) == INTEGER_INDUC_COND_REDUCTION)
-	induc_val = STMT_VINFO_VEC_INDUC_COND_INITIAL_VAL (reduc_info);
-      else if (double_reduc)
-	;
-      else
-	adjustment_def = STMT_VINFO_REDUC_EPILOGUE_ADJUSTMENT (reduc_info);
-    }
+    adjustment_def = STMT_VINFO_REDUC_EPILOGUE_ADJUSTMENT (reduc_info);
 
   stmt_vec_info single_live_out_stmt[] = { stmt_info };
   array_slice<const stmt_vec_info> live_out_stmts = single_live_out_stmt;
@@ -6873,7 +6862,7 @@ vect_create_epilog_for_reduction (loop_vec_info loop_vinfo,
 
   if (adjustment_def)
     {
-      gcc_assert (!slp_reduc);
+      gcc_assert (!slp_reduc || group_size == 1);
       gimple_seq stmts = NULL;
       if (double_reduc)
 	{
@@ -7215,9 +7204,17 @@ vectorize_fold_left_reduction (loop_vec_info loop_vinfo,
       tree len = NULL_TREE;
       tree bias = NULL_TREE;
       if (LOOP_VINFO_FULLY_MASKED_P (loop_vinfo))
-	mask = vect_get_loop_mask (loop_vinfo, gsi, masks, vec_num, vectype_in, i);
+	{
+	  tree loop_mask = vect_get_loop_mask (loop_vinfo, gsi, masks,
+					       vec_num, vectype_in, i);
+	  if (is_cond_op)
+	    mask = prepare_vec_mask (loop_vinfo, TREE_TYPE (loop_mask),
+				     loop_mask, vec_opmask[i], gsi);
+	  else
+	    mask = loop_mask;
+	}
       else if (is_cond_op)
-	mask = vec_opmask[0];
+	mask = vec_opmask[i];
       if (LOOP_VINFO_FULLY_WITH_LENGTH_P (loop_vinfo))
 	{
 	  len = vect_get_loop_len (loop_vinfo, gsi, lens, vec_num, vectype_in,
@@ -12188,8 +12185,10 @@ vect_transform_loop (loop_vec_info loop_vinfo, gimple *loop_vectorized_call)
 	   !gsi_end_p (si);)
 	{
 	  stmt = gsi_stmt (si);
-	  /* During vectorization remove existing clobber stmts.  */
-	  if (gimple_clobber_p (stmt))
+	  /* During vectorization remove existing clobber stmts and
+	     prefetches.  */
+	  if (gimple_clobber_p (stmt)
+	      || gimple_call_builtin_p (stmt, BUILT_IN_PREFETCH))
 	    {
 	      unlink_stmt_vdef (stmt);
 	      gsi_remove (&si, true);

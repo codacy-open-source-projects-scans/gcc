@@ -1616,7 +1616,7 @@ package body Sem_Ch3 is
 
       Last_Tag := Empty;
 
-      if not (Present (Component_List (Ext))) then
+      if not Present (Component_List (Ext)) then
          Set_Null_Present (Ext, False);
          L := New_List;
          Set_Component_List (Ext,
@@ -5246,8 +5246,7 @@ package body Sem_Ch3 is
                E := First_Entity (Etype (Id));
                while Present (E) loop
                   if Ekind (E) = E_Entry
-                    and then Present (Get_Attribute_Definition_Clause
-                                        (E, Attribute_Address))
+                    and then Present (Address_Clause (E))
                   then
                      Error_Msg_Warn := SPARK_Mode /= On;
                      Error_Msg_N
@@ -12454,7 +12453,7 @@ package body Sem_Ch3 is
 
    procedure Check_Delta_Expression (E : Node_Id) is
    begin
-      if not (Is_Real_Type (Etype (E))) then
+      if not Is_Real_Type (Etype (E)) then
          Wrong_Type (E, Any_Real);
 
       elsif not Is_OK_Static_Expression (E) then
@@ -12482,7 +12481,7 @@ package body Sem_Ch3 is
 
    procedure Check_Digits_Expression (E : Node_Id) is
    begin
-      if not (Is_Integer_Type (Etype (E))) then
+      if not Is_Integer_Type (Etype (E)) then
          Wrong_Type (E, Any_Integer);
 
       elsif not Is_OK_Static_Expression (E) then
@@ -16553,7 +16552,7 @@ package body Sem_Ch3 is
 
       New_Overloaded_Entity (New_Subp, Derived_Type);
 
-      --  Ada RM 6.1.1 (15): If a subprogram inherits nonconforming class-wide
+      --  RM 6.1.1(15): If a subprogram inherits nonconforming class-wide
       --  preconditions and the derived type is abstract, the derived operation
       --  is abstract as well if parent subprogram is not abstract or null.
 

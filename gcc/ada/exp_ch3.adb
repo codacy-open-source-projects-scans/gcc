@@ -12655,8 +12655,7 @@ package body Exp_Ch3 is
         and then Stream_Operation_OK (Tag_Typ, TSS_Stream_Input)
         and then No (TSS (Tag_Typ, TSS_Stream_Input))
       then
-         Build_Record_Or_Elementary_Input_Function
-           (Tag_Typ, Decl, Ent);
+         Build_Record_Or_Elementary_Input_Function (Tag_Typ, Decl, Ent);
          Append_To (Res, Decl);
       end if;
 
@@ -12912,7 +12911,9 @@ package body Exp_Ch3 is
         and then No (No_Tagged_Streams_Pragma (Typ))
         and then not No_Run_Time_Mode
         and then RTE_Available (RE_Tag)
-        and then No (Type_Without_Stream_Operation (Typ))
+        and then
+          (not Restriction_Active (No_Default_Stream_Attributes)
+             or else No (Type_Without_Stream_Operation (Typ)))
         and then RTE_Available (RE_Root_Stream_Type);
    end Stream_Operation_OK;
 

@@ -6433,7 +6433,7 @@ package body Exp_Util is
       Obj_Typ := Base_Type (Etype (Obj_Id));
 
       if Is_Access_Type (Obj_Typ) then
-         Obj_Typ := Available_View (Designated_Type (Obj_Typ));
+         Obj_Typ := Base_Type (Available_View (Designated_Type (Obj_Typ)));
       end if;
 
       --  Handle the initialization type of the object declaration
@@ -8101,6 +8101,10 @@ package body Exp_Util is
                | N_Task_Body
                | N_Task_Body_Stub
 
+               --  Other things that can occur in stmt or decl lists
+
+               | N_Itype_Reference
+
                --  Use clauses can appear in lists of declarations
 
                | N_Use_Package_Clause
@@ -8370,7 +8374,6 @@ package body Exp_Util is
                | N_Integer_Literal
                | N_Iterator_Specification
                | N_Interpolated_String_Literal
-               | N_Itype_Reference
                | N_Label
                | N_Loop_Parameter_Specification
                | N_Mod_Clause
@@ -8646,8 +8649,8 @@ package body Exp_Util is
    ------------------------------
 
    function Is_Finalizable_Transient
-     (Decl     : Node_Id;
-      Rel_Node : Node_Id) return Boolean
+     (Decl : Node_Id;
+      N    : Node_Id) return Boolean
    is
       Obj_Id  : constant Entity_Id := Defining_Identifier (Decl);
       Obj_Typ : constant Entity_Id := Base_Type (Etype (Obj_Id));
@@ -8808,9 +8811,10 @@ package body Exp_Util is
          First_Stmt : Node_Id) return Boolean
       is
          function Find_Renamed_Object (Ren_Decl : Node_Id) return Entity_Id;
-         --  Given an object renaming declaration, retrieve the entity of the
-         --  renamed name. Return Empty if the renamed name is anything other
-         --  than a variable or a constant.
+         --  Given an object renaming declaration, retrieve the entity within
+         --  the renamed name, recursively if this entity is itself a renaming.
+         --  Return Empty if the renamed name contains anything other than a
+         --  variable or a constant.
 
          -------------------------
          -- Find_Renamed_Object --
@@ -8877,7 +8881,16 @@ package body Exp_Util is
                Search (Constant_Value (Ren_Obj));
             end if;
 
-            return Ren_Obj;
+            --  Recurse if Ren_Obj is itself a renaming
+
+            if Present (Ren_Obj)
+              and then Ekind (Ren_Obj) in E_Constant | E_Variable
+              and then Present (Renamed_Object (Ren_Obj))
+            then
+               return Find_Renamed_Object (Declaration_Node (Ren_Obj));
+            else
+               return Ren_Obj;
+            end if;
          end Find_Renamed_Object;
 
          --  Local variables
@@ -8889,61 +8902,53 @@ package body Exp_Util is
       --  Start of processing for Is_Aliased
 
       begin
-         --  A controlled transient object is not considered aliased when it
-         --  appears inside an expression_with_actions node even when there are
-         --  explicit aliases of it:
+         --  Examine the statements following the controlled object and look
+         --  for various forms of aliasing.
 
-         --    do
-         --       Trans_Id : Ctrl_Typ ...;  --  transient object
-         --       Alias : ... := Trans_Id;  --  object is aliased
-         --       Val : constant Boolean :=
-         --               ... Alias ...;    --  aliasing ends
-         --       <finalize Trans_Id>       --  object safe to finalize
-         --    in Val end;
+         Stmt := First_Stmt;
+         while Present (Stmt) loop
+            --  Transient objects initialized by a reference are finalized
+            --  (see Initialized_By_Reference above), so we must make sure
+            --  not to finalize the referenced object twice. And we cannot
+            --  finalize it at all if it is referenced by the nontransient
+            --  object serviced by the transient scope.
 
-         --  Expansion ensures that all aliases are encapsulated in the actions
-         --  list and do not leak to the expression by forcing the evaluation
-         --  of the expression.
+            if Nkind (Stmt) = N_Object_Declaration then
+               Expr := Expression (Stmt);
 
-         if Nkind (Rel_Node) = N_Expression_With_Actions then
-            return False;
+               --  Aliasing of the form:
+               --    Obj : ... := Trans_Id'reference;
 
-         --  Otherwise examine the statements after the controlled transient
-         --  object and look for various forms of aliasing.
-
-         else
-            Stmt := First_Stmt;
-            while Present (Stmt) loop
-               if Nkind (Stmt) = N_Object_Declaration then
-                  Expr := Expression (Stmt);
-
-                  --  Aliasing of the form:
-                  --    Obj : ... := Trans_Id'reference;
-
-                  if Present (Expr)
-                    and then Nkind (Expr) = N_Reference
-                    and then Nkind (Prefix (Expr)) = N_Identifier
-                    and then Entity (Prefix (Expr)) = Trans_Id
-                  then
-                     return True;
-                  end if;
-
-               elsif Nkind (Stmt) = N_Object_Renaming_Declaration then
-                  Ren_Obj := Find_Renamed_Object (Stmt);
-
-                  --  Aliasing of the form:
-                  --    Obj : ... renames ... Trans_Id ...;
-
-                  if Present (Ren_Obj) and then Ren_Obj = Trans_Id then
-                     return True;
-                  end if;
+               if Present (Expr)
+                 and then Nkind (Expr) = N_Reference
+                 and then Is_Entity_Name (Prefix (Expr))
+                 and then Entity (Prefix (Expr)) = Trans_Id
+               then
+                  return True;
                end if;
 
-               Next (Stmt);
-            end loop;
+            --  (Transient) renamings are never finalized so we need not bother
+            --  about finalizing transient renamed objects twice. Therefore, we
+            --  we only need to look at the nontransient object serviced by the
+            --  transient scope, if it exists and is declared as a renaming.
 
-            return False;
-         end if;
+            elsif Nkind (Stmt) = N_Object_Renaming_Declaration
+              and then Stmt = N
+            then
+               Ren_Obj := Find_Renamed_Object (Stmt);
+
+               --  Aliasing of the form:
+               --    Obj : ... renames ... Trans_Id ...;
+
+               if Present (Ren_Obj) and then Ren_Obj = Trans_Id then
+                  return True;
+               end if;
+            end if;
+
+            Next (Stmt);
+         end loop;
+
+         return False;
       end Is_Aliased;
 
       --------------------------
@@ -9161,8 +9166,8 @@ package body Exp_Util is
       return
         Ekind (Obj_Id) in E_Constant | E_Variable
           and then Needs_Finalization (Desig)
-          and then Nkind (Rel_Node) /= N_Simple_Return_Statement
-          and then not Is_Part_Of_BIP_Return_Statement (Rel_Node)
+          and then Nkind (N) /= N_Simple_Return_Statement
+          and then not Is_Part_Of_BIP_Return_Statement (N)
 
           --  Do not consider a transient object that was already processed
 
@@ -13486,26 +13491,6 @@ package body Exp_Util is
               and then not Restricted_Profile
             then
                return True;
-            end if;
-
-         --  Specific cases of object renamings
-
-         elsif Nkind (Decl) = N_Object_Renaming_Declaration then
-            Obj_Id  := Defining_Identifier (Decl);
-            Obj_Typ := Base_Type (Etype (Obj_Id));
-
-            --  Bypass any form of processing for objects which have their
-            --  finalization disabled. This applies only to objects at the
-            --  library level.
-
-            if Lib_Level and then Finalize_Storage_Only (Obj_Typ) then
-               null;
-
-            --  Ignored Ghost object renamings do not need any cleanup actions
-            --  because they will not appear in the final tree.
-
-            elsif Is_Ignored_Ghost_Entity (Obj_Id) then
-               null;
             end if;
 
          --  Inspect the freeze node of an access-to-controlled type and look

@@ -3887,6 +3887,8 @@ These machine description macros help implement varargs:
 
 @hook TARGET_STRICT_ARGUMENT_NAMING
 
+@hook TARGET_CALL_OFFSET_RETURN_LABEL
+
 @hook TARGET_START_CALL_ARGS
 
 @hook TARGET_CALL_ARGS
@@ -7920,6 +7922,8 @@ lists.
 @hook TARGET_GEN_CCMP_FIRST
 
 @hook TARGET_GEN_CCMP_NEXT
+
+@hook TARGET_HAVE_CCMP
 
 @hook TARGET_LOOP_UNROLL_ADJUST
 

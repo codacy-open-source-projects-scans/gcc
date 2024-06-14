@@ -89,7 +89,7 @@ svalue::dump (bool simple) const
   pretty_printer pp;
   pp_format_decoder (&pp) = default_tree_printer;
   pp_show_color (&pp) = pp_show_color (global_dc->printer);
-  pp.buffer->stream = stderr;
+  pp.set_output_stream (stderr);
   dump_to_pp (&pp, simple);
   pp_newline (&pp);
   pp_flush (&pp);
@@ -252,7 +252,7 @@ svalue::make_dump_widget (const text_art::dump_widget_info &dwi,
 
   add_dump_widget_children (*w, dwi);
 
-  return w;
+  return std::move (w);
 }
 
 /* If this svalue is a constant_svalue, return the underlying tree constant.
