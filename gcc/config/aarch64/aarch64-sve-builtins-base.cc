@@ -1121,9 +1121,8 @@ public:
   expand (function_expander &e) const override
   {
     /* Fold the access into a subreg rvalue.  */
-    return simplify_gen_subreg (e.vector_mode (0), e.args[0],
-				GET_MODE (e.args[0]),
-				INTVAL (e.args[1]) * BYTES_PER_SVE_VECTOR);
+    return force_subreg (e.vector_mode (0), e.args[0], GET_MODE (e.args[0]),
+			 INTVAL (e.args[1]) * BYTES_PER_SVE_VECTOR);
   }
 };
 
@@ -1157,8 +1156,7 @@ public:
 	e.add_fixed_operand (indices);
 	return e.generate_insn (icode);
       }
-    return simplify_gen_subreg (e.result_mode (), e.args[0],
-				GET_MODE (e.args[0]), 0);
+    return force_subreg (e.result_mode (), e.args[0], GET_MODE (e.args[0]), 0);
   }
 };
 
@@ -1185,7 +1183,7 @@ public:
     if (BYTES_BIG_ENDIAN)
       return e.use_exact_insn (code_for_aarch64_sve_set_neonq (mode));
     insn_code icode = code_for_vcond_mask (mode, mode);
-    e.args[1] = lowpart_subreg (mode, e.args[1], GET_MODE (e.args[1]));
+    e.args[1] = force_lowpart_subreg (mode, e.args[1], GET_MODE (e.args[1]));
     e.add_output_operand (icode);
     e.add_input_operand (icode, e.args[1]);
     e.add_input_operand (icode, e.args[0]);
