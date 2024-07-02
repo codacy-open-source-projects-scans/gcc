@@ -575,7 +575,7 @@ Objective-C and Objective-C++ Dialects}.
 -fipa-bit-cp  -fipa-vrp  -fipa-pta  -fipa-profile  -fipa-pure-const
 -fipa-reference  -fipa-reference-addressable
 -fipa-stack-alignment  -fipa-icf  -fira-algorithm=@var{algorithm}
--flive-patching=@var{level}
+-flate-combine-instructions  -flive-patching=@var{level}
 -fira-region=@var{region}  -fira-hoist-pressure
 -fira-loop-pressure  -fno-ira-share-save-slots
 -fno-ira-share-spill-slots
@@ -13675,6 +13675,15 @@ equivalences that are found only by GCC and equivalences found only by Gold.
 
 This flag is enabled by default at @option{-O2} and @option{-Os}.
 
+@opindex flate-combine-instructions
+@item -flate-combine-instructions
+Enable two instruction combination passes that run relatively late in the
+compilation process.  One of the passes runs before register allocation and
+the other after register allocation.  The main aim of the passes is to
+substitute definitions into all uses.
+
+Most targets enable this flag by default at @option{-O2} and @option{-Os}.
+
 @opindex flive-patching
 @item -flive-patching=@var{level}
 Control GCC's optimizations to produce output suitable for live-patching.
@@ -16839,6 +16848,9 @@ this parameter.  The default value of this parameter is 50.
 
 @item vect-induction-float
 Enable loop vectorization of floating point inductions.
+
+@item vrp-block-limit
+Maximum number of basic blocks before VRP switches to a lower memory algorithm.
 
 @item vrp-sparse-threshold
 Maximum number of basic blocks before VRP uses a sparse bitmap cache.
@@ -21425,8 +21437,8 @@ performance of the code.  Permissible values for this option are:
 @samp{ares}, @samp{exynos-m1}, @samp{emag}, @samp{falkor},
 @samp{oryon-1},
 @samp{neoverse-512tvb}, @samp{neoverse-e1}, @samp{neoverse-n1},
-@samp{neoverse-n2}, @samp{neoverse-v1}, @samp{neoverse-v2}, @samp{qdf24xx},
-@samp{saphira}, @samp{phecda}, @samp{xgene1}, @samp{vulcan},
+@samp{neoverse-n2}, @samp{neoverse-v1}, @samp{neoverse-v2}, @samp{grace},
+@samp{qdf24xx}, @samp{saphira}, @samp{phecda}, @samp{xgene1}, @samp{vulcan},
 @samp{octeontx}, @samp{octeontx81},  @samp{octeontx83},
 @samp{octeontx2}, @samp{octeontx2t98}, @samp{octeontx2t96}
 @samp{octeontx2t93}, @samp{octeontx2f95}, @samp{octeontx2f95n},
@@ -36453,13 +36465,14 @@ enabled by default on those targets.
 @opindex mcrtdll
 @item -mcrtdll=@var{library}
 Preprocess, compile or link with specified C RunTime DLL @var{library}.
-This option adjust predefined macros @code{__CRTDLL__}, @code{__MSVCRT__}
-and @code{__MSVCRT_VERSION__} for specified CRT @var{library}, choose
-start file for CRT @var{library} and link with CRT @var{library}.
+This option adjust predefined macros @code{__CRTDLL__}, @code{__MSVCRT__},
+@code{_UCRT} and @code{__MSVCRT_VERSION__} for specified CRT @var{library},
+choose start file for CRT @var{library} and link with CRT @var{library}.
 Recognized CRT library names for proprocessor are:
-@code{crtdll}, @code{msvcrt10}, @code{msvcrt20}, @code{msvcrt40},
-@code{msvcrt-os}, @code{msvcr70}, @code{msvcr80}, @code{msvcr90},
-@code{msvcr100}, @code{msvcr110}, @code{msvcr120} and @code{ucrt}.
+@code{crtdll*}, @code{msvcrt10*}, @code{msvcrt20*}, @code{msvcrt40*},
+@code{msvcr40*}, @code{msvcrtd*}, @code{msvcrt-os*},
+@code{msvcr70*}, @code{msvcr71*}, @code{msvcr80*}, @code{msvcr90*},
+@code{msvcr100*}, @code{msvcr110*}, @code{msvcr120*} and @code{ucrt*}.
 If this options is not specified then the default MinGW import library
 @code{msvcrt} is used for linking and no other adjustment for
 preprocessor is done. MinGW import library @code{msvcrt} is just a

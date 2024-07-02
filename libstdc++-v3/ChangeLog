@@ -1,3 +1,172 @@
+2024-06-28  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/115585
+	* src/c++11/assert_fail.cc (__glibcxx_assert_fail): Add
+	definition for non-verbose builds.
+
+2024-06-28  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/101485
+	* include/bits/stl_algobase.h (__equal_aux1): Check for
+	std::byte as well.
+	* testsuite/25_algorithms/equal/101485.cc: New test.
+
+2024-06-28  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/104395
+	* include/bits/new_allocator.h: Disable extended alignment
+	support in C++98 mode.
+	* include/bits/stl_tempbuf.h: Likewise.
+	* include/ext/bitmap_allocator.h: Likewise.
+	* include/ext/malloc_allocator.h: Likewise.
+	* include/ext/mt_allocator.h: Likewise.
+	* include/ext/pool_allocator.h: Likewise.
+	* testsuite/ext/104395.cc: New test.
+
+2024-06-28  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/ext/aligned_buffer.h (__aligned_membuf): Use
+	alignas(T) directly instead of defining a struct and using 9its
+	alignment.
+	(__aligned_buffer): Remove use of std::aligned_storage.
+	* testsuite/abi/aligned_buffers.cc: New test.
+
+2024-06-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/37475
+	* config/locale/gnu/codecvt_members.cc (Guard): New RAII type.
+	(do_out, do_in): Return partial if the destination is empty but
+	the source is not. Use Guard to restore locale on scope exit.
+	Return immediately on any conversion error.
+	(do_encoding, do_max_length, do_length): Use Guard.
+	* testsuite/22_locale/codecvt/in/char/37475.cc: New test.
+	* testsuite/22_locale/codecvt/in/wchar_t/37475.cc: New test.
+	* testsuite/22_locale/codecvt/out/char/37475.cc: New test.
+	* testsuite/22_locale/codecvt/out/wchar_t/37475.cc: New test.
+
+2024-06-27  Alexandre Oliva  <oliva@adacore.com>
+
+	PR libstdc++/115454
+	* testsuite/experimental/simd/pr115454_find_last_set.cc: Defer
+	to check_vect_support_and_set_flags's default dg-do action.
+
+2024-06-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/115668
+	* include/bits/chrono_io.h (formatter<duration<R,P, C>::format):
+	Do not use chrono::abs.
+	* testsuite/20_util/duration/io.cc: Check formatting a duration
+	with unsigned rep.
+
+2024-06-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/103191
+	* include/bits/stl_bvector.h (vector<bool>::operator[])
+	(vector<bool>::front, vector<bool>::back): Add debug assertions.
+	* testsuite/23_containers/vector/bool/element_access/constexpr.cc:
+	Remove dg-error that no longer triggers.
+
+2024-06-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/111250
+	* include/debug/assertions.h (__glibcxx_requires_non_empty_range)
+	(__glibcxx_requires_nonempty, __glibcxx_requires_subscript):
+	Define to __glibcxx_assert expressions or to debug mode
+	__glibcxx_check_xxx expressions.
+	* testsuite/23_containers/array/element_access/constexpr_c++17.cc:
+	Add checks for out-of-bounds accesses in constant expressions.
+	* testsuite/23_containers/vector/element_access/constexpr.cc:
+	Likewise.
+
+2024-06-26  Jonathan Wakely  <jwakely@redhat.com>
+
+	* scripts/update_release_branch.sh: New file.
+
+2024-06-26  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/20_util/specialized_algorithms/uninitialized_copy/808590.cc:
+	Copy defaulted assignment operator from 808590-cxx11.cc to
+	suppress a warning.
+	* testsuite/20_util/specialized_algorithms/uninitialized_copy/808590-cxx11.cc:
+	Removed.
+
+2024-06-26  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/90276
+	* testsuite/25_algorithms/pstl/alg_modifying_operations/rotate_copy.cc:
+	Increase timeout for debug mode.
+	* testsuite/25_algorithms/pstl/alg_modifying_operations/transform_binary.cc:
+	Likewise.
+	* testsuite/25_algorithms/pstl/alg_nonmodifying/mismatch.cc:
+	Likewise.
+	* testsuite/25_algorithms/pstl/alg_sorting/lexicographical_compare.cc:
+	Likewise.
+	* testsuite/25_algorithms/pstl/alg_sorting/minmax_element.cc:
+	Likewise.
+	* testsuite/25_algorithms/pstl/alg_sorting/set_symmetric_difference.cc:
+	Likewise.
+
+2024-06-26  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/90276
+	* testsuite/25_algorithms/pstl/alg_sorting/partial_sort.cc
+	[_GLIBCXX_DEBUG]: Add xfail-run-if for debug mode.
+	* testsuite/25_algorithms/pstl/alg_nonmodifying/nth_element.cc
+	[_GLIBCXX_DEBUG]: Reduce size of test data.
+	* testsuite/25_algorithms/pstl/alg_sorting/includes.cc:
+	Likewise.
+	* testsuite/25_algorithms/pstl/alg_sorting/set_util.h:
+	Likewise.
+
+2024-06-26  Jonathan Wakely  <jwakely@redhat.com>
+
+	* src/c++20/tzdb.cc (minmax_year, minmax_year2): Remove.
+	(years_from_to): New class replacing minmax_year and
+	minmax_year2.
+	(format_abbrev_str, select_std_or_dst_abbrev): Move earlier in
+	the file. Handle "-" for letters.
+	(ZoneInfo::to): Use format_abbrev_str to expand %z.
+	(ZoneInfo::set_abbrev): Remove exception. Change parameter from
+	reference to value.
+	(operator>>(istream&, Rule&)): Do not clear letters when it
+	contains "-".
+	(time_zone::_M_get_sys_info): Add missing logic to find the Rule
+	in effect before the time point.
+	* testsuite/std/time/tzdb/1.cc: Adjust for vanguard format using
+	"GMT" as the Zone name, not as a Link to "Etc/GMT".
+	* testsuite/std/time/time_zone/sys_info_abbrev.cc: New test.
+
+2024-06-26  Alexandre Oliva  <oliva@adacore.com>
+	    Marc Poulhiès  <poulhies@adacore.com>
+
+	* testsuite/lib/dg-options.exp (add_options_for_libatomic):
+	None for *-*-vxworks*.
+
+2024-06-25  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/valarray_array.h (_Array_default_ctor): Remove.
+	(__valarray_default_construct): Inline it into here.
+	(_Array_init_ctor): Remove.
+	(__valarray_fill_construct): Inline it into here.
+	(_Array_copy_ctor): Remove.
+	(__valarray_copy_construct(const T*, const T*, T*)): Inline it
+	into here.
+	(__valarray_copy_construct(const T*, size_t, size_t, T*)):
+	Use _GLIBCXX17_CONSTEXPR for constant condition.
+
+2024-06-25  Jonathan Wakely  <jwakely@redhat.com>
+
+	* doc/xml/faq.xml: Replace viewcvs links with cgit links.
+	* doc/xml/manual/allocator.xml: Likewise.
+	* doc/xml/manual/mt_allocator.xml: Likewise.
+	* doc/html/*: Regenerate.
+
+2024-06-22  Gerald Pfeifer  <gerald@pfeifer.com>
+
+	* doc/xml/manual/debug.xml: Move gcc.gnu.org link to https.
+	Ditto for sourceware.org links.
+	* doc/html/manual/debug.html: Regenerate.
+
 2024-06-21  Jonathan Wakely  <jwakely@redhat.com>
 
 	PR libstdc++/115497

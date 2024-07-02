@@ -8703,6 +8703,10 @@ gfc_conv_array_parameter (gfc_se * se, gfc_expr * expr, bool g77,
 	&& (sym->backend_decl != parent))
     this_array_result = false;
 
+  /* Passing an optional dummy argument as actual to an optional dummy?  */
+  bool pass_optional;
+  pass_optional = fsym && fsym->attr.optional && sym && sym->attr.optional;
+
   /* Passing address of the array if it is not pointer or assumed-shape.  */
   if (full_array_var && g77 && !this_array_result
       && sym->ts.type != BT_DERIVED && sym->ts.type != BT_CLASS)
@@ -8740,6 +8744,14 @@ gfc_conv_array_parameter (gfc_se * se, gfc_expr * expr, bool g77,
 	  if (size)
 	    array_parameter_size (&se->pre, tmp, expr, size);
 	  se->expr = gfc_conv_array_data (tmp);
+	  if (pass_optional)
+	    {
+	      tree cond = gfc_conv_expr_present (sym);
+	      se->expr = build3_loc (input_location, COND_EXPR,
+				     TREE_TYPE (se->expr), cond, se->expr,
+				     fold_convert (TREE_TYPE (se->expr),
+						   null_pointer_node));
+	    }
           return;
         }
     }
@@ -8989,8 +9001,8 @@ gfc_conv_array_parameter (gfc_se * se, gfc_expr * expr, bool g77,
 	  tmp = fold_build2_loc (input_location, NE_EXPR, logical_type_node,
 				 fold_convert (TREE_TYPE (tmp), ptr), tmp);
 
-	  if (fsym && fsym->attr.optional && sym && sym->attr.optional)
-	    tmp = fold_build2_loc (input_location, TRUTH_AND_EXPR,
+	  if (pass_optional)
+	    tmp = fold_build2_loc (input_location, TRUTH_ANDIF_EXPR,
 				   logical_type_node,
 				   gfc_conv_expr_present (sym), tmp);
 
@@ -9024,8 +9036,8 @@ gfc_conv_array_parameter (gfc_se * se, gfc_expr * expr, bool g77,
       tmp = fold_build2_loc (input_location, NE_EXPR, logical_type_node,
 			     fold_convert (TREE_TYPE (tmp), ptr), tmp);
 
-      if (fsym && fsym->attr.optional && sym && sym->attr.optional)
-	tmp = fold_build2_loc (input_location, TRUTH_AND_EXPR,
+      if (pass_optional)
+	tmp = fold_build2_loc (input_location, TRUTH_ANDIF_EXPR,
 			       logical_type_node,
 			       gfc_conv_expr_present (sym), tmp);
 
@@ -9873,15 +9885,7 @@ structure_alloc_comps (gfc_symbol * der_type, tree decl, tree dest,
 	      else
 		{
 		  /* Build the vtable address and set the vptr with it.  */
-		  tree vtab;
-		  gfc_symbol *vtable;
-		  vtable = gfc_find_derived_vtab (c->ts.u.derived);
-		  vtab = vtable->backend_decl;
-		  if (vtab == NULL_TREE)
-		    vtab = gfc_get_symbol_decl (vtable);
-		  vtab = gfc_build_addr_expr (NULL, vtab);
-		  vtab = fold_convert (TREE_TYPE (tmp), vtab);
-		  gfc_add_modify (&tmpblock, tmp, vtab);
+		  gfc_reset_vptr (&tmpblock, nullptr, tmp, c->ts.u.derived);
 		}
 	    }
 
@@ -9912,15 +9916,13 @@ structure_alloc_comps (gfc_symbol * der_type, tree decl, tree dest,
 	      && (CLASS_DATA (c)->attr.allocatable
 		  || CLASS_DATA (c)->attr.class_pointer))
 	    {
-	      tree vptr_decl;
+	      tree class_ref;
 
 	      /* Allocatable CLASS components.  */
-	      comp = fold_build3_loc (input_location, COMPONENT_REF, ctype,
-				      decl, cdecl, NULL_TREE);
+	      class_ref = fold_build3_loc (input_location, COMPONENT_REF, ctype,
+					   decl, cdecl, NULL_TREE);
 
-	      vptr_decl = gfc_class_vptr_get (comp);
-
-	      comp = gfc_class_data_get (comp);
+	      comp = gfc_class_data_get (class_ref);
 	      if (GFC_DESCRIPTOR_TYPE_P (TREE_TYPE (comp)))
 		gfc_conv_descriptor_data_set (&fnblock, comp,
 					      null_pointer_node);
@@ -9935,19 +9937,7 @@ structure_alloc_comps (gfc_symbol * der_type, tree decl, tree dest,
 	      /* The dynamic type of a disassociated pointer or unallocated
 		 allocatable variable is its declared type. An unlimited
 		 polymorphic entity has no declared type.  */
-	      if (!UNLIMITED_POLY (c))
-		{
-		  vtab = gfc_find_derived_vtab (c->ts.u.derived);
-		  if (!vtab->backend_decl)
-		     gfc_get_symbol_decl (vtab);
-		  tmp = gfc_build_addr_expr (NULL_TREE, vtab->backend_decl);
-		}
-	      else
-		tmp = build_int_cst (TREE_TYPE (vptr_decl), 0);
-
-	      tmp = fold_build2_loc (input_location, MODIFY_EXPR,
-					 void_type_node, vptr_decl, tmp);
-	      gfc_add_expr_to_block (&fnblock, tmp);
+	      gfc_reset_vptr (&fnblock, nullptr, class_ref, c->ts.u.derived);
 
 	      cmp_has_alloc_comps = false;
 	    }

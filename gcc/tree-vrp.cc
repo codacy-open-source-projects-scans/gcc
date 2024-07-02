@@ -60,6 +60,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "ipa-cp.h"
 #include "ipa-prop.h"
 #include "attribs.h"
+#include "diagnostic-core.h"
 
 // This class is utilized by VRP and ranger to remove __builtin_unreachable
 // calls, and reflect any resulting global ranges.
@@ -1258,7 +1259,8 @@ execute_fast_vrp (struct function *fun, bool final_p)
 
   gcc_checking_assert (!fun->x_range_query);
   fun->x_range_query = &dr;
-  get_range_query (fun)->create_relation_oracle ();
+  // Create a relation oracle without transitives.
+  get_range_query (fun)->create_relation_oracle (false);
 
   folder.substitute_and_fold ();
   if (folder.m_unreachable)
@@ -1330,9 +1332,18 @@ public:
   unsigned int execute (function *fun) final override
     {
       // Check for fast vrp.
-      if (&data == &pass_data_fast_vrp)
+      bool use_fvrp = (&data == &pass_data_fast_vrp);
+      if (!use_fvrp && last_basic_block_for_fn (fun) > param_vrp_block_limit)
+	{
+	  use_fvrp = true;
+	  warning (OPT_Wdisabled_optimization,
+		   "Using fast VRP algorithm. %d basic blocks"
+		   " exceeds %<--param=vrp-block-limit=%d%> limit",
+		   n_basic_blocks_for_fn (fun),
+		   param_vrp_block_limit);
+	}
+      if (use_fvrp)
 	return execute_fast_vrp (fun, final_p);
-
       return execute_ranger_vrp (fun, final_p);
     }
 
