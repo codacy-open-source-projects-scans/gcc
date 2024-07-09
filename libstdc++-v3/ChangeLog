@@ -1,3 +1,123 @@
+2024-07-08  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/115807
+	* include/c_compatibility/stdatomic.h (_Atomic): Ensure it
+	refers to std::atomic in the global namespace.
+	* testsuite/29_atomics/headers/stdatomic.h/115807.cc: New test.
+
+2024-07-07  Gerald Pfeifer  <gerald@pfeifer.com>
+
+	* doc/xml/manual/configure.xml: Update Autobook 14 link.
+	Update GCC installation instructions link.
+	* doc/html/manual/configure.html: Regenerate.
+
+2024-07-07  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/115799
+	* include/bits/stl_algo.h (find): Use 'if constexpr' so that
+	memchr optimization is a discarded statement for non-contiguous
+	iterators.
+	* testsuite/25_algorithms/find/bytes.cc: Check with input
+	iterators.
+
+2024-07-07  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/115799
+	* include/bits/ranges_util.h (__find_fn): Return iterator
+	instead of sentinel.
+	* testsuite/25_algorithms/find/constrained.cc: Check non-common
+	contiguous sized range of char.
+
+2024-07-06  Jonathan Wakely  <jwakely@redhat.com>
+
+	* testsuite/17_intro/headers/c++1998/all_attributes.cc: Add
+	attribute names from later standards and remove dg-options.
+	* testsuite/17_intro/headers/c++1998/stdc++.cc: Add c++98_only
+	target selector.
+	* testsuite/17_intro/headers/c++1998/stdc++_multiple_inclusion.cc:
+	Remove content and include stdc++.cc twice instead.
+	* testsuite/17_intro/headers/c++2011/stdc++.cc: Replace
+	dg-options with c++11 target selector.
+	* testsuite/17_intro/headers/c++2011/stdc++_multiple_inclusion.cc:
+	Remove content and include stdc++.cc twice instead.
+	* testsuite/17_intro/headers/c++2011/all_attributes.cc: Removed.
+	* testsuite/17_intro/headers/c++2011/all_no_exceptions.cc: Removed.
+	* testsuite/17_intro/headers/c++2011/all_no_rtti.cc: Removed.
+	* testsuite/17_intro/headers/c++2011/all_pedantic_errors.cc: Removed.
+	* testsuite/17_intro/headers/c++2011/charset.cc: Removed.
+	* testsuite/17_intro/headers/c++2011/operator_names.cc: Removed.
+	* testsuite/17_intro/headers/c++2014/all_attributes.cc: Removed.
+	* testsuite/17_intro/headers/c++2014/all_no_exceptions.cc: Removed.
+	* testsuite/17_intro/headers/c++2014/all_no_rtti.cc: Removed.
+	* testsuite/17_intro/headers/c++2014/all_pedantic_errors.cc: Removed.
+	* testsuite/17_intro/headers/c++2014/charset.cc: Removed.
+	* testsuite/17_intro/headers/c++2014/operator_names.cc: Removed.
+	* testsuite/17_intro/headers/c++2014/stdc++.cc: Removed.
+	* testsuite/17_intro/headers/c++2014/stdc++_multiple_inclusion.cc: Removed.
+	* testsuite/17_intro/headers/c++2017/all_attributes.cc: Removed.
+	* testsuite/17_intro/headers/c++2017/all_no_exceptions.cc: Removed.
+	* testsuite/17_intro/headers/c++2017/all_no_rtti.cc: Removed.
+	* testsuite/17_intro/headers/c++2017/all_pedantic_errors.cc: Removed.
+	* testsuite/17_intro/headers/c++2017/charset.cc: Removed.
+	* testsuite/17_intro/headers/c++2017/operator_names.cc: Removed.
+	* testsuite/17_intro/headers/c++2017/stdc++.cc: Removed.
+	* testsuite/17_intro/headers/c++2017/stdc++_multiple_inclusion.cc: Removed.
+	* testsuite/17_intro/headers/c++2020/all_attributes.cc: Removed.
+	* testsuite/17_intro/headers/c++2020/all_no_exceptions.cc: Removed.
+	* testsuite/17_intro/headers/c++2020/all_no_rtti.cc: Removed.
+	* testsuite/17_intro/headers/c++2020/all_pedantic_errors.cc: Removed.
+	* testsuite/17_intro/headers/c++2020/charset.cc: Removed.
+	* testsuite/17_intro/headers/c++2020/operator_names.cc: Removed.
+	* testsuite/17_intro/headers/c++2020/stdc++.cc: Removed.
+	* testsuite/17_intro/headers/c++2020/stdc++_multiple_inclusion.cc: Removed.
+
+2024-07-06  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/std/variant (_Variant_storage::_M_reset): Use
+	__unlikely__ form of attribute instead of unlikely.
+
+2024-07-06  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/115797
+	* include/std/type_traits: Ensure "C++" language linkage.
+	* testsuite/17_intro/headers/c++2011/linkage.cc: Replace
+	dg-options with c++11 target selector.
+
+2024-07-05  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR c++/115747
+	* testsuite/tr1/2_general_utilities/shared_ptr/cons/43820_neg.cc:
+	Add dg-error for new C++26 diagnostics.
+
+2024-07-05  Jonathan Wakely  <jwakely@redhat.com>
+
+	* include/bits/stl_uninitialized.h (_UninitDestroyGuard): New
+	class template and partial specialization.
+	(__do_uninit_copy, __do_uninit_fill, __do_uninit_fill_n)
+	(__uninitialized_copy_a, __uninitialized_fill_a)
+	(__uninitialized_fill_n_a, __uninitialized_copy_move)
+	(__uninitialized_move_copy, __uninitialized_fill_move)
+	(__uninitialized_move_fill, __uninitialized_default_1)
+	(__uninitialized_default_n_a, __uninitialized_default_novalue_1)
+	(__uninitialized_default_novalue_n_1, __uninitialized_copy_n)
+	(__uninitialized_copy_n_pair): Use it.
+
+2024-07-05  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR libstdc++/88545
+	PR libstdc++/115040
+	* include/bits/cpp_type_traits.h (__can_use_memchr_for_find):
+	New variable template.
+	* include/bits/ranges_util.h (__find_fn): Use memchr when
+	possible.
+	* include/bits/stl_algo.h (find): Likewise.
+	* testsuite/25_algorithms/find/bytes.cc: New test.
+
+2024-07-04  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR libstdc++/98678
+	* testsuite/30_threads/future/members/poll.cc: Skip on hppa*-*-linux*.
+
 2024-06-28  Jonathan Wakely  <jwakely@redhat.com>
 
 	PR libstdc++/115585

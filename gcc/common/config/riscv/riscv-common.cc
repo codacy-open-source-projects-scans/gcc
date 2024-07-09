@@ -82,6 +82,8 @@ static const riscv_implied_info_t riscv_implied_info[] =
   {"a", "zaamo"},
   {"a", "zalrsc"},
 
+  {"zabha", "zaamo"},
+
   {"zdinx", "zfinx"},
   {"zfinx", "zicsr"},
   {"zdinx", "zicsr"},
@@ -260,6 +262,7 @@ static const struct riscv_ext_version riscv_ext_version_table[] =
   {"zawrs", ISA_SPEC_CLASS_NONE, 1, 0},
   {"zaamo", ISA_SPEC_CLASS_NONE, 1, 0},
   {"zalrsc", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"zabha", ISA_SPEC_CLASS_NONE, 1, 0},
 
   {"zba", ISA_SPEC_CLASS_NONE, 1, 0},
   {"zbb", ISA_SPEC_CLASS_NONE, 1, 0},
@@ -566,7 +569,8 @@ riscv_subset_t::riscv_subset_t ()
 }
 
 riscv_subset_list::riscv_subset_list (const char *arch, location_t loc)
-  : m_arch (arch), m_loc (loc), m_head (NULL), m_tail (NULL), m_xlen (0)
+  : m_arch (arch), m_loc (loc), m_head (NULL), m_tail (NULL), m_xlen (0),
+    m_subset_num (0)
 {
 }
 
@@ -812,6 +816,7 @@ riscv_subset_list::add (const char *subset, int major_version,
       return;
     }
 
+  m_subset_num++;
   riscv_subset_t *s = new riscv_subset_t ();
   riscv_subset_t *itr;
 
@@ -918,6 +923,7 @@ riscv_subset_list::to_string (bool version_p) const
 
   bool skip_zifencei = false;
   bool skip_zaamo_zalrsc = false;
+  bool skip_zabha = false;
   bool skip_zicsr = false;
   bool i2p0 = false;
 
@@ -949,6 +955,10 @@ riscv_subset_list::to_string (bool version_p) const
   /* Skip since binutils 2.42 and earlier don't recognize zaamo/zalrsc.  */
   skip_zaamo_zalrsc = true;
 #endif
+#ifndef HAVE_AS_MARCH_ZABHA
+  /* Skip since binutils 2.42 and earlier don't recognize zabha.  */
+  skip_zabha = true;
+#endif
 
   for (subset = m_head; subset != NULL; subset = subset->next)
     {
@@ -964,6 +974,9 @@ riscv_subset_list::to_string (bool version_p) const
 	continue;
 
       if (skip_zaamo_zalrsc && subset->name == "zalrsc")
+	continue;
+
+      if (skip_zabha && subset->name == "zabha")
 	continue;
 
       /* For !version_p, we only separate extension with underline for
@@ -1586,9 +1599,15 @@ void
 riscv_subset_list::finalize ()
 {
   riscv_subset_t *subset;
+  unsigned pre_subset_num;
 
-  for (subset = m_head; subset != NULL; subset = subset->next)
-    handle_implied_ext (subset->name.c_str ());
+  do
+    {
+      pre_subset_num = m_subset_num;
+      for (subset = m_head; subset != NULL; subset = subset->next)
+	handle_implied_ext (subset->name.c_str ());
+    }
+  while (pre_subset_num != m_subset_num);
 
   gcc_assert (check_implied_ext ());
 
@@ -1638,6 +1657,7 @@ static const riscv_ext_flag_table_t riscv_ext_flag_table[] =
   {"zawrs",   &gcc_options::x_riscv_za_subext, MASK_ZAWRS},
   {"zaamo",   &gcc_options::x_riscv_za_subext, MASK_ZAAMO},
   {"zalrsc",  &gcc_options::x_riscv_za_subext, MASK_ZALRSC},
+  {"zabha",   &gcc_options::x_riscv_za_subext, MASK_ZABHA},
 
   {"zba",    &gcc_options::x_riscv_zb_subext, MASK_ZBA},
   {"zbb",    &gcc_options::x_riscv_zb_subext, MASK_ZBB},

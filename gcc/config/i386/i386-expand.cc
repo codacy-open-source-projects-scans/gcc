@@ -2174,20 +2174,28 @@ ix86_expand_fp_absneg_operator (enum rtx_code code, machine_mode mode,
   machine_mode vmode = mode;
   rtvec par;
 
-  if (vector_mode || mode == TFmode || mode == HFmode)
-    {
-      use_sse = true;
-      if (mode == HFmode)
-	vmode = V8HFmode;
-    }
-  else if (TARGET_SSE_MATH)
-    {
-      use_sse = SSE_FLOAT_MODE_P (mode);
-      if (mode == SFmode)
-	vmode = V4SFmode;
-      else if (mode == DFmode)
-	vmode = V2DFmode;
-    }
+  switch (mode)
+  {
+  case HFmode:
+    use_sse = true;
+    vmode = V8HFmode;
+    break;
+  case BFmode:
+    use_sse = true;
+    vmode = V8BFmode;
+    break;
+  case SFmode:
+    use_sse = TARGET_SSE_MATH && TARGET_SSE;
+    vmode = V4SFmode;
+    break;
+  case DFmode:
+    use_sse = TARGET_SSE_MATH && TARGET_SSE2;
+    vmode = V2DFmode;
+    break;
+  default:
+    use_sse = vector_mode || mode == TFmode;
+    break;
+  }
 
   dst = operands[0];
   src = operands[1];
@@ -2320,16 +2328,26 @@ ix86_expand_copysign (rtx operands[])
 
   mode = GET_MODE (operands[0]);
 
-  if (mode == HFmode)
+  switch (mode)
+  {
+  case HFmode:
     vmode = V8HFmode;
-  else if (mode == SFmode)
+    break;
+  case BFmode:
+    vmode = V8BFmode;
+    break;
+  case SFmode:
     vmode = V4SFmode;
-  else if (mode == DFmode)
+    break;
+  case DFmode:
     vmode = V2DFmode;
-  else if (mode == TFmode)
+    break;
+  case TFmode:
     vmode = mode;
-  else
-    gcc_unreachable ();
+    break;
+  default:
+    gcc_unreachable();
+  }
 
   if (rtx_equal_p (operands[1], operands[2]))
     {
@@ -2390,14 +2408,24 @@ ix86_expand_xorsign (rtx operands[])
 
   mode = GET_MODE (dest);
 
-  if (mode == HFmode)
+  switch (mode)
+  {
+  case HFmode:
     vmode = V8HFmode;
-  else if (mode == SFmode)
+    break;
+  case BFmode:
+    vmode = V8BFmode;
+    break;
+  case SFmode:
     vmode = V4SFmode;
-  else if (mode == DFmode)
+    break;
+  case DFmode:
     vmode = V2DFmode;
-  else
+    break;
+  default:
     gcc_unreachable ();
+    break;
+  }
 
   temp = gen_reg_rtx (vmode);
   mask = ix86_build_signbit_mask (vmode, 0, 0);
@@ -26050,14 +26078,25 @@ ix86_expand_ternlog (machine_mode mode, rtx op0, rtx op1, rtx op2, int idx,
       break;
     }
 
-  tmp0 = register_operand (op0, mode) ? op0 : force_reg (mode, op0);
+  if (!register_operand (op0, mode))
+    {
+      /* We can't use force_reg (mode, op0).  */
+      tmp0 = gen_reg_rtx (GET_MODE (op0));
+      emit_move_insn (tmp0,op0);
+    }
+  else
+    tmp0 = op0;
   if (GET_MODE (tmp0) != mode)
     tmp0 = gen_lowpart (mode, tmp0);
 
   if (!op1 || rtx_equal_p (op0, op1))
     tmp1 = copy_rtx (tmp0);
   else if (!register_operand (op1, mode))
-    tmp1 = force_reg (mode, op1);
+    {
+      /* We can't use force_reg (mode, op1).  */
+      tmp1 = gen_reg_rtx (GET_MODE (op1));
+      emit_move_insn (tmp1, op1);
+    }
   else
     tmp1 = op1;
   if (GET_MODE (tmp1) != mode)
