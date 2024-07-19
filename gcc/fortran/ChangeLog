@@ -1,3 +1,135 @@
+2024-07-18  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	PR fortran/78466
+	PR fortran/80774
+	* array.cc (gfc_compare_array_spec): Take cotype into account.
+	* class.cc (gfc_build_class_symbol): Coarrays are also arrays.
+	* gfortran.h (IS_CLASS_COARRAY_OR_ARRAY): New macro to detect
+	regular and coarray class arrays.
+	* interface.cc (compare_components): Take codimension into
+	account.
+	* resolve.cc (resolve_symbol): Improve error message.
+	* simplify.cc (simplify_bound_dim): Remove duplicate.
+	* trans-array.cc (gfc_trans_array_cobounds): Coarrays are also
+	arrays.
+	(gfc_trans_array_bounds): Same.
+	(gfc_trans_dummy_array_bias): Same.
+	(get_coarray_as): Get the as having a non-zero codim.
+	(is_explicit_coarray): Detect explicit coarrays.
+	(gfc_conv_expr_descriptor): Create a new descriptor for explicit
+	coarrays.
+	* trans-decl.cc (gfc_build_qualified_array): Coarrays are also
+	arrays.
+	(gfc_build_dummy_array_decl): Same.
+	(gfc_get_symbol_decl): Same.
+	(gfc_trans_deferred_vars): Same.
+	* trans-expr.cc (class_scalar_coarray_to_class): Get the
+	descriptor from the correct location.
+	(gfc_conv_variable): Pick up the descriptor when needed.
+	* trans-types.cc (gfc_is_nodesc_array): Coarrays are also
+	arrays.
+	(gfc_get_nodesc_array_type): Indentation fix only.
+	(cobounds_match_decl): Match a tree's bounds to the expr's
+	bounds and return true, when they match.
+	(gfc_get_derived_type): Create a new type tree/descriptor, when
+	the cobounds of the existing declaration and expr to not
+	match.  This happends for class arrays in parameter list, when
+	there are different cobound declarations.
+
+2024-07-18  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/108889
+	* gfortran.h: Add bit field 'allocated_in_scope' to gfc_symbol.
+	* trans-array.cc (gfc_array_allocate): Set 'allocated_in_scope'
+	after allocation if not a component reference.
+	(gfc_alloc_allocatable_for_assignment): If 'allocated_in_scope'
+	not set, not a component ref and not allocated, set the array
+	bounds and offset to give zero length in all dimensions. Then
+	set allocated_in_scope.
+
+2024-07-18  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	PR fortran/82904
+	* trans-types.cc (gfc_sym_type): Use type `char*` for saved
+	deferred length char arrays.
+	* trans.cc (get_array_span): Get `.span` also for `char*` typed
+	arrays, i.e. for those that have INTEGER_TYPE instead of
+	ARRAY_TYPE.
+
+2024-07-17  Kewen Lin  <linkw@linux.ibm.com>
+
+	PR target/112993
+	* trans-types.cc (get_real_kind_from_node): Consider the case where
+	more than one modes have the same precision.
+
+2024-07-16  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/84868
+	* simplify.cc (gfc_simplify_len_trim): If the argument is an
+	element of a parameter array, simplify all the elements and
+	build a new parameter array to hold the result, after checking
+	that it doesn't already exist.
+	* trans-expr.cc (gfc_get_interface_mapping_array) if a string
+	length is available, use it for the typespec.
+	(gfc_add_interface_mapping): Supply the se string length.
+
+2024-07-16  Prathamesh Kulkarni  <prathameshk@nvidia.com>
+
+	* trans-expr.cc (gfc_trans_zero_assign): Handle allocatable arrays.
+
+2024-07-13  Mikael Morin  <mikael@gcc.gnu.org>
+
+	* trans-intrinsic.cc (gfc_conv_intrinsic_minmaxloc): Add the
+	preliminary code generated for MASK to the preliminary code of
+	MINLOC/MAXLOC.
+
+2024-07-12  Mikael Morin  <morin-mikael@orange.fr>
+
+	* trans-intrinsic.cc (gfc_conv_intrinsic_minmaxloc): Create a new
+	scalar scalarization chain element if BACK is present.  Add it to
+	the loop.  Set the scalarization chain before evaluating the
+	argument.
+
+2024-07-11  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	* trans-array.cc (gfc_conv_array_parameter): Init variable to
+	NULL_TREE to fix bootstrap.
+
+2024-07-11  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	PR fortran/96992
+	* trans-array.cc (gfc_trans_array_bounds): Set a starting
+	stride, when descriptor expects a variable for the stride.
+	(gfc_trans_dummy_array_bias): Allow storage association for
+	dummy class arrays, when they are not elemental.
+	(gfc_conv_array_parameter): Add more general class support
+	and packing for classes, too.
+	* trans-array.h (gfc_conv_array_parameter): Add lbound shift
+	for class arrays.
+	* trans-decl.cc (gfc_build_builtin_function_decls): Add decls
+	for internal_un-/pack_class.
+	* trans-expr.cc (gfc_reset_vptr): Allow supplying a type-tree
+	to generate the vtab from.
+	(gfc_class_set_vptr): Allow supplying a class-tree to take the
+	vptr from.
+	(class_array_data_assign): Rename to gfc_class_array_data_assign
+	and make usable from other compile units.
+	(gfc_class_array_data_assign): Renamed from class_array_data_
+	assign.
+	(gfc_conv_derived_to_class): Remove assert to
+	allow converting derived to class type arrays with assumed
+	rank.  Reduce code base and use gfc_conv_array_parameter also
+	for classes.
+	(gfc_conv_class_to_class): Use gfc_class_data_assign.
+	(gfc_conv_procedure_call): Adapt to new signature of
+	gfc_conv_derived_to_class.
+	* trans-io.cc (transfer_expr): Same.
+	* trans-stmt.cc (trans_associate_var): Same.
+	* trans.h (gfc_conv_derived_to_class): Signature changed.
+	(gfc_class_array_data_assign): Made public.
+	(gfor_fndecl_in_pack_class): Added declaration.
+	(gfor_fndecl_in_unpack_class): Same.
+
 2024-07-08  Mikael Morin  <mikael@gcc.gnu.org>
 
 	* trans-array.cc (gfc_trans_preloop_setup): Use a separate variable

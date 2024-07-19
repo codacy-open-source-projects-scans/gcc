@@ -889,21 +889,12 @@ class ovl_iterator {
     return (TREE_CODE (ovl) == USING_DECL
 	    || (TREE_CODE (ovl) == OVERLOAD && OVL_USING_P (ovl)));
   }
-  /* Whether this using is in the module purview.  */
-  bool purview_p () const
-  {
-    return OVL_PURVIEW_P (get_using ());
-  }
-  /* Whether this using is being exported.  */
-  bool exporting_p () const
-  {
-    return OVL_EXPORT_P (get_using ());
-  }
-  
   bool hidden_p () const
   {
     return TREE_CODE (ovl) == OVERLOAD && OVL_HIDDEN_P (ovl);
   }
+  bool purview_p () const;
+  bool exporting_p () const;
 
  public:
   tree remove_node (tree head)
@@ -6782,7 +6773,8 @@ extern location_t get_fndecl_argument_location  (tree, int);
 extern void complain_about_bad_argument	(location_t arg_loc,
 						 tree from_type, tree to_type,
 						 tree fndecl, int parmnum);
-extern void maybe_inform_about_fndecl_for_bogus_argument_init (tree, int);
+extern void maybe_inform_about_fndecl_for_bogus_argument_init (tree, int,
+							       const char * = nullptr);
 extern tree perform_dguide_overload_resolution	(tree, const vec<tree, va_gc> *,
 						 tsubst_flags_t);
 
@@ -7202,6 +7194,7 @@ extern void qualified_name_lookup_error		(tree, tree, tree,
 						 location_t);
 
 /* in except.cc */
+extern void init_terminate_fn			(void);
 extern void init_exception_processing		(void);
 extern tree expand_start_catch_block		(tree);
 extern void expand_end_catch_block		(void);
@@ -7490,7 +7483,6 @@ extern tree canonical_type_parameter		(tree);
 extern void push_access_scope			(tree);
 extern void pop_access_scope			(tree);
 extern bool check_template_shadow		(tree);
-extern bool check_auto_in_tmpl_args             (tree, tree);
 extern tree get_innermost_template_args		(tree, int);
 extern void maybe_begin_member_template_processing (tree);
 extern void maybe_end_member_template_processing (void);
@@ -8193,6 +8185,7 @@ extern bool comp_except_specs			(const_tree, const_tree, int);
 extern bool comptypes				(tree, tree, int);
 extern bool same_type_ignoring_top_level_qualifiers_p (tree, tree);
 extern bool similar_type_p			(tree, tree);
+extern bool cp_comp_parm_types			(tree, tree);
 extern bool next_common_initial_sequence	(tree &, tree &);
 extern bool layout_compatible_type_p		(tree, tree);
 extern bool compparms				(const_tree, const_tree);
@@ -8592,7 +8585,6 @@ extern hashval_t hash_placeholder_constraint	(tree);
 extern bool deduce_constrained_parameter        (tree, tree&, tree&);
 extern tree resolve_constraint_check            (tree);
 extern tree check_function_concept              (tree);
-extern tree finish_template_introduction        (tree, tree, location_t loc);
 extern bool valid_requirements_p                (tree);
 extern tree finish_concept_name                 (tree);
 extern tree finish_shorthand_constraint         (tree, tree);
@@ -9067,6 +9059,15 @@ name_independent_decl_p (tree decl)
 	  && !TREE_STATIC (decl)
 	  && !DECL_EXTERNAL (decl));
 }
+
+namespace highlight_colors {
+
+/* Color names for highlighting "%qH" vs "%qI" values,
+   and ranges corresponding to them.  */
+extern const char *const percent_h;
+extern const char *const percent_i;
+
+} // namespace highlight_colors
 
 #if CHECKING_P
 namespace selftest {

@@ -466,6 +466,10 @@ public:
   }
   void set_show_cwe (bool val) { m_show_cwe = val;  }
   void set_show_rules (bool val) { m_show_rules = val; }
+  void set_show_highlight_colors (bool val)
+  {
+    pp_show_highlight_colors (printer) = val;
+  }
   void set_path_format (enum diagnostic_path_format val)
   {
     m_path_format = val;
@@ -591,7 +595,7 @@ private:
 		   pretty_printer *pp,
 		   diagnostic_source_effect_info *effect_info);
 
-  void print_path (const diagnostic_path *path);
+  void print_path (const diagnostic_path &path);
 
   /* Data members.
      Ideally, all of these would be private and have "m_" prefixes.  */

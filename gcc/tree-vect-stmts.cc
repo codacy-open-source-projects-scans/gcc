@@ -4349,9 +4349,14 @@ vectorizable_simd_clone_call (vec_info *vinfo, stmt_vec_info stmt_info,
 	    case SIMD_CLONE_ARG_TYPE_MASK:
 	      if (loop_vinfo
 		  && LOOP_VINFO_CAN_USE_PARTIAL_VECTORS_P (loop_vinfo))
-		vect_record_loop_mask (loop_vinfo,
-				       &LOOP_VINFO_MASKS (loop_vinfo),
-				       ncopies, vectype, op);
+		{
+		  unsigned nmasks
+		    = exact_div (ncopies * bestn->simdclone->simdlen,
+				 TYPE_VECTOR_SUBPARTS (vectype)).to_constant ();
+		  vect_record_loop_mask (loop_vinfo,
+					 &LOOP_VINFO_MASKS (loop_vinfo),
+					 nmasks, vectype, op);
+		}
 
 	      break;
 	    }
@@ -4748,7 +4753,12 @@ vectorizable_simd_clone_call (vec_info *vinfo, stmt_vec_info stmt_info,
 		      SIMD_CLONE_ARG_TYPE_MASK);
 
 	  tree masktype = bestn->simdclone->args[mask_i].vector_type;
-	  callee_nelements = TYPE_VECTOR_SUBPARTS (masktype);
+	  if (SCALAR_INT_MODE_P (bestn->simdclone->mask_mode))
+	    /* Guess the number of lanes represented by masktype.  */
+	    callee_nelements = exact_div (bestn->simdclone->simdlen,
+					  bestn->simdclone->nargs - nargs);
+	  else
+	    callee_nelements = TYPE_VECTOR_SUBPARTS (masktype);
 	  o = vector_unroll_factor (nunits, callee_nelements);
 	  for (m = j * o; m < (j + 1) * o; m++)
 	    {
@@ -13286,6 +13296,8 @@ vect_analyze_stmt (vec_info *vinfo,
 				      NULL, NULL, node, cost_vec)
 	  || vectorizable_load (vinfo, stmt_info, NULL, NULL, node, cost_vec)
 	  || vectorizable_store (vinfo, stmt_info, NULL, NULL, node, cost_vec)
+	  || vectorizable_lane_reducing (as_a <loop_vec_info> (vinfo),
+					 stmt_info, node, cost_vec)
 	  || vectorizable_reduction (as_a <loop_vec_info> (vinfo), stmt_info,
 				     node, node_instance, cost_vec)
 	  || vectorizable_induction (as_a <loop_vec_info> (vinfo), stmt_info,

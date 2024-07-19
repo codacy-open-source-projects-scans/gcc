@@ -46,10 +46,6 @@ along with GCC; see the file COPYING3.  If not see
 
 #define CHKSUM_TYPE_MD5		1
 
-#define S_LDATA32		0x110c
-#define S_GDATA32		0x110d
-#define S_COMPILE3		0x113c
-
 #define CV_CFL_80386		0x03
 #define CV_CFL_X64		0xD0
 
@@ -69,6 +65,44 @@ along with GCC; see the file COPYING3.  If not see
 #define MAX_FIELDLIST_SIZE	0xfaf8
 
 #define HASH_SIZE 16
+
+/* This is enum SYM_ENUM_e in Microsoft's cvinfo.h.  */
+
+enum cv_sym_type {
+  S_LDATA32 = 0x110c,
+  S_GDATA32 = 0x110d,
+  S_COMPILE3 = 0x113c
+};
+
+/* This is enum LEAF_ENUM_e in Microsoft's cvinfo.h.  */
+
+enum cv_leaf_type {
+  LF_PAD1 = 0xf1,
+  LF_PAD2 = 0xf2,
+  LF_PAD3 = 0xf3,
+  LF_MODIFIER = 0x1001,
+  LF_POINTER = 0x1002,
+  LF_PROCEDURE = 0x1008,
+  LF_ARGLIST = 0x1201,
+  LF_FIELDLIST = 0x1203,
+  LF_BITFIELD = 0x1205,
+  LF_INDEX = 0x1404,
+  LF_ENUMERATE = 0x1502,
+  LF_ARRAY = 0x1503,
+  LF_CLASS = 0x1504,
+  LF_STRUCTURE = 0x1505,
+  LF_UNION = 0x1506,
+  LF_ENUM = 0x1507,
+  LF_MEMBER = 0x150d,
+  LF_FUNC_ID = 0x1601,
+  LF_CHAR = 0x8000,
+  LF_SHORT = 0x8001,
+  LF_USHORT = 0x8002,
+  LF_LONG = 0x8003,
+  LF_ULONG = 0x8004,
+  LF_QUADWORD = 0x8009,
+  LF_UQUADWORD = 0x800a
+};
 
 struct codeview_string
 {
@@ -141,7 +175,7 @@ struct codeview_function
 struct codeview_symbol
 {
   codeview_symbol *next;
-  uint16_t kind;
+  enum cv_sym_type kind;
 
   union
   {
@@ -185,7 +219,7 @@ struct codeview_integer
 struct codeview_subtype
 {
   struct codeview_subtype *next;
-  uint16_t kind;
+  enum cv_leaf_type kind;
 
   union
   {
@@ -212,7 +246,7 @@ struct codeview_custom_type
 {
   struct codeview_custom_type *next;
   uint32_t num;
-  uint16_t kind;
+  enum cv_leaf_type kind;
 
   union
   {
@@ -924,6 +958,8 @@ write_data_symbol (codeview_symbol *s)
   ASM_OUTPUT_ASCII (asm_out_file, s->data_symbol.name,
 		    strlen (s->data_symbol.name) + 1);
 
+  ASM_OUTPUT_ALIGN (asm_out_file, 2);
+
   targetm.asm_out.internal_label (asm_out_file, SYMBOL_END_LABEL, label_num);
 
 end:
@@ -955,6 +991,8 @@ write_codeview_symbols (void)
 	case S_LDATA32:
 	case S_GDATA32:
 	  write_data_symbol (sym);
+	  break;
+	default:
 	  break;
 	}
 
@@ -1004,7 +1042,7 @@ write_lf_pointer (codeview_custom_type *t)
 
 /* All CodeView type definitions have to be aligned to a four-byte boundary,
    so write some padding bytes if necessary.  These have to be specific values:
-   f3, f2, f1.  */
+   LF_PAD3, LF_PAD2, LF_PAD1.  */
 
 static void
 write_cv_padding (size_t padding)
@@ -1015,19 +1053,19 @@ write_cv_padding (size_t padding)
   if (padding == 3)
     {
       fputs (integer_asm_op (1, false), asm_out_file);
-      fprint_whex (asm_out_file, 0xf3);
+      fprint_whex (asm_out_file, LF_PAD3);
       putc ('\n', asm_out_file);
     }
 
   if (padding >= 2)
     {
       fputs (integer_asm_op (1, false), asm_out_file);
-      fprint_whex (asm_out_file, 0xf2);
+      fprint_whex (asm_out_file, LF_PAD2);
       putc ('\n', asm_out_file);
     }
 
   fputs (integer_asm_op (1, false), asm_out_file);
-  fprint_whex (asm_out_file, 0xf1);
+  fprint_whex (asm_out_file, LF_PAD1);
   putc ('\n', asm_out_file);
 }
 
@@ -1075,7 +1113,7 @@ write_lf_modifier (codeview_custom_type *t)
 /* Write a CodeView extensible integer.  If the value is non-negative and
    < 0x8000, the value gets written directly as an uint16_t.  Otherwise, we
    output two bytes for the integer type (LF_CHAR, LF_SHORT, ...), and the
-   actual value follows.  */
+   actual value follows.  Returns the total number of bytes written.  */
 
 static size_t
 write_cv_integer (codeview_integer *i)
@@ -1335,6 +1373,9 @@ write_lf_fieldlist (codeview_custom_type *t)
 	  fprint_whex (asm_out_file, v->lf_index.type_num);
 	  putc ('\n', asm_out_file);
 
+	  break;
+
+	default:
 	  break;
 	}
 
@@ -1789,6 +1830,9 @@ write_custom_types (void)
 
 	case LF_ARGLIST:
 	  write_lf_arglist (custom_types);
+	  break;
+
+	default:
 	  break;
 	}
 

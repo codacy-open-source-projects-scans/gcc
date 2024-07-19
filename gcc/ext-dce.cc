@@ -33,6 +33,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "rtl-iter.h"
 #include "df.h"
 #include "print-rtl.h"
+#include "dbgcnt.h"
 
 /* These should probably move into a C++ class.  */
 static vec<bitmap_head> livein;
@@ -312,6 +313,15 @@ ext_dce_try_optimize_insn (rtx_insn *insn, rtx set)
       print_rtl_single (dump_file, SET_SRC (set));
     }
 
+  /* We decided to turn do the optimization but allow it to be rejected for
+     bisection purposes.  */
+  if (!dbg_cnt (::ext_dce))
+    {
+      if (dump_file)
+	fprintf (dump_file, "Rejected due to debug counter.\n");
+      return;
+    }
+
   new_pattern = simplify_gen_subreg (GET_MODE (src), inner,
 				     GET_MODE (inner), 0);
   /* simplify_gen_subreg may fail in which case NEW_PATTERN will be NULL.
@@ -373,14 +383,14 @@ binop_implies_op2_fully_live (rtx_code code)
    binop_implies_op2_fully_live (e.g. shifts), the computed mask may
    exclusively pertain to the first operand.  */
 
-HOST_WIDE_INT
-carry_backpropagate (HOST_WIDE_INT mask, enum rtx_code code, rtx x)
+unsigned HOST_WIDE_INT
+carry_backpropagate (unsigned HOST_WIDE_INT mask, enum rtx_code code, rtx x)
 {
   if (mask == 0)
     return 0;
 
   enum machine_mode mode = GET_MODE_INNER (GET_MODE (x));
-  HOST_WIDE_INT mmask = GET_MODE_MASK (mode);
+  unsigned HOST_WIDE_INT mmask = GET_MODE_MASK (mode);
   switch (code)
     {
     case PLUS:
@@ -393,7 +403,7 @@ carry_backpropagate (HOST_WIDE_INT mask, enum rtx_code code, rtx x)
     case ASHIFT:
       if (CONSTANT_P (XEXP (x, 1))
 	  && known_lt (UINTVAL (XEXP (x, 1)), GET_MODE_BITSIZE (mode)))
-	return mask >> INTVAL (XEXP (x, 1));
+	return (HOST_WIDE_INT)mask >> INTVAL (XEXP (x, 1));
       return (2ULL << floor_log2 (mask)) - 1;
 
     /* We propagate for the shifted operand, but not the shift
@@ -632,10 +642,11 @@ ext_dce_process_uses (rtx_insn *insn, rtx obj, bitmap live_tmp)
 		  else if (!CONSTANT_P (y))
 		    break;
 
-		  /* We might have (ashift (const_int 1) (reg...)) */
-		  /* XXX share this logic with code below.  */
+		  /* We might have (ashift (const_int 1) (reg...))
+		     By setting dst_mask we can continue iterating on the
+		     the next operand and it will be considered fully live.  */
 		  if (binop_implies_op2_fully_live (GET_CODE (src)))
-		    break;
+		    dst_mask = -1;
 
 		  /* If this was anything but a binary operand, break the inner
 		     loop.  This is conservatively correct as it will cause the
@@ -880,8 +891,8 @@ static bool ext_dce_rd_confluence_n (edge) { return true; }
    are never read.  Turn such extensions into SUBREGs instead which
    can often be propagated away.  */
 
-static void
-ext_dce (void)
+void
+ext_dce_execute (void)
 {
   df_analyze ();
   ext_dce_init ();
@@ -928,7 +939,7 @@ public:
   virtual bool gate (function *) { return flag_ext_dce && optimize > 0; }
   virtual unsigned int execute (function *)
     {
-      ext_dce ();
+      ext_dce_execute ();
       return 0;
     }
 

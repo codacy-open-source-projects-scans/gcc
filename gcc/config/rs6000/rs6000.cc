@@ -4103,7 +4103,7 @@ rs6000_option_override_internal (bool global_init_p)
      128 into the precision used for TFmode.  */
   int default_long_double_size = (RS6000_DEFAULT_LONG_DOUBLE_SIZE == 64
 				  ? 64
-				  : FLOAT_PRECISION_TFmode);
+				  : 128);
 
   /* Set long double size before the IEEE 128-bit tests.  */
   if (!OPTION_SET_P (rs6000_long_double_type_size))
@@ -4115,10 +4115,6 @@ rs6000_option_override_internal (bool global_init_p)
       else
 	rs6000_long_double_type_size = default_long_double_size;
     }
-  else if (rs6000_long_double_type_size == FLOAT_PRECISION_TFmode)
-    ; /* The option value can be seen when cl_target_option_restore is called.  */
-  else if (rs6000_long_double_type_size == 128)
-    rs6000_long_double_type_size = FLOAT_PRECISION_TFmode;
 
   /* Set -mabi=ieeelongdouble on some old targets.  In the future, power server
      systems will also set long double to be IEEE 128-bit.  AIX and Darwin
@@ -4842,6 +4838,18 @@ rs6000_option_override_internal (bool global_init_p)
 	  else
 	    rs6000_recip_control |= mask;
 	}
+    }
+
+  /* We only support ROP protection on certain targets.  */
+  if (rs6000_rop_protect)
+    {
+      /* Disallow CPU targets we don't support.  */
+      if (!TARGET_POWER8)
+	error ("%<-mrop-protect%> requires %<-mcpu=power8%> or later");
+
+      /* Disallow ABI targets we don't support.  */
+      if (DEFAULT_ABI != ABI_ELFv2)
+	error ("%<-mrop-protect%> requires the ELFv2 ABI");
     }
 
   /* Initialize all of the registers.  */
@@ -5888,7 +5896,8 @@ rs6000_machine_from_flags (void)
   HOST_WIDE_INT flags = rs6000_isa_flags;
 
   /* Disable the flags that should never influence the .machine selection.  */
-  flags &= ~(OPTION_MASK_PPC_GFXOPT | OPTION_MASK_PPC_GPOPT | OPTION_MASK_ISEL);
+  flags &= ~(OPTION_MASK_PPC_GFXOPT | OPTION_MASK_PPC_GPOPT | OPTION_MASK_ISEL
+	     | OPTION_MASK_ALTIVEC);
 
   if ((flags & (ISA_3_1_MASKS_SERVER & ~ISA_3_0_MASKS_SERVER)) != 0)
     return "power10";
@@ -5913,6 +5922,8 @@ void
 emit_asm_machine (void)
 {
   fprintf (asm_out_file, "\t.machine %s\n", rs6000_machine);
+  if (TARGET_ALTIVEC)
+    fprintf (asm_out_file, "\t.machine altivec\n");
 }
 #endif
 
@@ -11468,13 +11479,13 @@ init_float128_ieee (machine_mode mode)
       set_conv_libfunc (trunc_optab, SFmode, mode, "__trunckfsf2");
       set_conv_libfunc (trunc_optab, DFmode, mode, "__trunckfdf2");
 
-      set_conv_libfunc (sext_optab, mode, IFmode, "__trunctfkf2");
+      set_conv_libfunc (trunc_optab, mode, IFmode, "__trunctfkf2");
       if (mode != TFmode && FLOAT128_IBM_P (TFmode))
-	set_conv_libfunc (sext_optab, mode, TFmode, "__trunctfkf2");
+	set_conv_libfunc (trunc_optab, mode, TFmode, "__trunctfkf2");
 
-      set_conv_libfunc (trunc_optab, IFmode, mode, "__extendkftf2");
+      set_conv_libfunc (sext_optab, IFmode, mode, "__extendkftf2");
       if (mode != TFmode && FLOAT128_IBM_P (TFmode))
-	set_conv_libfunc (trunc_optab, TFmode, mode, "__extendkftf2");
+	set_conv_libfunc (sext_optab, TFmode, mode, "__extendkftf2");
 
       set_conv_libfunc (sext_optab, mode, SDmode, "__dpd_extendsdkf");
       set_conv_libfunc (sext_optab, mode, DDmode, "__dpd_extendddkf");
@@ -15632,7 +15643,7 @@ rs6000_expand_float128_convert (rtx dest, rtx src, bool unsigned_p)
 	case E_IFmode:
 	case E_TFmode:
 	  if (FLOAT128_IBM_P (src_mode))
-	    cvt = sext_optab;
+	    cvt = trunc_optab;
 	  else
 	    do_move = true;
 	  break;
@@ -15694,7 +15705,7 @@ rs6000_expand_float128_convert (rtx dest, rtx src, bool unsigned_p)
 	case E_IFmode:
 	case E_TFmode:
 	  if (FLOAT128_IBM_P (dest_mode))
-	    cvt = trunc_optab;
+	    cvt = sext_optab;
 	  else
 	    do_move = true;
 	  break;
@@ -16149,7 +16160,7 @@ rs6000_emit_vector_compare (enum rtx_code rcode,
    OP_FALSE are two VEC_COND_EXPR operands.  CC_OP0 and CC_OP1 are the two
    operands for the relation operation COND.  */
 
-int
+static int
 rs6000_emit_vector_cond_expr (rtx dest, rtx op_true, rtx op_false,
 			      rtx cond, rtx cc_op0, rtx cc_op1)
 {
@@ -24388,8 +24399,7 @@ static machine_mode
 rs6000_c_mode_for_floating_type (enum tree_index ti)
 {
   if (ti == TI_LONG_DOUBLE_TYPE)
-    return rs6000_long_double_type_size == FLOAT_PRECISION_TFmode ? TFmode
-								  : DFmode;
+    return rs6000_long_double_type_size == 128 ? TFmode : DFmode;
   return default_mode_for_floating_type (ti);
 }
 
