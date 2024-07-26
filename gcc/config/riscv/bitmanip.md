@@ -22,7 +22,7 @@
 (define_insn "*zero_extendsidi2_bitmanip"
   [(set (match_operand:DI 0 "register_operand" "=r,r")
 	(zero_extend:DI (match_operand:SI 1 "nonimmediate_operand" "r,m")))]
-  "TARGET_64BIT && TARGET_ZBA"
+  "TARGET_64BIT && TARGET_ZBA && !TARGET_XTHEADMEMIDX"
   "@
    zext.w\t%0,%1
    lwu\t%0,%1"
@@ -675,7 +675,7 @@
   "#"
   "&& reload_completed"
    [(set (match_dup 4) (match_dup 2))
-    (set (match_dup 4) (and:DI (not:DI (match_dup 4)) (match_dup 1)))
+    (set (match_dup 4) (and:DI (not:DI (match_dup 1)) (match_dup 4)))
     (set (match_dup 0) (any_or:DI (ashift:DI (const_int 1) (match_dup 5)) (match_dup 3)))]
   { operands[5] = gen_lowpart (QImode, operands[4]); }
   [(set_attr "type" "bitmanip")])

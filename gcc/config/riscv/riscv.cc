@@ -3230,16 +3230,17 @@ riscv_legitimize_move (machine_mode mode, rtx dest, rtx src)
 				    (const_poly_int:HI [m, n])
 				    (const_poly_int:SI [m, n]).  */
 	  rtx tmp = gen_reg_rtx (Pmode);
-	  riscv_legitimize_poly_move (Pmode, gen_lowpart (Pmode, dest), tmp,
-				      src);
+	  rtx tmp2 = gen_reg_rtx (Pmode);
+	  riscv_legitimize_poly_move (Pmode, tmp2, tmp, src);
+	  emit_move_insn (dest, gen_lowpart (mode, tmp2));
 	}
       else
 	{
 	  /* In RV32 system, handle (const_poly_int:SI [m, n])
 				    (const_poly_int:DI [m, n]).
 	     In RV64 system, handle (const_poly_int:DI [m, n]).
-       FIXME: Maybe we could gen SImode in RV32 and then sign-extend to DImode,
-       the offset should not exceed 4GiB in general.  */
+	     FIXME: Maybe we could gen SImode in RV32 and then sign-extend to
+	     DImode, the offset should not exceed 4GiB in general.  */
 	  rtx tmp = gen_reg_rtx (mode);
 	  riscv_legitimize_poly_move (mode, dest, tmp, src);
 	}
@@ -9690,6 +9691,11 @@ riscv_override_options_internal (struct gcc_options *opts)
   else if (!TARGET_MUL_OPTS_P (opts) && TARGET_DIV_OPTS_P (opts))
     error ("%<-mdiv%> requires %<-march%> to subsume the %<M%> extension");
 
+  /* We might use a multiplication to calculate the scalable vector length at
+     runtime.  Therefore, require the M extension.  */
+  if (TARGET_VECTOR && !TARGET_MUL)
+    sorry ("GCC's current %<V%> implementation requires the %<M%> extension");
+
   /* Likewise floating-point division and square root.  */
   if ((TARGET_HARD_FLOAT_OPTS_P (opts) || TARGET_ZFINX_OPTS_P (opts))
       && ((target_flags_explicit & MASK_FDIV) == 0))
@@ -11634,6 +11640,46 @@ riscv_expand_ussub (rtx dest, rtx x, rtx y)
 
   /* Step-5: dest = pmode_dest  */
   emit_move_insn (dest, gen_lowpart (mode, pmode_dest));
+}
+
+/* Implement the unsigned saturation truncation for int mode.
+
+   b = SAT_TRUNC (a);
+   =>
+   1. max = half truncated max
+   2. lt = a < max
+   3. lt = lt - 1 (lt 0, ge -1)
+   4. d = a | lt
+   5. b = (trunc)d  */
+
+void
+riscv_expand_ustrunc (rtx dest, rtx src)
+{
+  machine_mode mode = GET_MODE (dest);
+  rtx xmode_max = gen_reg_rtx (Xmode);
+  unsigned precision = GET_MODE_PRECISION (mode).to_constant ();
+
+  gcc_assert (precision < 64);
+
+  uint64_t max = ((uint64_t)1u << precision) - 1u;
+  rtx xmode_src = gen_lowpart (Xmode, src);
+  rtx xmode_dest = gen_reg_rtx (Xmode);
+  rtx xmode_lt = gen_reg_rtx (Xmode);
+
+  /* Step-1: max = half truncated max  */
+  emit_move_insn (xmode_max, gen_int_mode (max, Xmode));
+
+  /* Step-2: lt = src < max  */
+  riscv_emit_binary (LTU, xmode_lt, xmode_src, xmode_max);
+
+  /* Step-3: lt = lt - 1  */
+  riscv_emit_binary (PLUS, xmode_lt, xmode_lt, CONSTM1_RTX (Xmode));
+
+  /* Step-4: xmode_dest = lt | src  */
+  riscv_emit_binary (IOR, xmode_dest, xmode_lt, xmode_src);
+
+  /* Step-5: dest = xmode_dest  */
+  emit_move_insn (dest, gen_lowpart (mode, xmode_dest));
 }
 
 /* Implement TARGET_C_MODE_FOR_FLOATING_TYPE.  Return TFmode for

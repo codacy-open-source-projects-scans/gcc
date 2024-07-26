@@ -596,6 +596,19 @@ coro_get_destroy_function (tree decl)
   return NULL_TREE;
 }
 
+/* Given a CO_AWAIT_EXPR AWAIT_EXPR, return its resume call.  */
+
+tree*
+co_await_get_resume_call (tree await_expr)
+{
+  gcc_checking_assert (TREE_CODE (await_expr) == CO_AWAIT_EXPR);
+  tree vec = TREE_OPERAND (await_expr, 3);
+  if (!vec)
+    return nullptr;
+  return &TREE_VEC_ELT (vec, 2);
+}
+
+
 /* These functions assumes that the caller has verified that the state for
    the decl has been initialized, we try to minimize work here.  */
 
@@ -3755,6 +3768,13 @@ rewrite_param_uses (tree *stmt, int *do_subtree ATTRIBUTE_UNUSED, void *d)
       return cp_walk_tree (&t, rewrite_param_uses, d, NULL);
     }
 
+  if (unevaluated_p (TREE_CODE (*stmt)))
+    {
+      /* No odr-uses in unevaluated operands.  */
+      *do_subtree = 0;
+      return NULL_TREE;
+    }
+
   if (TREE_CODE (*stmt) != PARM_DECL)
     return NULL_TREE;
 
@@ -4559,7 +4579,7 @@ morph_fn_to_coro (tree orig, tree *resumer, tree *destroyer)
 	param_info *parm_i = param_uses->get (arg);
 	if (parm_i->trivial_dtor)
 	  continue;
-	add_decl_expr (parm_i->guard_var);;
+	add_decl_expr (parm_i->guard_var);
       }
   add_decl_expr (coro_promise_live);
   add_decl_expr (coro_gro_live);
@@ -4620,13 +4640,8 @@ morph_fn_to_coro (tree orig, tree *resumer, tree *destroyer)
 	  if (parm_i->this_ptr || parm_i->lambda_cobj)
 	    {
 	      /* We pass a reference to *this to the allocator lookup.  */
-	      tree tt = TREE_TYPE (TREE_TYPE (arg));
-	      tree this_ref = build1 (INDIRECT_REF, tt, arg);
-	      tt = cp_build_reference_type (tt, false);
-	      this_ref = convert_to_reference (tt, this_ref, CONV_STATIC,
-					       LOOKUP_NORMAL , NULL_TREE,
-					       tf_warning_or_error);
-	      vec_safe_push (args, convert_from_reference (this_ref));
+	      tree this_ref = cp_build_fold_indirect_ref (arg);
+	      vec_safe_push (args, this_ref);
 	    }
 	  else
 	    vec_safe_push (args, convert_from_reference (arg));
@@ -4845,14 +4860,7 @@ morph_fn_to_coro (tree orig, tree *resumer, tree *destroyer)
 	  if (parm.this_ptr || parm.lambda_cobj)
 	    {
 	      /* We pass a reference to *this to the param preview.  */
-	      tree tt = TREE_TYPE (arg);
-	      gcc_checking_assert (POINTER_TYPE_P (tt));
-	      tree ct = TREE_TYPE (tt);
-	      tree this_ref = build1 (INDIRECT_REF, ct, arg);
-	      tree rt = cp_build_reference_type (ct, false);
-	      this_ref = convert_to_reference (rt, this_ref, CONV_STATIC,
-					       LOOKUP_NORMAL, NULL_TREE,
-					       tf_warning_or_error);
+	      tree this_ref = cp_build_fold_indirect_ref (arg);
 	      vec_safe_push (promise_args, this_ref);
 	    }
 	  else if (parm.rv_ref)

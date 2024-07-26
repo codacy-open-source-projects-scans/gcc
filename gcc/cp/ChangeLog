@@ -1,3 +1,254 @@
+2024-07-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/115403
+	PR c++/109753
+	* decl.cc (start_preparsed_function): Only call decl_attributes for
+	artificial functions.
+
+2024-07-25  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/115897
+	* cp-tree.h (dependent_opaque_alias_p): Declare.
+	* pt.cc (push_template_decl): Manually mark a dependent opaque
+	alias or dependent alias template specialization as dependent,
+	and use structural equality for them.
+	(dependent_opaque_alias_p): Define.
+	(alias_template_specialization_p): Don't look through an
+	opaque alias.
+	(complex_alias_template_p): Use dependent_opaque_alias_p instead of
+	any_dependent_template_arguments_p directly.
+	(dependent_alias_template_spec_p): Don't look through an
+	opaque alias.
+	(get_underlying_template): Use dependent_opaque_alias_p instead of
+	any_dependent_template_arguments_p.
+	(instantiate_alias_template): Mention same logic in
+	push_template_decl.
+	(dependent_type_p_r): Remove dependent_alias_template_spec_p check.
+	(any_template_arguments_need_structural_equality_p): Return true
+	for a dependent opaque alias.
+	(alias_ctad_tweaks): Use template_args_equal instead of same_type_p
+	followed by dependent_alias_template_spec_p.
+	* tree.cc (strip_typedefs): Don't strip an opaque alias.
+	* typeck.cc (structural_comptypes): Compare declaration attributes
+	for an opaque alias.
+
+2024-07-25  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/115897
+	* tree.cc (strip_typedefs): Move up the typedef recursion case.
+	Never strip a dependent alias template-id that has dependent
+	attributes.
+
+2024-07-25  Arsen Arsenović  <arsen@aarsen.me>
+
+	PR c++/110171
+	* coroutines.cc (co_await_get_resume_call): New function.
+	Returns the await_resume expression of a given co_await.
+	* cp-tree.h (co_await_get_resume_call): New function.
+	* cvt.cc (convert_to_void): Handle CO_AWAIT_EXPRs and call
+	maybe_warn_nodiscard on their resume exprs.
+
+2024-07-25  Arsen Arsenović  <arsen@aarsen.me>
+
+	PR c++/111728
+	* coroutines.cc (rewrite_param_uses): Skip unevaluated
+	subexpressions.
+
+2024-07-24  Jason Merrill  <jason@redhat.com>
+
+	PR c++/116071
+	* parser.cc (cp_parser_simple_type_specifier): Call
+	cp_parser_simulate_error if nothing worked.
+
+2024-07-24  Jakub Jelinek  <jakub@redhat.com>
+
+	* constraint.cc (subst_info::quiet, subst_info::noisy): Formatting
+	fixes.
+	(known_non_bool_p): Comment formatting fixes.
+	(unpack_concept_check): Likewise.
+	(resolve_function_concept_overload): Likewise.
+	(resolve_function_concept_check): Likewise.
+	(resolve_concept_check): Likewise.
+	(deduce_constrained_parameter): Likewise.
+	(finish_type_constraints): Likewise.
+	(get_returned_expression): Likewise.
+	(get_variable_initializer): Likewise.
+	(norm_info::update_context, norm_info::ctx_params): Formatting
+	fixes.
+	(norm_info::context): Comment formatting fixes.
+	(normalize_logical_operation): Likewise.  Formatting fix.
+	(normalize_concept_check): Comment formatting fixes.
+	(normalize_atom): Likewise.
+	(normalize_expression): Likewise.
+	(get_normalized_constraints_from_info): Likewise.
+	(get_normalized_constraints_from_decl): Likewise.  Formatting
+	fixes.
+	(atomic_constraints_identical_p): Comment formatting fixes.
+	(constraints_equivalent_p): Formatting fixes.
+	(inchash::add_constraint): Likewise.
+	(associate_classtype_constraints): Comment formatting fixes.
+	(get_constraints): Likewise.
+	(set_constraints): Likewise.
+	(build_concept_check_arguments): Likewise.
+	(build_function_check): Likewise.
+	(build_concept_check): Likewise.
+	(finish_shorthand_constraint): Likewise.
+	(get_shorthand_constraints): Likewise.
+	(check_constraint_variables): Likewise.
+	(tsubst_constraint_variables): Likewise.
+	(tsubst_requires_expr): Likewise.
+	(get_mapped_args): Likewise.  Formatting fixes.
+	(satisfy_atom): Comment formatting fixes.
+	(satisfy_constraint_r): Comment wording and formatting fixes.
+	(satisfy_normalized_constraints): Comment formatting fixes.
+	(satisfy_declaration_constraints): Likewise.
+	(evaluate_concept_check): Likewise.
+	(finish_requires_expr): Likewise.
+	(finish_compound_requirement): Likewise.
+	(check_function_concept): Likewise.
+	(equivalently_constrained): Likewise.
+	(more_constrained): Likewise.
+	(diagnose_atomic_constraint): Likewise.
+	* cp-tree.h (TREE_LANG_FLAG_0): Fix a comment error,
+	FOLD_EXPR_MODIFY_P instead of FOLD_EXPR_MODOP_P.
+	(DECL_MAIN_FREESTANDING_P, DECL_MAIN_P): Comment formatting fixes.
+	(enum cpp0x_warn_str): Likewise.
+	(enum composite_pointer_operation): Likewise.
+	(enum expr_list_kind): Likewise.
+	(enum impl_conv_rhs): Likewise.
+	(enum impl_conv_void): Likewise.
+	(struct deferred_access_check): Likewise.
+	(ATOMIC_CONSTR_EXPR): Likewise.
+	(FUNCTION_REF_QUALIFIED): Likewise.
+	(DECL_DEPENDENT_P): Likewise.
+	(FOLD_EXPR_MODIFY_P): Likewise.
+	(FOLD_EXPR_OP_RAW): Likewise.
+	(FOLD_EXPR_PACK): Likewise.
+	(FOLD_EXPR_INIT): Likewise.
+	(TYPE_WAS_UNNAMED): Likewise.
+	(class cp_unevaluated): Likewise.
+	(struct ovl_op_info_t assertion): Likewise.
+	(cp_declarator::function::requires_clause): Likewise.
+	(variable_template_p): Likewise.
+	(concept_definition_p): Likewise.
+	* logic.cc (clause::clause): Likewise.
+	(clause::replace): Likewise.
+	(clause::insert): Likewise.  Formatting fixes.
+	(struct formula): Comment formatting fixes.
+	(formula::branch): Likewise.
+	(debug): Formatting fixes.
+	(dnf_size_r): Comment formatting fixes.
+	(cnf_size_r): Likewise.
+	(dnf_size): Likewise.
+	(cnf_size): Likewise.
+	(branch_clause): Likewise.
+	(decompose_term): Likewise.  Formatting fixes.
+	(struct subsumption_entry): Comment formatting fixes.
+	(subsumption_cache): Likewise.
+	(save_subsumption): Likewise.  Formatting fixes.
+	(subsumes_constraints_nonnull): Formatting fixes.
+
+2024-07-23  Andi Kleen  <ak@linux.intel.com>
+
+	PR c/83324
+	* cp-tree.h (AGGR_INIT_EXPR_MUST_TAIL): Add.
+	* parser.cc (cp_parser_statement): Handle musttail.
+	(cp_parser_jump_statement): Dito.
+	* pt.cc (tsubst_expr): Copy CALL_EXPR_MUST_TAIL_CALL.
+	* semantics.cc (simplify_aggr_init_expr): Handle musttail.
+
+2024-07-23  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/115656
+	* constraint.cc (weakly_subsumes): Pass in_decl=tmpl to
+	get_normalized_constraints_from_info.  Rename to ...
+	(ttp_subsumes): ... this.
+	* cp-tree.h (weakly_subsumes): Rename to ...
+	(ttp_subsumes): ... this.
+	* pt.cc (is_compatible_template_arg): Adjust after renaming.
+
+2024-07-23  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/115296
+	* pt.cc (alias_ctad_tweaks): Use complain=tf_none instead of
+	tf_warning_or_error.
+
+2024-07-23  Jakub Jelinek  <jakub@redhat.com>
+
+	* cp-tree.def (CHECK_CONSTR): Remove.
+	* cp-tree.h (CHECK_CONSTR_CONCEPT, CHECK_CONSTR_ARGS): Remove.
+	* cp-objcp-common.cc (cp_common_init_ts): Don't handle CHECK_CONSTR.
+	* tree.cc (cp_tree_equal): Likewise.
+	* error.cc (dump_expr): Likewise.
+	* cxx-pretty-print.cc (cxx_pretty_printer::expression): Likewise.
+	(pp_cxx_check_constraint): Remove.
+	(pp_cxx_constraint): Don't handle CHECK_CONSTR.
+
+2024-07-23  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/104981
+	PR c++/115550
+	* coroutines.cc (morph_fn_to_coro): Remove unneeded calls
+	to convert_to_reference and convert_from_reference when
+	passing *this.  Use cp_build_fold_indirect_ref instead
+	of directly building INDIRECT_REF.
+
+2024-07-22  Jakub Jelinek  <jakub@redhat.com>
+
+	* cp-tree.def (UNARY_LEFT_FOLD_EXPR): Use FOLD_EXPR_MODIFY_P instead
+	of FOLD_EXPR_MOD_P or FOLDEXPR_MOD_P in the comment.  Comment
+	formatting fixes.
+	(ATOMIC_CONSTEXPR): Use CONSTR_INFO instead of ATOMIC_CONSTR_INFO
+	and ATOMIC_CONSTR_MAP instead of ATOMIC_CONSTR_PARMS in the comment.
+	Comment formatting fixes.
+	(CONJ_CONSTR): Remove comment about third operand.  Use CONSTR_INFO
+	instead of CONJ_CONSTR_INFO and DISJ_CONSTR_INFO.
+	(CHECK_CONSTR): Use CHECK_CONSTR_ARGS instead of
+	CHECK_CONSTR_ARGUMENTS.
+
+2024-07-20  Andi Kleen  <ak@gcc.gnu.org>
+
+	Revert:
+	2024-07-20  Andi Kleen  <ak@linux.intel.com>
+
+	PR c/83324
+	* cp-tree.h (AGGR_INIT_EXPR_MUST_TAIL): Add.
+	* parser.cc (cp_parser_statement): Handle musttail.
+	(cp_parser_jump_statement): Dito.
+	* pt.cc (tsubst_expr): Copy CALL_EXPR_MUST_TAIL_CALL.
+	* semantics.cc (simplify_aggr_init_expr): Handle musttail.
+
+2024-07-20  Andi Kleen  <ak@linux.intel.com>
+
+	PR c/83324
+	* cp-tree.h (AGGR_INIT_EXPR_MUST_TAIL): Add.
+	* parser.cc (cp_parser_statement): Handle musttail.
+	(cp_parser_jump_statement): Dito.
+	* pt.cc (tsubst_expr): Copy CALL_EXPR_MUST_TAIL_CALL.
+	* semantics.cc (simplify_aggr_init_expr): Handle musttail.
+
+2024-07-19  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/115783
+	* call.cc (build_new_method_call): Generalize METHOD_TYPE
+	check to DECL_OBJECT_MEMBER_FUNCTION_P.
+
+2024-07-19  Seyed Sajad Kahani  <sska1377@gmail.com>
+
+	* constraint.cc (hash_placeholder_constraint): Rename to
+	iterative_hash_placeholder_constraint.
+	(iterative_hash_placeholder_constraint): Rename from
+	hash_placeholder_constraint and add the initial val argument.
+	* cp-tree.h (hash_placeholder_constraint): Rename to
+	iterative_hash_placeholder_constraint.
+	(iterative_hash_placeholder_constraint): Renamed from
+	hash_placeholder_constraint and add the initial val argument.
+	* pt.cc (struct ctp_hasher): Updated to use
+	iterative_hash_placeholder_constraint in the case of a valid placeholder
+	constraint.
+	(auto_hash::hash): Reflect the renaming of hash_placeholder_constraint to
+	iterative_hash_placeholder_constraint.
+
 2024-07-18  Marek Polacek  <polacek@redhat.com>
 
 	PR c++/108769

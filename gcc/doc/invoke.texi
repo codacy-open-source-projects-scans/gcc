@@ -12560,6 +12560,11 @@ With @option{-O}, the compiler tries to reduce code size and execution
 time, without performing any optimizations that take a great deal of
 compilation time.
 
+@option{-O} is the recommended optimization level for large machine-generated
+code as a sensible balance between time taken to compile and memory use:
+higher optimization levels perform optimizations with greater algorithmic
+complexity than at @option{-O}.
+
 @c Note that in addition to the default_options_table list in opts.cc,
 @c several optimization flags default to true but control optimization
 @c passes that are explicitly disabled at -O0.
@@ -31558,7 +31563,7 @@ Supported values for @var{cpu_type} are @samp{401}, @samp{403},
 @samp{e6500}, @samp{ec603e}, @samp{G3}, @samp{G4}, @samp{G5},
 @samp{titan}, @samp{power3}, @samp{power4}, @samp{power5}, @samp{power5+},
 @samp{power6}, @samp{power6x}, @samp{power7}, @samp{power8},
-@samp{power9}, @samp{power10}, @samp{powerpc}, @samp{powerpc64},
+@samp{power9}, @samp{power10}, @samp{power11}, @samp{powerpc}, @samp{powerpc64},
 @samp{powerpc64le}, @samp{rs64}, and @samp{native}.
 
 @option{-mcpu=powerpc}, @option{-mcpu=powerpc64}, and
@@ -36937,9 +36942,6 @@ link         Options to pass to the linker
 lib          Libraries to include on the command line to the linker
 libgcc       Decides which GCC support library to pass to the linker
 linker       Sets the name of the linker
-predefines   Defines to be passed to the C preprocessor
-signed_char  Defines to pass to CPP to say whether @code{char} is signed
-             by default
 startfile    Object files to include at the start of the link
 @end smallexample
 

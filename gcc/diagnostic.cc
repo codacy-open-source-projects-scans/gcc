@@ -261,6 +261,7 @@ diagnostic_context::initialize (int n_opts)
   m_includes_seen = nullptr;
   m_client_data_hooks = nullptr;
   m_diagrams.m_theme = nullptr;
+  m_original_argv = nullptr;
 
   enum diagnostic_text_art_charset text_art_charset
     = DIAGNOSTICS_TEXT_ART_CHARSET_EMOJI;
@@ -385,6 +386,9 @@ diagnostic_context::finish ()
 
   delete m_urlifier;
   m_urlifier = nullptr;
+
+  freeargv (m_original_argv);
+  m_original_argv = nullptr;
 }
 
 void
@@ -401,6 +405,19 @@ diagnostic_context::set_client_data_hooks (diagnostic_client_data_hooks *hooks)
   /* Ideally we'd use a std::unique_ptr here.  */
   delete m_client_data_hooks;
   m_client_data_hooks = hooks;
+}
+
+void
+diagnostic_context::set_original_argv (unique_argv original_argv)
+{
+  /* Ideally we'd use a unique_argv for m_original_argv, but
+     diagnostic_context doesn't yet have a ctor/dtor pair.  */
+
+  // Ensure any old value is freed
+  freeargv (m_original_argv);
+
+  // Take ownership of the new value
+  m_original_argv = original_argv.release ();
 }
 
 void
@@ -1800,7 +1817,7 @@ diagnostic_text_output_format::on_diagram (const diagnostic_diagram &diagram)
    file-based output formats.  */
 
 void
-diagnostic_output_format_init (diagnostic_context *context,
+diagnostic_output_format_init (diagnostic_context &context,
 			       const char *main_input_filename_,
 			       const char *base_file_name,
 			       enum diagnostics_output_format format,

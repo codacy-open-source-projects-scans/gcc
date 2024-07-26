@@ -1,3 +1,29 @@
+2024-07-22  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	PR fortran/88624
+	* trans-expr.cc (gfc_conv_procedure_call): Treat
+	pointers/references (e.g. from parameters) correctly by derefing
+	them.
+
+2024-07-21  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/59104
+	* gfortran.h : Add decl_order to gfc_symbol.
+	* symbol.cc : Add static next_decl_order..
+	(gfc_set_sym_referenced): Set symbol decl_order.
+	* trans-decl.cc : Include dependency.h.
+	(decl_order): Replace symbol declared_at.lb->location with
+	decl_order.
+
+2024-07-19  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/103115
+	* trans-array.cc (gfc_trans_array_constructor_value): If the first
+	element of an array constructor is deferred-length character and
+	therefore does not have an element size known at compile time, do
+	not try to collect subsequent constant elements into a constructor
+	for optimization.
+
 2024-07-18  Andre Vehreschild  <vehre@gcc.gnu.org>
 
 	PR fortran/78466
