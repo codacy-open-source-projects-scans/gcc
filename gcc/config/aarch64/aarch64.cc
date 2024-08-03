@@ -392,6 +392,7 @@ static const struct aarch64_flag_desc aarch64_tuning_flags[] =
 #include "tuning_models/cortexa57.h"
 #include "tuning_models/cortexa72.h"
 #include "tuning_models/cortexa73.h"
+#include "tuning_models/cortexx925.h"
 #include "tuning_models/exynosm1.h"
 #include "tuning_models/thunderxt88.h"
 #include "tuning_models/thunderx.h"
@@ -409,7 +410,10 @@ static const struct aarch64_flag_desc aarch64_tuning_flags[] =
 #include "tuning_models/neoversev1.h"
 #include "tuning_models/neoverse512tvb.h"
 #include "tuning_models/neoversen2.h"
+#include "tuning_models/neoversen3.h"
 #include "tuning_models/neoversev2.h"
+#include "tuning_models/neoversev3.h"
+#include "tuning_models/neoversev3ae.h"
 #include "tuning_models/a64fx.h"
 
 /* Support for fine-grained override of the tuning structures.  */
@@ -2018,6 +2022,7 @@ aarch64_hard_regno_nregs (unsigned regno, machine_mode mode)
     case PR_HI_REGS:
       return mode == VNx32BImode ? 2 : 1;
 
+    case MOVEABLE_SYSREGS:
     case FFR_REGS:
     case PR_AND_FFR_REGS:
     case FAKE_REGS:
@@ -2044,6 +2049,9 @@ aarch64_hard_regno_mode_ok (unsigned regno, machine_mode mode)
   if (regno == VG_REGNUM)
     /* This must have the same size as _Unwind_Word.  */
     return mode == DImode;
+
+  if (regno == FPM_REGNUM)
+    return mode == QImode || mode == HImode || mode == SImode || mode == DImode;
 
   unsigned int vec_flags = aarch64_classify_vector_mode (mode);
   if (vec_flags == VEC_SVE_PRED)
@@ -12680,6 +12688,9 @@ aarch64_regno_regclass (unsigned regno)
   if (PR_REGNUM_P (regno))
     return PR_LO_REGNUM_P (regno) ? PR_LO_REGS : PR_HI_REGS;
 
+  if (regno == FPM_REGNUM)
+    return MOVEABLE_SYSREGS;
+
   if (regno == FFR_REGNUM || regno == FFRT_REGNUM)
     return FFR_REGS;
 
@@ -13068,6 +13079,7 @@ aarch64_class_max_nregs (reg_class_t regclass, machine_mode mode)
     case PR_HI_REGS:
       return mode == VNx32BImode ? 2 : 1;
 
+    case MOVEABLE_SYSREGS:
     case STACK_REG:
     case FFR_REGS:
     case PR_AND_FFR_REGS:
@@ -27344,6 +27356,26 @@ aarch_macro_fusion_pair_p (rtx_insn *prev, rtx_insn *curr)
       && SCALAR_INT_MODE_P (GET_MODE (XEXP (SET_SRC (prev_set), 0)))
       && reg_referenced_p (SET_DEST (prev_set), PATTERN (curr)))
     return true;
+
+  /* Fuse CMP and CSEL/CSET.  */
+  if (prev_set && curr_set
+      && GET_CODE (SET_SRC (prev_set)) == COMPARE
+      && SCALAR_INT_MODE_P (GET_MODE (XEXP (SET_SRC (prev_set), 0)))
+      && reg_referenced_p (SET_DEST (prev_set), PATTERN (curr)))
+    {
+      enum attr_type prev_type = get_attr_type (prev);
+      if ((prev_type == TYPE_ALUS_SREG || prev_type == TYPE_ALUS_IMM)
+	  && ((aarch64_fusion_enabled_p (AARCH64_FUSE_CMP_CSEL)
+	       && GET_CODE (SET_SRC (curr_set)) == IF_THEN_ELSE
+	       && aarch64_reg_or_zero (XEXP (SET_SRC (curr_set), 1), VOIDmode)
+	       && aarch64_reg_or_zero (XEXP (SET_SRC (curr_set), 2), VOIDmode)
+	       && SCALAR_INT_MODE_P (GET_MODE (XEXP (SET_SRC (curr_set), 1))))
+	      || (aarch64_fusion_enabled_p (AARCH64_FUSE_CMP_CSET)
+		  && GET_RTX_CLASS (GET_CODE (SET_SRC (curr_set)))
+		     == RTX_COMPARE
+		  && REG_P (SET_DEST (curr_set)))))
+	return true;
+    }
 
   /* Fuse flag-setting ALU instructions and conditional branch.  */
   if (aarch64_fusion_enabled_p (AARCH64_FUSE_ALU_BRANCH)

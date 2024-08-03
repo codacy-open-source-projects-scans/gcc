@@ -95,6 +95,7 @@ static const riscv_implied_info_t riscv_implied_info[] =
    }},
 
   {"zabha", "zaamo"},
+  {"zacas", "zaamo"},
 
   {"b", "zba"},
   {"b", "zbb"},
@@ -283,6 +284,7 @@ static const struct riscv_ext_version riscv_ext_version_table[] =
   {"zaamo", ISA_SPEC_CLASS_NONE, 1, 0},
   {"zalrsc", ISA_SPEC_CLASS_NONE, 1, 0},
   {"zabha", ISA_SPEC_CLASS_NONE, 1, 0},
+  {"zacas", ISA_SPEC_CLASS_NONE, 1, 0},
 
   {"zba", ISA_SPEC_CLASS_NONE, 1, 0},
   {"zbb", ISA_SPEC_CLASS_NONE, 1, 0},
@@ -855,8 +857,8 @@ riscv_subset_list::to_string (bool version_p) const
 
   bool skip_zifencei = false;
   bool skip_zaamo_zalrsc = false;
-  bool skip_zabha = false;
   bool skip_zicsr = false;
+  bool skip_b = false;
   bool i2p0 = false;
 
   /* For RISC-V ISA version 2.2 or earlier version, zicsr and zifencei is
@@ -884,12 +886,14 @@ riscv_subset_list::to_string (bool version_p) const
   skip_zifencei = true;
 #endif
 #ifndef HAVE_AS_MARCH_ZAAMO_ZALRSC
-  /* Skip since binutils 2.42 and earlier don't recognize zaamo/zalrsc.  */
+  /* Skip since binutils 2.42 and earlier don't recognize zaamo/zalrsc.
+     Expanding 'a' to zaamo/zalrsc would otherwise break compilations
+     for users with an older version of binutils.  */
   skip_zaamo_zalrsc = true;
 #endif
-#ifndef HAVE_AS_MARCH_ZABHA
-  /* Skip since binutils 2.42 and earlier don't recognize zabha.  */
-  skip_zabha = true;
+#ifndef HAVE_AS_MARCH_B
+  /* Skip since binutils 2.42 and earlier don't recognize b.  */
+  skip_b = true;
 #endif
 
   for (subset = m_head; subset != NULL; subset = subset->next)
@@ -908,7 +912,7 @@ riscv_subset_list::to_string (bool version_p) const
       if (skip_zaamo_zalrsc && subset->name == "zalrsc")
 	continue;
 
-      if (skip_zabha && subset->name == "zabha")
+      if (skip_b && subset->name == "b")
 	continue;
 
       /* For !version_p, we only separate extension with underline for
@@ -1590,6 +1594,7 @@ static const riscv_ext_flag_table_t riscv_ext_flag_table[] =
   {"zaamo",   &gcc_options::x_riscv_za_subext, MASK_ZAAMO},
   {"zalrsc",  &gcc_options::x_riscv_za_subext, MASK_ZALRSC},
   {"zabha",   &gcc_options::x_riscv_za_subext, MASK_ZABHA},
+  {"zacas",   &gcc_options::x_riscv_za_subext, MASK_ZACAS},
 
   {"zba",    &gcc_options::x_riscv_zb_subext, MASK_ZBA},
   {"zbb",    &gcc_options::x_riscv_zb_subext, MASK_ZBB},

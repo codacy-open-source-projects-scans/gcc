@@ -9694,7 +9694,7 @@ riscv_override_options_internal (struct gcc_options *opts)
   /* We might use a multiplication to calculate the scalable vector length at
      runtime.  Therefore, require the M extension.  */
   if (TARGET_VECTOR && !TARGET_MUL)
-    sorry ("GCC's current %<V%> implementation requires the %<M%> extension");
+    sorry ("Currently the %<V%> implementation requires the %<M%> extension");
 
   /* Likewise floating-point division and square root.  */
   if ((TARGET_HARD_FLOAT_OPTS_P (opts) || TARGET_ZFINX_OPTS_P (opts))
@@ -9817,6 +9817,11 @@ riscv_option_override (void)
       else if (TARGET_64BIT && riscv_abi != ABI_LP64E)
 	error ("rv64e requires lp64e ABI");
     }
+
+  /* ILP32E does not support the 'd' extension.  */
+  if (riscv_abi == ABI_ILP32E && UNITS_PER_FP_REG > 4)
+    error ("ILP32E ABI does not support the %qc extension",
+	   UNITS_PER_FP_REG > 8 ? 'Q' : 'D');
 
   /* Zfinx require abi ilp32, ilp32e, lp64 or lp64e.  */
   if (TARGET_ZFINX
@@ -11620,26 +11625,26 @@ void
 riscv_expand_ussub (rtx dest, rtx x, rtx y)
 {
   machine_mode mode = GET_MODE (dest);
-  rtx pmode_x = gen_lowpart (Pmode, x);
-  rtx pmode_y = gen_lowpart (Pmode, y);
-  rtx pmode_lt = gen_reg_rtx (Pmode);
-  rtx pmode_minus = gen_reg_rtx (Pmode);
-  rtx pmode_dest = gen_reg_rtx (Pmode);
+  rtx xmode_x = gen_lowpart (Xmode, x);
+  rtx xmode_y = gen_lowpart (Xmode, y);
+  rtx xmode_lt = gen_reg_rtx (Xmode);
+  rtx xmode_minus = gen_reg_rtx (Xmode);
+  rtx xmode_dest = gen_reg_rtx (Xmode);
 
   /* Step-1: minus = x - y  */
-  riscv_emit_binary (MINUS, pmode_minus, pmode_x, pmode_y);
+  riscv_emit_binary (MINUS, xmode_minus, xmode_x, xmode_y);
 
   /* Step-2: lt = x < y  */
-  riscv_emit_binary (LTU, pmode_lt, pmode_x, pmode_y);
+  riscv_emit_binary (LTU, xmode_lt, xmode_x, xmode_y);
 
   /* Step-3: lt = lt - 1 (lt + (-1))  */
-  riscv_emit_binary (PLUS, pmode_lt, pmode_lt, CONSTM1_RTX (Pmode));
+  riscv_emit_binary (PLUS, xmode_lt, xmode_lt, CONSTM1_RTX (Xmode));
 
-  /* Step-4: pmode_dest = minus & lt  */
-  riscv_emit_binary (AND, pmode_dest, pmode_lt, pmode_minus);
+  /* Step-4: xmode_dest = minus & lt  */
+  riscv_emit_binary (AND, xmode_dest, xmode_lt, xmode_minus);
 
-  /* Step-5: dest = pmode_dest  */
-  emit_move_insn (dest, gen_lowpart (mode, pmode_dest));
+  /* Step-5: dest = xmode_dest  */
+  emit_move_insn (dest, gen_lowpart (mode, xmode_dest));
 }
 
 /* Implement the unsigned saturation truncation for int mode.

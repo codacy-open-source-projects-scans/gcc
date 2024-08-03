@@ -3234,6 +3234,41 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
  (if (INTEGRAL_TYPE_P (type) && TYPE_UNSIGNED (type)
       && types_match (type, @0, @1))))
 
+/* Unsigned saturation sub with op_0 imm, case 9 (branch with gt):
+   SAT_U_SUB = IMM > Y  ? (IMM - Y) : 0.
+             = IMM >= Y ? (IMM - Y) : 0.  */
+(match (unsigned_integer_sat_sub @0 @1)
+ (cond^ (le @1 INTEGER_CST@2) (minus INTEGER_CST@0 @1) integer_zerop)
+ (if (INTEGRAL_TYPE_P (type) && TYPE_UNSIGNED (type)
+     && types_match (type, @1))
+ (with
+  {
+   unsigned precision = TYPE_PRECISION (type);
+   wide_int max = wi::mask (precision, false, precision);
+   wide_int c0 = wi::to_wide (@0);
+   wide_int c2 = wi::to_wide (@2);
+   wide_int c2_add_1 = wi::add (c2, wi::uhwi (1, precision));
+   bool equal_p = wi::eq_p (c0, c2);
+   bool less_than_1_p = !wi::eq_p (c2, max) && wi::eq_p (c2_add_1, c0);
+  }
+  (if (equal_p || less_than_1_p)))))
+
+/* Unsigned saturation sub with op_1 imm, case 10:
+   SAT_U_SUB = X > IMM  ? (X - IMM) : 0.
+             = X >= IMM ? (X - IMM) : 0.  */
+(match (unsigned_integer_sat_sub @0 @1)
+ (plus (max @0 INTEGER_CST@1) INTEGER_CST@2)
+ (if (INTEGRAL_TYPE_P (type) && TYPE_UNSIGNED (type)
+     && types_match (type, @1))
+ (with
+  {
+   unsigned precision = TYPE_PRECISION (type);
+   wide_int c1 = wi::to_wide (@1);
+   wide_int c2 = wi::to_wide (@2);
+   wide_int sum = wi::add (c1, c2);
+  }
+  (if (wi::eq_p (sum, wi::uhwi (0, precision)))))))
+
 /* Unsigned saturation truncate, case 1, sizeof (WT) > sizeof (NT).
    SAT_U_TRUNC = (NT)x | (NT)(-(X > (WT)(NT)(-1))).  */
 (match (unsigned_integer_sat_trunc @0)
@@ -5597,20 +5632,29 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
   (vec_cond (bit_and (bit_not @0) @1) @2 @3)))
 #endif
 
-/* (a ? x : y) != (b ? x : y) --> (a^b) ? TRUE  : FALSE */
-/* (a ? x : y) == (b ? x : y) --> (a^b) ? FALSE : TRUE  */
-/* (a ? x : y) != (b ? y : x) --> (a^b) ? FALSE : TRUE  */
-/* (a ? x : y) == (b ? y : x) --> (a^b) ? TRUE  : FALSE */
+/* (a ? x : y) != (b ? x : y) --> (a^b & (x != y)) ? TRUE  : FALSE */
+/* (a ? x : y) == (b ? x : y) --> (a^b & (x != y)) ? FALSE : TRUE  */
+/* (a ? x : y) != (b ? y : x) --> (a^b | (x == y)) ? FALSE : TRUE  */
+/* (a ? x : y) == (b ? y : x) --> (a^b | (x == y)) ? TRUE  : FALSE */
+/* These are only valid if x and y don't have NaNs. */
 (for cnd (cond vec_cond)
  (for eqne (eq ne)
   (simplify
    (eqne:c (cnd @0 @1 @2) (cnd @3 @1 @2))
-    (cnd (bit_xor @0 @3) { constant_boolean_node (eqne == NE_EXPR, type); }
-     { constant_boolean_node (eqne != NE_EXPR, type); }))
+    (if (!HONOR_NANS (@1)
+	 && types_match (TREE_TYPE (@0), TREE_TYPE (@3))
+         && types_match (type, TREE_TYPE (@0)))
+     (cnd (bit_and (bit_xor @0 @3) (ne:type @1 @2))
+      { constant_boolean_node (eqne == NE_EXPR, type); }
+      { constant_boolean_node (eqne != NE_EXPR, type); })))
   (simplify
    (eqne:c (cnd @0 @1 @2) (cnd @3 @2 @1))
-    (cnd (bit_xor @0 @3) { constant_boolean_node (eqne != NE_EXPR, type); }
-     { constant_boolean_node (eqne == NE_EXPR, type); }))))
+    (if (!HONOR_NANS (@1)
+	 && types_match (TREE_TYPE (@0), TREE_TYPE (@3))
+         && types_match (type, TREE_TYPE (@0)))
+     (cnd (bit_ior (bit_xor @0 @3) (eq:type @1 @2))
+      { constant_boolean_node (eqne != NE_EXPR, type); }
+      { constant_boolean_node (eqne == NE_EXPR, type); })))))
 
 /* Canonicalize mask ? { 0, ... } : { -1, ...} to ~mask if the mask
    types are compatible.  */
@@ -9067,6 +9111,12 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
 
 /* CTZ simplifications.  */
 (for ctz (CTZ)
+ /* ctz (-X) => ctz (X).  ctz (abs (X)) => ctz (X).  */
+ (for op (negate abs)
+  (simplify
+   (ctz (nop_convert?@0 (op @1)))
+    (with { tree t = TREE_TYPE (@0); }
+     (ctz (convert:t @1)))))
  (for op (ge gt le lt)
       cmp (eq eq ne ne)
   (simplify

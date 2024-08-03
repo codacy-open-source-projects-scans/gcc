@@ -972,6 +972,7 @@ maybe_convert_cond (tree cond)
      result in a TARGET_EXPR, pick it up from there.  */
   if (DECL_DECOMPOSITION_P (cond)
       && DECL_DECOMP_IS_BASE (cond)
+      && DECL_DECOMP_BASE (cond)
       && TREE_CODE (DECL_DECOMP_BASE (cond)) == TARGET_EXPR)
     cond = TARGET_EXPR_SLOT (DECL_DECOMP_BASE (cond));
 
@@ -1714,6 +1715,7 @@ finish_switch_cond (tree cond, tree switch_stmt)
 	 conversion result in a TARGET_EXPR, pick it up from there.  */
       if (DECL_DECOMPOSITION_P (cond)
 	  && DECL_DECOMP_IS_BASE (cond)
+	  && DECL_DECOMP_BASE (cond)
 	  && TREE_CODE (DECL_DECOMP_BASE (cond)) == TARGET_EXPR)
 	cond = TARGET_EXPR_SLOT (DECL_DECOMP_BASE (cond));
       cond = build_expr_type_conversion (WANT_INT | WANT_ENUM, cond, true);
@@ -2968,7 +2970,7 @@ finish_call_expr (tree fn, vec<tree, va_gc> **args, bool disallow_virtual,
 	     -Wredundant-move warning.  */
 	  suppress_warning (result, OPT_Wpessimizing_move);
 
-	  if (cfun)
+	  if (cfun && cp_function_chain && !cp_unevaluated_operand)
 	    {
 	      bool abnormal = true;
 	      for (lkp_iterator iter (maybe_get_fns (fn)); iter; ++iter)

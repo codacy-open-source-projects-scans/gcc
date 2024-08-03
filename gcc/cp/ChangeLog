@@ -1,3 +1,151 @@
+2024-08-02  Arsen Arsenović  <arsen@aarsen.me>
+
+	PR c++/105475
+	* coroutines.cc (struct coroutine_info): Add from_address.
+	Carries the from_address member we looked up earlier.
+	(coro_resume_identifier): Remove.  Unused.
+	(coro_init_identifiers): Do not initialize the above.
+	(void_coro_handle_address): New variable.  Contains the baselink
+	for the std::coroutine_handle<void>::address() instance method.
+	(get_handle_type_address): New function.  Looks up and validates
+	handle_type::address in a given handle_type.
+	(get_handle_type_from_address): New function.  Looks up and
+	validates handle_type::from_address in a given handle_type.
+	(coro_promise_type_found_p): Remove reliance on
+	coroutine_handle<> defaulting the promise type to void.  Store
+	get_handle_type_* results where appropriate.
+	(get_coroutine_from_address): New helper.  Gets the
+	handle_type::from_address BASELINK from a coroutine_info.
+	(build_actor_fn): Use the get_coroutine_from_address helper and
+	void_coro_handle_address.
+
+2024-08-02  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/116169
+	* decl.cc (cp_finish_decl): Disallow deleting ::main.
+
+2024-08-02  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc (struct local_vars_frame_data): Add a
+	CTOR.
+	(morph_fn_to_coro): Use CTOR for local_vars_frame_data
+	instead of brace init.
+
+2024-08-02  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc (struct susp_frame_data): Remove unused members,
+	provide a CTOR.
+	(morph_fn_to_coro): Use susp_frame_data CTOR, and make the suspend
+	state hash map local to the morph function.
+
+2024-08-02  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc (replace_continue): Look up expression type.
+
+2024-08-01  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/116113
+	* semantics.cc (maybe_convert_cond): Check DECL_DECOMP_BASE
+	is non-NULL before dereferencing it.
+	(finish_switch_cond): Likewise.
+
+2024-08-01  Arsen Arsenović  <arsen@aarsen.me>
+
+	PR c++/112341
+	* coroutines.cc (struct coroutine_info): Also cache the
+	traits type.
+	(ensure_coro_initialized): New function.  Makes sure we have
+	initialized the coroutine state successfully, or informs the
+	caller should it fail to do so.  Extracted from
+	coro_promise_type_found_p.
+	(coro_get_traits_class): New function.  Gets the (cached)
+	coroutine traits type for a given coroutine.  Extracted from
+	coro_promise_type_found_p and refactored to cache the result.
+	(coro_promise_type_found_p): Use the two functions above.
+	(build_template_co_await_expr): New function.  Builds a
+	CO_AWAIT_EXPR representing a CO_AWAIT_EXPR in a template
+	declaration.
+	(build_co_await): Use the above if processing_template_decl, and
+	give it a proper type.
+	(coro_dependent_p): New function.  Returns true iff its
+	argument is a type-dependent expression OR the current functions
+	traits class is type dependent.
+	(finish_co_await_expr): Defer expansion only in the case
+	coro_dependent_p returns true.
+	(finish_co_yield_expr): Ditto.
+	(finish_co_return_stmt): Ditto.
+	* pt.cc (type_dependent_expression_p): Do not treat
+	CO_AWAIT/CO_YIELD specially.
+
+2024-07-31  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/115645
+	* init.cc (build_vec_init): When initializing a scalar type, try to
+	create a constant initializer.
+
+2024-07-30  Arsen Arsenović  <arsen@aarsen.me>
+
+	PR c++/115906
+	* parser.cc (cp_parser_unary_expression): Reject await
+	expressions if use of local variables is currently forbidden.
+	(cp_parser_yield_expression): Reject yield expressions if use of
+	local variables is currently forbidden.
+
+2024-07-30  Arsen Arsenovic  <arsen@aarsen.me>
+
+	PR c++/115906
+	* coroutines.cc (register_local_var_uses): Only process
+	PARM_DECL and VAR_DECLs.
+
+2024-07-30  Arsen Arsenović  <arsen@aarsen.me>
+
+	PR c++/110855
+	* cp-gimplify.cc (fold_builtin_source_location): Use the name of
+	the DECL_RAMP_FN of the current function if present.
+
+2024-07-29  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/88313
+	* parser.cc (cp_parser_lambda_declarator_opt): Pass
+	lambda_p=true to cp_parser_parameter_declaration_clause.
+	(cp_parser_direct_declarator): Pass lambda_p=false to
+	to cp_parser_parameter_declaration_clause.
+	(cp_parser_parameter_declaration_clause): Add bool lambda_p
+	parameter.  Consider lambda_p instead of current_class_type
+	when setting parser->auto_is_implicit_function_template_parm_p.
+	Don't consider processing_template_parmlist.
+	(cp_parser_requirement_parameter_list): Pass lambda_p=false
+	to cp_parser_parameter_declaration_clause.
+
+2024-07-28  Jason Merrill  <jason@redhat.com>
+
+	PR c++/115583
+	* constexpr.cc (cxx_eval_conditional_expression): Don't
+	cp_fold_immediate for if consteval.
+
+2024-07-27  Jason Merrill  <jason@redhat.com>
+
+	PR c++/115986
+	* cp-gimplify.cc (remember_escalating_expr): Skip function
+	templates.
+
+2024-07-27  Jason Merrill  <jason@redhat.com>
+
+	PR c++/115561
+	* semantics.cc (finish_call_expr): Check cp_unevaluated_operand.
+
+2024-07-26  Jason Merrill  <jason@redhat.com>
+
+	PR c++/116052
+	* mangle.cc (write_prefix): Handle TRAIT_EXPR.
+
+2024-07-26  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/115757
+	* module.cc (trees_out::core_vals): Write warning specs for
+	DECLs and EXPRs.
+	(trees_in::core_vals): Read warning specs.
+
 2024-07-25  Jason Merrill  <jason@redhat.com>
 
 	PR c++/115403

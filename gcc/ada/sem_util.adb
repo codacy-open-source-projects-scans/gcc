@@ -1784,7 +1784,6 @@ package body Sem_Util is
 
    function Build_Default_Subtype_OK (T : Entity_Id) return Boolean is
    begin
-
       if Is_Constrained (T) then
 
          --  We won't build a new subtype if T is constrained
@@ -13250,6 +13249,20 @@ package body Sem_Util is
       return All_Static;
    end Has_Static_Array_Bounds;
 
+   -----------------------------------
+   -- Has_Static_Empty_Array_Bounds --
+   -----------------------------------
+
+   function Has_Static_Empty_Array_Bounds (Typ : Node_Id) return Boolean is
+      All_Static : Boolean;
+      Has_Empty  : Boolean;
+
+   begin
+      Examine_Array_Bounds (Typ, All_Static, Has_Empty);
+
+      return Has_Empty;
+   end Has_Static_Empty_Array_Bounds;
+
    ---------------------------------------
    -- Has_Static_Non_Empty_Array_Bounds --
    ---------------------------------------
@@ -16067,6 +16080,29 @@ package body Sem_Util is
       P   : Node_Id;
 
    begin
+      --  Since Ada 2005, the "current instance" rule does not apply
+      --  to a type_mark in an access_definition (RM 8.6),
+      --  although it does apply in an access_to_object definition.
+      --  So the rule does not apply in the definition of an anonymous
+      --  access type, but it does apply in the definition of a named
+      --  access-to-object type.
+      --  The rule also does not apply in a designated subprogram profile.
+
+      if Ada_Version >= Ada_2005 then
+         case Nkind (Parent (N)) is
+            when N_Access_Definition | N_Access_Function_Definition =>
+               return False;
+            when N_Parameter_Specification =>
+               if Nkind (Parent (Parent (N))) in
+                 N_Access_To_Subprogram_Definition
+               then
+                  return False;
+               end if;
+            when others =>
+               null;
+         end case;
+      end if;
+
       --  Simplest case: entity is a concurrent type and we are currently
       --  inside the body. This will eventually be expanded into a call to
       --  Self (for tasks) or _object (for protected objects).
@@ -16116,6 +16152,12 @@ package body Sem_Util is
             elsif Nkind (P) = N_Pragma
               and then Get_Pragma_Id (P) in Pragma_Predicate
                                           | Pragma_Predicate_Failure
+
+              --  For "pragma Predicate (T, Is_OK (T))", return False for the
+              --  first use of T and True for the second.
+
+              and then
+                N /= Expression (First (Pragma_Argument_Associations (P)))
             then
                declare
                   Arg : constant Entity_Id :=
@@ -16131,7 +16173,7 @@ package body Sem_Util is
          end loop;
       end if;
 
-      --  In any other context this is not a current occurrence
+      --  In any other context this is not a current instance reference.
 
       return False;
    end Is_Current_Instance;
@@ -27745,9 +27787,10 @@ package body Sem_Util is
       Pref : Node_Id;
 
    begin
-      --  Deal with indexed or selected component where prefix is modified
+      --  Deal with indexed components, selected components, or slices where
+      --  the prefix is modified.
 
-      if Nkind (N) in N_Indexed_Component | N_Selected_Component then
+      if Nkind (N) in N_Indexed_Component | N_Selected_Component | N_Slice then
 
          --  Grab the original node to avoid looking at internally generated
          --  objects.

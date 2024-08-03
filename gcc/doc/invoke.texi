@@ -3962,7 +3962,7 @@ that has a pointer data member and a trivial destructor.
 The warning can be disabled by using the @code{gnu::no_dangling} attribute
 (@pxref{C++ Attributes}).
 
-This warning is enabled by @option{-Wall}.
+This warning is enabled by @option{-Wextra}.
 
 @opindex Wdelete-non-virtual-dtor
 @opindex Wno-delete-non-virtual-dtor
@@ -5865,8 +5865,9 @@ named @file{@var{source}.sarif}, respectively.
 
 The @samp{json} format is a synonym for @samp{json-stderr}.
 The @samp{json-stderr} and @samp{json-file} formats are identical, apart from
-where the JSON is emitted to - with the former, the JSON is emitted to stderr,
-whereas with @samp{json-file} it is written to @file{@var{source}.gcc.json}.
+where the JSON is emitted to.  With @samp{json-stderr}, the JSON is emitted
+to stderr, whereas with @samp{json-file} it is written to
+@file{@var{source}.gcc.json}.
 
 The emitted JSON consists of a top-level JSON array containing JSON objects
 representing the diagnostics.
@@ -6480,6 +6481,7 @@ name is still supported, but the newer name is more descriptive.)
 -Wcalloc-transposed-args
 -Wcast-function-type
 -Wclobbered
+-Wdangling-reference @r{(C++ only)}
 -Wdeprecated-copy @r{(C++ and Objective-C++ only)}
 -Wempty-body
 -Wenum-conversion @r{(only for C/ObjC)}
@@ -21532,6 +21534,8 @@ performance of the code.  Permissible values for this option are:
 @samp{oryon-1},
 @samp{neoverse-512tvb}, @samp{neoverse-e1}, @samp{neoverse-n1},
 @samp{neoverse-n2}, @samp{neoverse-v1}, @samp{neoverse-v2}, @samp{grace},
+@samp{neoverse-v3}, @samp{neoverse-v3ae}, @samp{neoverse-n3},
+@samp{cortex-a725}, @samp{cortex-x925},
 @samp{qdf24xx}, @samp{saphira}, @samp{phecda}, @samp{xgene1}, @samp{vulcan},
 @samp{octeontx}, @samp{octeontx81},  @samp{octeontx83},
 @samp{octeontx2}, @samp{octeontx2t98}, @samp{octeontx2t96}
@@ -21848,6 +21852,8 @@ Enable support for Armv9.4-a Guarded Control Stack extension.
 Enable support for Armv8.9-a/9.4-a translation hardening extension.
 @item rcpc3
 Enable the RCpc3 (Release Consistency) extension.
+@item fp8
+Enable the fp8 (8-bit floating point) extension.
 
 @end table
 
@@ -24568,6 +24574,13 @@ and defined to@tie{}0, otherwise.
 @item __WITH_AVRLIBC__
 The compiler is configured to be used together with AVR-Libc.
 See the @option{--with-avrlibc} configure option.
+
+@item __HAVE_SIGNAL_N__
+The compiler supports the @code{signal(@var{num})} and
+@code{interrupt(@var{num})}
+@ref{AVR Function Attributes,,function attributes}
+with an argument @var{num} that specifies the number of the
+interrupt service routine.
 
 @item __HAVE_DOUBLE_MULTILIB__
 Defined if @option{-mdouble=} acts as a multilib option.

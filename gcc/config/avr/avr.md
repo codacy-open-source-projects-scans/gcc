@@ -6568,9 +6568,9 @@
 ;; "cmpha3" "cmpuha3"
 (define_insn "cmp<mode>3"
   [(set (reg:CC REG_CC)
-        (compare:CC (match_operand:ALL2 0 "register_operand"  "!w  ,r  ,r,d ,r  ,d,r")
-                    (match_operand:ALL2 1 "nonmemory_operand"  "Y00,Y00,r,s ,s  ,M,n Ynn")))
-   (clobber (match_scratch:QI 2                               "=X  ,X  ,X,&d,&d ,X,&d"))]
+        (compare:CC (match_operand:ALL2 0 "register_operand"  "!w  ,r  ,r,d ,r ,d    ,r")
+                    (match_operand:ALL2 1 "nonmemory_operand"  "Y00,Y00,r,s ,s ,M YMM,n Ynn")))
+   (clobber (match_scratch:QI 2                               "=X  ,X  ,X,&d,&d,X    ,&d"))]
   "reload_completed"
   {
     switch (which_alternative)
@@ -6635,9 +6635,9 @@
 ;; "*cmpsa" "*cmpusa"
 (define_insn "*cmp<mode>"
   [(set (reg:CC REG_CC)
-        (compare:CC (match_operand:ALL4 0 "register_operand"  "r  ,r ,d,r ,r")
-                    (match_operand:ALL4 1 "nonmemory_operand" "Y00,r ,M,M ,n Ynn")))
-   (clobber (match_scratch:QI 2                              "=X  ,X ,X,&d,&d"))]
+        (compare:CC (match_operand:ALL4 0 "register_operand"  "r  ,r ,d    ,r")
+                    (match_operand:ALL4 1 "nonmemory_operand" "Y00,r ,M YMM,n Ynn")))
+   (clobber (match_scratch:QI 2                              "=X  ,X ,X    ,&d"))]
   "reload_completed"
   {
     if (0 == which_alternative)
@@ -6647,8 +6647,8 @@
 
     return avr_out_compare (insn, operands, NULL);
   }
-  [(set_attr "length" "4,4,4,5,8")
-   (set_attr "adjust_len" "tstsi,*,compare,compare,compare")])
+  [(set_attr "length" "4,4,4,8")
+   (set_attr "adjust_len" "tstsi,*,compare,compare")])
 
 
 ;; A helper for avr_pass_ifelse::avr_rest_of_handle_ifelse().
@@ -6727,11 +6727,11 @@
   [(set (pc)
         (if_then_else
          (match_operator 0 "ordered_comparison_operator"
-           [(match_operand:ALL4 1 "register_operand"  "r  ,r,d,r ,r")
-            (match_operand:ALL4 2 "nonmemory_operand" "Y00,r,M,M ,n Ynn")])
+           [(match_operand:ALL4 1 "register_operand"  "r  ,r,d     ,r")
+            (match_operand:ALL4 2 "nonmemory_operand" "Y00,r,M YMM ,n Ynn")])
          (label_ref (match_operand 3))
          (pc)))
-   (clobber (match_scratch:QI 4                      "=X  ,X,X,&d,&d"))]
+   (clobber (match_scratch:QI 4                      "=X  ,X,X     ,&d"))]
    ""
    "#"
    "reload_completed"
@@ -6742,7 +6742,23 @@
          (if_then_else (match_op_dup 0
                          [(reg:CC REG_CC) (const_int 0)])
                        (label_ref (match_dup 3))
-                       (pc)))])
+                       (pc)))]
+   {
+     // Unsigned >= 65536 and < 65536 can be performed by testing the
+     // high word against 0.
+     if ((GET_CODE (operands[0]) == LTU
+          || GET_CODE (operands[0]) == GEU)
+         && const_operand (operands[2], <MODE>mode)
+         && INTVAL (avr_to_int_mode (operands[2])) == 65536)
+       {
+         // "cmphi3" of the high word against 0.
+         operands[0] = copy_rtx (operands[0]);
+         PUT_CODE (operands[0], GET_CODE (operands[0]) == GEU ? NE : EQ);
+         operands[1] = simplify_gen_subreg (HImode, operands[1], <MODE>mode, 2);
+         operands[2] = const0_rtx;
+         operands[4] = gen_rtx_SCRATCH (QImode);
+       }
+   })
 
 ;; "cbranchpsi4_insn"
 (define_insn_and_split "cbranchpsi4_insn"
@@ -6772,11 +6788,11 @@
   [(set (pc)
         (if_then_else
          (match_operator 0 "ordered_comparison_operator"
-           [(match_operand:ALL2 1 "register_operand" "!w  ,r  ,r,d ,r ,d,r")
-            (match_operand:ALL2 2 "nonmemory_operand" "Y00,Y00,r,s ,s ,M,n Ynn")])
+           [(match_operand:ALL2 1 "register_operand" "!w  ,r  ,r,d ,r ,d    ,r")
+            (match_operand:ALL2 2 "nonmemory_operand" "Y00,Y00,r,s ,s ,M YMM,n Ynn")])
          (label_ref (match_operand 3))
          (pc)))
-   (clobber (match_scratch:QI 4                      "=X  ,X  ,X,&d,&d,X,&d"))]
+   (clobber (match_scratch:QI 4                      "=X  ,X  ,X,&d,&d,X    ,&d"))]
    ""
    "#"
    "reload_completed"
@@ -6787,7 +6803,23 @@
          (if_then_else (match_op_dup 0
                          [(reg:CC REG_CC) (const_int 0)])
                        (label_ref (match_dup 3))
-                       (pc)))])
+                       (pc)))]
+   {
+     // Unsigned >= 256 and < 256 can be performed by testing the
+     // high byte against 0.
+     if ((GET_CODE (operands[0]) == LTU
+          || GET_CODE (operands[0]) == GEU)
+         && const_operand (operands[2], <MODE>mode)
+         && INTVAL (avr_to_int_mode (operands[2])) == 256)
+       {
+         rtx_code code = GET_CODE (operands[0]) == GEU ? NE : EQ;
+         rtx hi8 = simplify_gen_subreg (QImode, operands[1], <MODE>mode, 1);
+         rtx cmp = gen_rtx_fmt_ee (code, VOIDmode, cc_reg_rtx, const0_rtx);
+         emit (gen_cmpqi3 (hi8, const0_rtx));
+         emit (gen_branch (operands[3], cmp));
+         DONE;
+       }
+   })
 
 ;; Combiner pattern to compare sign- or zero-extended register against
 ;; a wider register, like comparing uint8_t against uint16_t.

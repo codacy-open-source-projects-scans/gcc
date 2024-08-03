@@ -6069,9 +6069,16 @@ package body Sem_Ch12 is
          Set_Has_Pragma_No_Inline
            (Anon_Id,     Has_Pragma_No_Inline (Gen_Unit));
 
-         --  Propagate No_Return if pragma applied to generic unit. This must
-         --  be done explicitly because pragma does not appear in generic
-         --  declaration (unlike the aspect case).
+         --  Propagate No_Raise if pragma applied to generic unit. This must
+         --  be done explicitly because the pragma does not appear in generic
+         --  declarations (unlike the aspect).
+
+         if No_Raise (Gen_Unit) then
+            Set_No_Raise (Act_Decl_Id);
+            Set_No_Raise (Anon_Id);
+         end if;
+
+         --  Likewise for No_Return
 
          if No_Return (Gen_Unit) then
             Set_No_Return (Act_Decl_Id);
@@ -6296,7 +6303,6 @@ package body Sem_Ch12 is
       New_F     : Entity_Id;
 
    begin
-
       Subp := Make_Defining_Identifier (Loc, Chars (Formal_Subp));
       Mutate_Ekind (Subp, Ekind (Formal_Subp));
       Set_Is_Generic_Actual_Subprogram (Subp);
@@ -8965,9 +8971,7 @@ package body Sem_Ch12 is
          --  are inlined by the front end, and the front-end inlining machinery
          --  relies on this routine to perform inlining.
 
-         elsif From_Aspect_Specification (N)
-           and then not Modify_Tree_For_C
-         then
+         elsif From_Aspect_Specification (N) then
             New_N := Make_Null_Statement (Sloc (N));
 
          else
