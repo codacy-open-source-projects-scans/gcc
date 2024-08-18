@@ -1,3 +1,335 @@
+2024-08-17  Jin Ma  <jinma@linux.alibaba.com>
+
+	* gcc.target/riscv/rvv/base/bug-7.c: New test.
+	* gcc.target/riscv/rvv/base/bug-8.c: New test.
+
+2024-08-17  Jeff Law  <jlaw@ventanamicro.com>
+
+	PR target/116282
+	* gcc.target/riscv/pr116282.c: New test.
+
+2024-08-17  Jin Ma  <jinma@linux.alibaba.com>
+
+	* gcc.target/riscv/rvv/base/bug-9.c: New test.
+
+2024-08-17  Pan Li  <pan2.li@intel.com>
+
+	PR target/116280
+	* gcc.target/riscv/rvv/base/pr116280-1.c: New test.
+	* gcc.target/riscv/rvv/base/pr116280-2.c: New test.
+
+2024-08-17  Feng Wang  <wangfeng@eswincomputing.com>
+
+	* gcc.target/riscv/rvv/autovec/binop/vrolr-1.c: New test.
+	* gcc.target/riscv/rvv/autovec/binop/vrolr-run.c: New test.
+	* gcc.target/riscv/rvv/autovec/binop/vrolr-template.h: New test.
+
+2024-08-17  Georg-Johann Lay  <avr@gjlay.de>
+
+	PR target/116390
+	* gcc.target/avr/torture/pr116390.c: New test.
+
+2024-08-17  曾治金  <zhijin.zeng@spacemit.com>
+
+	PR target/116305
+	* gcc.target/riscv/rvv/base/scalable_vector_cfi.c: New test.
+
+2024-08-16  Torbjörn SVENSSON  <torbjorn.svensson@foss.st.com>
+
+	* g++.dg/warn/pr33738.C: Added -fno-short-enums.
+	* g++.dg/warn/pr33738-2.C: Duplicate g++.dg/warn/pr33738.C with
+	-fshort-enums and removed xfail.
+
+2024-08-16  Torbjörn SVENSSON  <torbjorn.svensson@foss.st.com>
+
+	* g++.dg/opt/pr97315-1.C: Add -fno-short-enums.
+
+2024-08-16  Torbjörn SVENSSON  <torbjorn.svensson@foss.st.com>
+	    Yvan ROUX  <yvan.roux@foss.st.com>
+
+	* gcc.dg/signbit-5.c: Add -fwrapv and remove x86 exception.
+
+2024-08-16  Gaius Mulley  <gaiusmod2@gmail.com>
+
+	PR modula2/116378
+	* gm2/extensions/run/pass/testopen.mod: Add third argument
+	for open.
+	* gm2/isolib/run/pass/openlibc.mod: Ditto.
+	* gm2/pim/run/pass/testaddr3.mod: Ditto.
+
+2024-08-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/110345
+	* g++.dg/cpp0x/gen-attrs-84.C: New test.
+
+2024-08-16  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR target/113042
+	* gcc.target/aarch64/popcnt5.c: New test.
+	* gcc.target/aarch64/popcnt6.c: New test.
+	* gcc.target/aarch64/popcnt7.c: New test.
+	* gcc.target/aarch64/popcnt8.c: New test.
+
+2024-08-15  Vineet Gupta  <vineetg@rivosinc.com>
+
+	* gcc.target/riscv/fclass.c: New tests.
+
+2024-08-15  Roger Sayle  <roger@nextmovesoftware.com>
+	    Uros Bizjak  <ubizjak@gmail.com>
+
+	* g++.target/i386/pr116275-2.C: New test case.
+
+2024-08-15  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/115583
+	* g++.dg/cpp23/consteval-if13.C: Compile with -O.
+
+2024-08-15  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR testsuite/116343
+	* gcc.dg/torture/pr116343.c: New test.
+
+2024-08-15  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	PR fortran/110033
+	* gfortran.dg/coarray/associate_1.f90: New test.
+
+2024-08-15  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/116320
+	* g++.dg/template/access42.C: New test.
+
+2024-08-15  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/116327
+	PR c++/104981
+	PR c++/115550
+	* g++.dg/coroutines/pr104981-preview-this.C: Improve coverage by
+	adding a non-static data member use within the coroutine member
+	function.
+	* g++.dg/coroutines/pr116327-preview-this.C: New test.
+
+2024-08-15  Xi Ruoyao  <xry111@xry111.site>
+
+	* gcc.target/loongarch/fclass-compile.c: New test.
+	* gcc.target/loongarch/fclass-run.c: New test.
+
+2024-08-15  liuhongt  <hongtao.liu@intel.com>
+
+	* gcc.target/i386/pr116274.c: New test.
+	* gcc.target/i386/pr113560.c: Scan either mulq or mulx.
+
+2024-08-15  Richard Sandiford  <richard.sandiford@arm.com>
+
+	PR target/116371
+	* gcc.target/aarch64/sme2/acle-asm/pext_c16.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_c16_x2.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_c32.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_c32_x2.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_c64.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_c64_x2.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_c8.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_c8_x2.c: Replace with...
+	* gcc.target/aarch64/sme2/acle-asm/pext_lane_c16.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_lane_c16_x2.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_lane_c32.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_lane_c32_x2.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_lane_c64.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_lane_c64_x2.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_lane_c8.c,
+	gcc.target/aarch64/sme2/acle-asm/pext_lane_c8_x2.c: ...these new tests,
+	testing for svpext_lane instead of svpext.
+
+2024-08-15  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	* gcc.target/powerpc/float128-cmp2-runnable.c: Replace
+	ppc_float128_sw with ppc_float128_hw and remove p9vector_hw.
+
+2024-08-15  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	PR target/97786
+	* gcc.target/powerpc/pr97786-7.c: New test.
+	* gcc.target/powerpc/pr97786-8.c: New test.
+
+2024-08-15  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	PR target/97786
+	* gcc.target/powerpc/pr97786-4.c: New test.
+	* gcc.target/powerpc/pr97786-5.c: New test.
+
+2024-08-15  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	PR target/97786
+	* gcc.target/powerpc/pr97786-1.c: New test.
+	* gcc.target/powerpc/pr97786-2.c: New test.
+
+2024-08-15  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	* gcc.dg/tree-ssa/range-isnormal.c: New test.
+
+2024-08-15  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	* gcc.dg/tree-ssa/range-isfinite.c: New test.
+
+2024-08-15  Haochen Gui  <guihaoc@gcc.gnu.org>
+
+	PR target/114678
+	* gcc.dg/tree-ssa/range-isinf.c: New test.
+	* gcc.dg/tree-ssa/range-sincos.c: Remove xfail for s390.
+	* gcc.dg/tree-ssa/vrp-float-abs-1.c: Likewise.
+
+2024-08-14  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/116015
+	* g++.dg/cpp1y/nsdmi-aggr23.C: New test.
+
+2024-08-14  Lingling Kong  <lingling.kong@intel.com>
+
+	* gcc.target/i386/pr113729.c: Add testcase for shift and rotate.
+
+2024-08-14  Lingling Kong  <lingling.kong@intel.com>
+
+	* gcc.target/i386/pr113729.c: Add more tests.
+
+2024-08-14  Lingling Kong  <lingling.kong@intel.com>
+
+	* gcc.target/i386/pr113729.c: Add more test.
+	* gcc.target/i386/pr113729-adc-sbb.c: New test.
+
+2024-08-14  Lingling Kong  <lingling.kong@intel.com>
+
+	* gcc.target/i386/pr113729.c: New test.
+
+2024-08-14  Mark Wielaard  <mark@klomp.org>
+
+	* gcc.target/riscv/rvv/base/pr116202-run-1.c (dg-do run):
+	Add target riscv_v.
+
+2024-08-14  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	* gfortran.dg/move_alloc_19.f90: New test.
+
+2024-08-14  Jeff Law  <jlaw@ventanamicro.com>
+
+	Revert:
+	2024-08-14  Jeff Law  <jlaw@ventanamicro.com>
+
+	* g++.target/m68k/m68k.exp: New test driver.
+	* g++.target/m68k/pr116244.C: New test.
+
+2024-08-14  Kewen Lin  <linkw@linux.ibm.com>
+
+	PR testsuite/116148
+	* c-c++-common/fam-in-union-alone-in-struct-2.c: Change the type of
+	member a[] of union with_fam_3 with unsigned char.
+
+2024-08-14  liuhongt  <hongtao.liu@intel.com>
+
+	* gcc.target/i386/pr116174.c: New test.
+
+2024-08-13  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	PR testsuite/116155
+	* c-c++-common/fam-in-union-alone-in-struct-1.c: Adjust
+	check to account for default_packed targets.
+
+2024-08-13  Manolis Tsamis  <manolis.tsamis@vrull.eu>
+
+	PR tree-optimization/116353
+	* gcc.target/i386/pr116353.c: New test.
+
+2024-08-13  Harald Anlauf  <anlauf@gmx.de>
+	    Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/114308
+	* gfortran.dg/abstract_type_10.f90: New test.
+
+2024-08-13  Kewen Lin  <linkw@linux.ibm.com>
+
+	PR rtl-optimization/116170
+	* gcc.target/powerpc/pr116170.c: New test.
+
+2024-08-12  Peter Bergner  <bergner@linux.ibm.com>
+
+	PR target/114759
+	* gcc.target/powerpc/pr114759-1.c: New test.
+
+2024-08-12  Edwin Lu  <ewlu@rivosinc.com>
+
+	* gcc.target/riscv/rvv/base/pr116202-run-1.c: Add mabi arg
+
+2024-08-12  Jeff Law  <jlaw@ventanamicro.com>
+
+	* g++.target/m68k/m68k.exp: New test driver.
+	* g++.target/m68k/pr116244.C: New test.
+
+2024-08-12  Manolis Tsamis  <manolis.tsamis@vrull.eu>
+
+	* gcc.target/aarch64/ifcvt_multiple_sets_rewire.c: New test.
+
+2024-08-12  Manolis Tsamis  <manolis.tsamis@vrull.eu>
+
+	* gcc.target/aarch64/ifcvt_multiple_sets_arithm.c: New test.
+
+2024-08-12  Georg-Johann Lay  <avr@gjlay.de>
+
+	PR target/85624
+	* gcc.target/avr/torture/pr85624.c: New test.
+
+2024-08-12  Joern Rennecke  <joern.rennecke@riscy-ip.com>
+
+	* gcc.c-torture/execute/20021120-1.c: Skip if not size20plus or -Os.
+	* gcc.dg/fixed-point/convert-float-4.c: Require size20plus.
+	* gcc.dg/torture/pr112282.c: Skip if -O0 unless size20plus.
+	* g++.dg/lookup/pr21802.C: Require size20plus.
+
+2024-08-12  Joern Rennecke  <joern.rennecke@riscy-ip.com>
+
+	* gcc.dg/pr107523.c: Make sure variables can fit numbers.
+	* gcc.dg/pr47893.c: Add dg-require-effective-target size20plus clause.
+	* c-c++-common/torture/builtin-clear-padding-2.c:
+	dg-require-effective-target size20plus.
+	* gcc.dg/pr115646.c: dg-require-effective-target int32plus.
+	* c-c++-common/analyzer/coreutils-sum-pr108666.c:
+	For c++, expect a warning about exceeding maximum object size
+	if not size20plus.
+	* gcc.dg/torture/inline-mem-cpy-1.c:
+	Like the included file, dg-require-effective-target ptr32plus.
+	* gcc.dg/torture/inline-mem-cmp-1.c: Likewise.
+
+2024-08-12  Kyrylo Tkachov  <ktkachov@nvidia.com>
+
+	* gcc.target/aarch64/advsimd_shl_add.c: New test.
+
+2024-08-12  Andre Vehreschild  <vehre@gcc.gnu.org>
+
+	PR fortran/85510
+	* gfortran.dg/coarray/pr85510.f90: New test.
+
+2024-08-12  Haochen Jiang  <haochen.jiang@intel.com>
+
+	* g++.dg/other/i386-2.C: Ditto.
+	* g++.dg/other/i386-3.C: Ditto.
+	* gcc.target/i386/sse-12.c: Ditto.
+	* gcc.target/i386/sse-13.c: Ditto.
+	* gcc.target/i386/sse-14.c: Ditto.
+	* gcc.target/i386/sse-22.c: Ditto.
+	* gcc.target/i386/sse-23.c: Ditto.
+
+2024-08-12  Roger Sayle  <roger@nextmovesoftware.com>
+
+	PR target/116275
+	* g++.target/i386/pr116275.C: New test case.
+
+2024-08-12  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* g++.target/loongarch/vect-ashr-lshr.C: New test.
+
+2024-08-12  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* gcc.target/loongarch/lasx-andn-iorn.c: New test.
+	* gcc.target/loongarch/lsx-andn-iorn.c: New test.
+
 2024-08-10  Xi Ruoyao  <xry111@xry111.site>
 
 	PR testsuite/70150

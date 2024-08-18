@@ -112,7 +112,7 @@ extern bool riscv_valid_base_register_p (rtx, machine_mode, bool);
 extern enum reg_class riscv_index_reg_class ();
 extern int riscv_regno_ok_for_index_p (int);
 extern int riscv_address_insns (rtx, machine_mode, bool);
-extern int riscv_const_insns (rtx);
+extern int riscv_const_insns (rtx, bool);
 extern int riscv_split_const_insns (rtx);
 extern int riscv_load_store_insns (rtx, rtx_insn *);
 extern rtx riscv_emit_move (rtx, rtx);
@@ -171,6 +171,7 @@ extern enum memmodel riscv_union_memmodels (enum memmodel, enum memmodel);
 extern bool riscv_reg_frame_related (rtx);
 extern void riscv_split_sum_of_two_s12 (HOST_WIDE_INT, HOST_WIDE_INT *,
 					HOST_WIDE_INT *);
+extern bool riscv_vector_float_type_p (const_tree type);
 
 /* Routines implemented in riscv-c.cc.  */
 void riscv_cpu_cpp_builtins (cpp_reader *);

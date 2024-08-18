@@ -3599,7 +3599,7 @@ int
 gfc_get_ha_symbol (const char *name, gfc_symbol **result)
 {
   int i;
-  gfc_symtree *st;
+  gfc_symtree *st = NULL;
 
   i = gfc_get_ha_sym_tree (name, &st);
 
@@ -5410,7 +5410,8 @@ gfc_is_associate_pointer (gfc_symbol* sym)
   if (!sym->assoc->variable)
     return false;
 
-  if (sym->attr.dimension && sym->as->type != AS_EXPLICIT)
+  if ((sym->attr.dimension || sym->attr.codimension)
+      && sym->as->type != AS_EXPLICIT)
     return false;
 
   return true;

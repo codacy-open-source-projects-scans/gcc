@@ -1439,6 +1439,7 @@ resolve_structure_cons (gfc_expr *expr, int init)
 	      cons->expr->where = para->where;
 	      cons->expr->expr_type = EXPR_ARRAY;
 	      cons->expr->rank = para->rank;
+	      cons->expr->corank = para->corank;
 	      cons->expr->shape = gfc_copy_shape (para->shape, para->rank);
 	      gfc_constructor_append_expr (&cons->expr->value.constructor,
 					   para, &cons->expr->where);
@@ -2180,13 +2181,14 @@ resolve_actual_arglist (gfc_actual_arglist *arg, procedure_type ptype,
 	  || (sym->ts.type == BT_CLASS && sym->attr.class_ok
 	      && CLASS_DATA (sym)->as))
 	{
-	  e->rank = sym->ts.type == BT_CLASS
-		    ? CLASS_DATA (sym)->as->rank : sym->as->rank;
+	  gfc_array_spec *as
+	    = sym->ts.type == BT_CLASS ? CLASS_DATA (sym)->as : sym->as;
+	  e->rank = as->rank;
+	  e->corank = as->corank;
 	  e->ref = gfc_get_ref ();
 	  e->ref->type = REF_ARRAY;
 	  e->ref->u.ar.type = AR_FULL;
-	  e->ref->u.ar.as = sym->ts.type == BT_CLASS
-			    ? CLASS_DATA (sym)->as : sym->as;
+	  e->ref->u.ar.as = as;
 	}
 
       /* These symbols are set untyped by calls to gfc_set_default_type
@@ -2355,6 +2357,7 @@ resolve_elemental_actual (gfc_expr *expr, gfc_code *c)
 	  if (expr)
 	    {
 	      expr->rank = rank;
+	      expr->corank = arg->expr->corank;
 	      if (!expr->shape && arg->expr->shape)
 		{
 		  expr->shape = gfc_get_shape (rank);
@@ -2801,9 +2804,15 @@ resolve_generic_f0 (gfc_expr *expr, gfc_symbol *sym)
 	    expr->ts = s->result->ts;
 
 	  if (s->as != NULL)
-	    expr->rank = s->as->rank;
+	    {
+	      expr->rank = s->as->rank;
+	      expr->corank = s->as->corank;
+	    }
 	  else if (s->result != NULL && s->result->as != NULL)
-	    expr->rank = s->result->as->rank;
+	    {
+	      expr->rank = s->result->as->rank;
+	      expr->corank = s->result->as->corank;
+	    }
 
 	  gfc_set_sym_referenced (expr->value.function.esym);
 
@@ -2943,9 +2952,15 @@ found:
   if (sym->ts.type == BT_CLASS && !CLASS_DATA (sym))
     return MATCH_ERROR;
   if (sym->ts.type == BT_CLASS && CLASS_DATA (sym)->as)
-    expr->rank = CLASS_DATA (sym)->as->rank;
+    {
+      expr->rank = CLASS_DATA (sym)->as->rank;
+      expr->corank = CLASS_DATA (sym)->as->corank;
+    }
   else if (sym->as != NULL)
-    expr->rank = sym->as->rank;
+    {
+      expr->rank = sym->as->rank;
+      expr->corank = sym->as->corank;
+    }
 
   return MATCH_YES;
 }
@@ -3066,7 +3081,10 @@ resolve_unknown_f (gfc_expr *expr)
   expr->value.function.esym = expr->symtree->n.sym;
 
   if (sym->as != NULL)
-    expr->rank = sym->as->rank;
+    {
+      expr->rank = sym->as->rank;
+      expr->corank = sym->as->corank;
+    }
 
   /* Type of the expression is either the type of the symbol or the
      default type of the symbol.  */
@@ -4606,6 +4624,33 @@ resolve_operator (gfc_expr *e)
 	    }
 	}
 
+      /* coranks have to be equal or one has to be zero to be combinable.  */
+      if (op1->corank == op2->corank || (op1->corank != 0 && op2->corank == 0))
+	{
+	  e->corank = op1->corank;
+	  /* Only do this, when regular array has not set a shape yet.  */
+	  if (e->shape == NULL)
+	    {
+	      if (op1->corank != 0)
+		{
+		  e->shape = gfc_copy_shape (op1->shape, op1->corank);
+		}
+	    }
+	}
+      else if (op1->corank == 0 && op2->corank != 0)
+	{
+	  e->corank = op2->corank;
+	  /* Only do this, when regular array has not set a shape yet.  */
+	  if (e->shape == NULL)
+	    e->shape = gfc_copy_shape (op2->shape, op2->corank);
+	}
+      else
+	{
+	  gfc_error ("Inconsistent coranks for operator at %L and %L",
+		     &op1->where, &op2->where);
+	  return false;
+	}
+
       break;
 
     case INTRINSIC_PARENTHESES:
@@ -4614,6 +4659,7 @@ resolve_operator (gfc_expr *e)
     case INTRINSIC_UMINUS:
       /* Simply copy arrayness attribute */
       e->rank = op1->rank;
+      e->corank = op1->corank;
 
       if (e->shape == NULL)
 	e->shape = gfc_copy_shape (op1->shape, op1->rank);
@@ -5651,8 +5697,8 @@ fail:
 void
 gfc_expression_rank (gfc_expr *e)
 {
-  gfc_ref *ref;
-  int i, rank;
+  gfc_ref *ref, *last_arr_ref = nullptr;
+  int i, rank, corank;
 
   /* Just to make sure, because EXPR_COMPCALL's also have an e->ref and that
      could lead to serious confusion...  */
@@ -5664,22 +5710,42 @@ gfc_expression_rank (gfc_expr *e)
 	goto done;
       /* Constructors can have a rank different from one via RESHAPE().  */
 
-      e->rank = ((e->symtree == NULL || e->symtree->n.sym->as == NULL)
-		 ? 0 : e->symtree->n.sym->as->rank);
+      if (e->symtree != NULL)
+	{
+	  /* After errors the ts.u.derived of a CLASS might not be set.  */
+	  gfc_array_spec *as = (e->symtree->n.sym->ts.type == BT_CLASS
+				&& e->symtree->n.sym->ts.u.derived
+				&& CLASS_DATA (e->symtree->n.sym))
+				 ? CLASS_DATA (e->symtree->n.sym)->as
+				 : e->symtree->n.sym->as;
+	  if (as)
+	    {
+	      e->rank = as->rank;
+	      e->corank = as->corank;
+	      goto done;
+	    }
+	}
+      e->rank = 0;
+      e->corank = 0;
       goto done;
     }
 
   rank = 0;
+  corank = 0;
 
   for (ref = e->ref; ref; ref = ref->next)
     {
       if (ref->type == REF_COMPONENT && ref->u.c.component->attr.proc_pointer
 	  && ref->u.c.component->attr.function && !ref->next)
-	rank = ref->u.c.component->as ? ref->u.c.component->as->rank : 0;
+	{
+	  rank = ref->u.c.component->as ? ref->u.c.component->as->rank : 0;
+	  corank = ref->u.c.component->as ? ref->u.c.component->as->corank : 0;
+	}
 
       if (ref->type != REF_ARRAY)
 	continue;
 
+      last_arr_ref = ref;
       if (ref->u.ar.type == AR_FULL && ref->u.ar.as)
 	{
 	  rank = ref->u.ar.as->rank;
@@ -5700,8 +5766,30 @@ gfc_expression_rank (gfc_expr *e)
 	  break;
 	}
     }
+  if (last_arr_ref && last_arr_ref->u.ar.as)
+    {
+      for (i = last_arr_ref->u.ar.as->rank;
+	   i < last_arr_ref->u.ar.as->rank + last_arr_ref->u.ar.as->corank; ++i)
+	{
+	  /* For unknown dimen in non-resolved as assume full corank.  */
+	  if (last_arr_ref->u.ar.dimen_type[i] == DIMEN_STAR
+	      || (last_arr_ref->u.ar.dimen_type[i] == DIMEN_UNKNOWN
+		  && !last_arr_ref->u.ar.as->resolved))
+	    {
+	      corank = last_arr_ref->u.ar.as->corank;
+	      break;
+	    }
+	  else if (last_arr_ref->u.ar.dimen_type[i] == DIMEN_RANGE
+		   || last_arr_ref->u.ar.dimen_type[i] == DIMEN_VECTOR
+		   || last_arr_ref->u.ar.dimen_type[i] == DIMEN_THIS_IMAGE)
+	    corank++;
+	  else if (last_arr_ref->u.ar.dimen_type[i] != DIMEN_ELEMENT)
+	    gfc_internal_error ("Illegal coarray index");
+	}
+    }
 
   e->rank = rank;
+  e->corank = corank;
 
 done:
   expression_shape (e);
@@ -5719,7 +5807,9 @@ gfc_op_rank_conformable (gfc_expr *op1, gfc_expr *op2)
   if (op2->expr_type == EXPR_VARIABLE)
     gfc_expression_rank (op2);
 
-  return (op1->rank == 0 || op2->rank == 0 || op1->rank == op2->rank);
+  return (op1->rank == 0 || op2->rank == 0 || op1->rank == op2->rank)
+	 && (op1->corank == 0 || op2->corank == 0
+	     || op1->corank == op2->corank);
 }
 
 
@@ -5746,6 +5836,7 @@ add_caf_get_intrinsic (gfc_expr *e)
 				      "caf_get", tmp_expr->where, 1, tmp_expr);
   wrapper->ts = e->ts;
   wrapper->rank = e->rank;
+  wrapper->corank = e->corank;
   if (e->rank)
     wrapper->shape = gfc_copy_shape (e->shape, e->rank);
   *e = *wrapper;
@@ -5926,7 +6017,8 @@ resolve_variable (gfc_expr *e)
     {
       if (sym->ts.type == BT_CLASS)
 	gfc_fix_class_refs (e);
-      if (!sym->attr.dimension && e->ref && e->ref->type == REF_ARRAY)
+      if (!sym->attr.dimension && !sym->attr.codimension && e->ref
+	  && e->ref->type == REF_ARRAY)
 	{
 	  /* Unambiguously scalar!  */
 	  if (sym->assoc->target
@@ -5936,7 +6028,8 @@ resolve_variable (gfc_expr *e)
 		       sym->name, &e->where);
 	  return false;
 	}
-      else if (sym->attr.dimension && (!e->ref || e->ref->type != REF_ARRAY))
+      else if ((sym->attr.dimension || sym->attr.codimension)
+	       && (!e->ref || e->ref->type != REF_ARRAY))
 	{
 	  /* This can happen because the parser did not detect that the
 	     associate name is an array and the expression had no array
@@ -5951,7 +6044,6 @@ resolve_variable (gfc_expr *e)
 	    }
 	  ref->next = e->ref;
 	  e->ref = ref;
-
 	}
     }
 
@@ -5960,7 +6052,7 @@ resolve_variable (gfc_expr *e)
 
   /* On the other hand, the parser may not have known this is an array;
      in this case, we have to add a FULL reference.  */
-  if (sym->assoc && sym->attr.dimension && !e->ref)
+  if (sym->assoc && (sym->attr.dimension || sym->attr.codimension) && !e->ref)
     {
       e->ref = gfc_get_ref ();
       e->ref->type = REF_ARRAY;
@@ -5973,7 +6065,8 @@ resolve_variable (gfc_expr *e)
      the full array ref to _vptr or _len refs.  */
   if (sym->assoc && sym->ts.type == BT_CLASS && sym->ts.u.derived
       && CLASS_DATA (sym)
-      && CLASS_DATA (sym)->attr.dimension
+      && (CLASS_DATA (sym)->attr.dimension
+	  || CLASS_DATA (sym)->attr.codimension)
       && (e->ts.type != BT_DERIVED || !e->ts.u.derived->attr.vtype))
     {
       gfc_ref *ref, *newref;
@@ -6114,10 +6207,12 @@ resolve_variable (gfc_expr *e)
   /* If a symbol has been host_associated mark it.  This is used latter,
      to identify if aliasing is possible via host association.  */
   if (sym->attr.flavor == FL_VARIABLE
-	&& gfc_current_ns->parent
-	&& (gfc_current_ns->parent == sym->ns
-	      || (gfc_current_ns->parent->parent
-		    && gfc_current_ns->parent->parent == sym->ns)))
+      && (!sym->ns->code || sym->ns->code->op != EXEC_BLOCK
+	  || !sym->ns->code->ext.block.assoc)
+      && gfc_current_ns->parent
+      && (gfc_current_ns->parent == sym->ns
+	  || (gfc_current_ns->parent->parent
+	      && gfc_current_ns->parent->parent == sym->ns)))
     sym->attr.host_assoc = 1;
 
   if (gfc_current_ns->proc_name
@@ -6217,6 +6312,7 @@ gfc_fixup_inferred_type_refs (gfc_expr *e)
   if (sym->ts.type != BT_DERIVED && sym->ts.type != BT_CLASS)
     {
       sym->attr.dimension = sym->assoc->target->rank ? 1 : 0;
+      sym->attr.codimension = sym->assoc->target->corank ? 1 : 0;
       if (!sym->attr.dimension && e->ref->type == REF_ARRAY)
 	{
 	  ref = e->ref;
@@ -6280,8 +6376,11 @@ gfc_fixup_inferred_type_refs (gfc_expr *e)
       && sym->assoc->target->ts.type == BT_CLASS)
     {
       e->rank = CLASS_DATA (sym)->as ? CLASS_DATA (sym)->as->rank : 0;
+      e->corank = CLASS_DATA (sym)->as ? CLASS_DATA (sym)->as->corank : 0;
       sym->attr.dimension = 0;
+      sym->attr.codimension = 0;
       CLASS_DATA (sym)->attr.dimension = e->rank ? 1 : 0;
+      CLASS_DATA (sym)->attr.codimension = e->corank ? 1 : 0;
       if (e->ref && (e->ref->type != REF_COMPONENT
 		     || e->ref->u.c.component->name[0] != '_'))
 	{
@@ -6461,6 +6560,7 @@ check_host_association (gfc_expr *e)
 	      gfc_free_ref_list (e->ref);
 	      e->ref = NULL;
 	      e->rank = sym->as ? sym->as->rank : 0;
+	      e->corank = sym->as ? sym->as->corank : 0;
 	    }
 
 	  gfc_resolve_expr (e);
@@ -7083,7 +7183,10 @@ resolve_compcall (gfc_expr* e, const char **name)
 
   /* Take the rank from the function's symbol.  */
   if (e->value.compcall.tbp->u.specific->n.sym->as)
-    e->rank = e->value.compcall.tbp->u.specific->n.sym->as->rank;
+    {
+      e->rank = e->value.compcall.tbp->u.specific->n.sym->as->rank;
+      e->corank = e->value.compcall.tbp->u.specific->n.sym->as->corank;
+    }
 
   /* For now, we simply transform it into an EXPR_FUNCTION call with the same
      arglist to the TBP's binding target.  */
@@ -7408,7 +7511,10 @@ resolve_expr_ppc (gfc_expr* e)
   e->value.function.actual = e->value.compcall.actual;
   e->ts = comp->ts;
   if (comp->as != NULL)
-    e->rank = comp->as->rank;
+    {
+      e->rank = comp->as->rank;
+      e->corank = comp->as->corank;
+    }
 
   if (!comp->attr.function)
     gfc_add_function (&comp->attr, comp->name, &e->where);
@@ -9480,8 +9586,8 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
 	    sym->as = gfc_copy_array_spec (CLASS_DATA (target)->as);
 	  attr = CLASS_DATA (sym) ? CLASS_DATA (sym)->attr : sym->attr;
 	  sym->attr.dimension = target->rank ? 1 : 0;
-	  gfc_change_class (&sym->ts, &attr, sym->as,
-			    target->rank, gfc_get_corank (target));
+	  gfc_change_class (&sym->ts, &attr, sym->as, target->rank,
+			    target->corank);
 	  sym->as = NULL;
 	}
       else if (target->ts.type == BT_DERIVED
@@ -9498,8 +9604,8 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
 	  sym->ts = target->ts;
 	  attr = CLASS_DATA (sym) ? CLASS_DATA (sym)->attr : sym->attr;
 	  sym->attr.dimension = target->rank ? 1 : 0;
-	  gfc_change_class (&sym->ts, &attr, sym->as,
-			    target->rank, gfc_get_corank (target));
+	  gfc_change_class (&sym->ts, &attr, sym->as, target->rank,
+			    target->corank);
 	  sym->as = NULL;
 	  target->ts = sym->ts;
 	}
@@ -9553,6 +9659,7 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
 	       && CLASS_DATA (target)->as)
 	{
 	  target->rank = CLASS_DATA (target)->as->rank;
+	  target->corank = CLASS_DATA (target)->as->corank;
 	  if (!(sym->ts.type == BT_CLASS && CLASS_DATA (sym)->as))
 	    {
 	      sym->ts = target->ts;
@@ -9596,32 +9703,35 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
   if (target->ts.type == BT_CLASS)
     gfc_fix_class_refs (target);
 
-  if (target->rank != 0 && !sym->attr.select_rank_temporary)
+  if ((target->rank != 0 || target->corank != 0)
+      && !sym->attr.select_rank_temporary)
     {
       gfc_array_spec *as;
       /* The rank may be incorrectly guessed at parsing, therefore make sure
 	 it is corrected now.  */
-      if (sym->ts.type != BT_CLASS && !sym->as)
+      if (sym->ts.type != BT_CLASS
+	  && (!sym->as || sym->as->corank != target->corank))
 	{
 	  if (!sym->as)
 	    sym->as = gfc_get_array_spec ();
 	  as = sym->as;
 	  as->rank = target->rank;
 	  as->type = AS_DEFERRED;
-	  as->corank = gfc_get_corank (target);
+	  as->corank = target->corank;
 	  sym->attr.dimension = 1;
 	  if (as->corank != 0)
 	    sym->attr.codimension = 1;
 	}
-      else if (sym->ts.type == BT_CLASS
-	       && CLASS_DATA (sym) && !CLASS_DATA (sym)->as)
+      else if (sym->ts.type == BT_CLASS && CLASS_DATA (sym)
+	       && (!CLASS_DATA (sym)->as
+		   || CLASS_DATA (sym)->as->corank != target->corank))
 	{
 	  if (!CLASS_DATA (sym)->as)
 	    CLASS_DATA (sym)->as = gfc_get_array_spec ();
 	  as = CLASS_DATA (sym)->as;
 	  as->rank = target->rank;
 	  as->type = AS_DEFERRED;
-	  as->corank = gfc_get_corank (target);
+	  as->corank = target->corank;
 	  CLASS_DATA (sym)->attr.dimension = 1;
 	  if (as->corank != 0)
 	    CLASS_DATA (sym)->attr.codimension = 1;
@@ -9640,6 +9750,9 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
 	     correct this now.  */
 	  gfc_typespec *ts = &target->ts;
 	  gfc_ref *ref;
+	  /* Internal_ref is true, when this is ref'ing only _data and co-ref.
+	   */
+	  bool internal_ref = true;
 
 	  for (ref = target->ref; ref != NULL; ref = ref->next)
 	    {
@@ -9647,26 +9760,41 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
 		{
 		case REF_COMPONENT:
 		  ts = &ref->u.c.component->ts;
+		  internal_ref
+		    = target->ref == ref && ref->next
+		      && strncmp ("_data", ref->u.c.component->name, 5) == 0;
 		  break;
 		case REF_ARRAY:
 		  if (ts->type == BT_CLASS)
 		    ts = &ts->u.derived->components->ts;
+		  if (internal_ref && ref->u.ar.codimen > 0)
+		    for (int i = ref->u.ar.dimen;
+			 internal_ref
+			 && i < ref->u.ar.dimen + ref->u.ar.codimen;
+			 ++i)
+		      internal_ref
+			= ref->u.ar.dimen_type[i] == DIMEN_THIS_IMAGE;
 		  break;
 		default:
 		  break;
 		}
 	    }
-	  /* Create a scalar instance of the current class type.  Because the
-	     rank of a class array goes into its name, the type has to be
-	     rebuilt.  The alternative of (re-)setting just the attributes
-	     and as in the current type, destroys the type also in other
-	     places.  */
-	  as = NULL;
-	  sym->ts = *ts;
-	  sym->ts.type = BT_CLASS;
-	  attr = CLASS_DATA (sym) ? CLASS_DATA (sym)->attr : sym->attr;
-	  gfc_change_class (&sym->ts, &attr, as, 0, 0);
-	  sym->as = NULL;
+	  /* Only rewrite the type of this symbol, when the refs are not the
+	     internal ones for class and co-array this-image.  */
+	  if (!internal_ref)
+	    {
+	      /* Create a scalar instance of the current class type.  Because
+		 the rank of a class array goes into its name, the type has to
+		 be rebuilt.  The alternative of (re-)setting just the
+		 attributes and as in the current type, destroys the type also
+		 in other places.  */
+	      as = NULL;
+	      sym->ts = *ts;
+	      sym->ts.type = BT_CLASS;
+	      attr = CLASS_DATA (sym) ? CLASS_DATA (sym)->attr : sym->attr;
+	      gfc_change_class (&sym->ts, &attr, as, 0, 0);
+	      sym->as = NULL;
+	    }
 	}
     }
 
@@ -9731,8 +9859,8 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
    This is corrected here as well.*/
 
 static void
-fixup_array_ref (gfc_expr **expr1, gfc_expr *expr2,
-		 int rank, gfc_ref *ref)
+fixup_array_ref (gfc_expr **expr1, gfc_expr *expr2, int rank, int corank,
+		 gfc_ref *ref)
 {
   gfc_ref *nref = (*expr1)->ref;
   gfc_symbol *sym1 = (*expr1)->symtree->n.sym;
@@ -9740,6 +9868,7 @@ fixup_array_ref (gfc_expr **expr1, gfc_expr *expr2,
   gfc_expr *selector = gfc_copy_expr (expr2);
 
   (*expr1)->rank = rank;
+  (*expr1)->corank = corank;
   if (selector)
     {
       gfc_resolve_expr (selector);
@@ -9760,14 +9889,16 @@ fixup_array_ref (gfc_expr **expr1, gfc_expr *expr2,
       if ((*expr1)->ts.type != BT_CLASS)
 	(*expr1)->ts = sym1->ts;
 
-      CLASS_DATA (sym1)->attr.dimension = 1;
+      CLASS_DATA (sym1)->attr.dimension = rank > 0 ? 1 : 0;
+      CLASS_DATA (sym1)->attr.codimension = corank > 0 ? 1 : 0;
       if (CLASS_DATA (sym1)->as == NULL && sym2)
 	CLASS_DATA (sym1)->as
 		= gfc_copy_array_spec (CLASS_DATA (sym2)->as);
     }
   else
     {
-      sym1->attr.dimension = 1;
+      sym1->attr.dimension = rank > 0 ? 1 : 0;
+      sym1->attr.codimension = corank > 0 ? 1 : 0;
       if (sym1->as == NULL && sym2)
 	sym1->as = gfc_copy_array_spec (sym2->as);
     }
@@ -9780,6 +9911,12 @@ fixup_array_ref (gfc_expr **expr1, gfc_expr *expr2,
     nref->next = gfc_copy_ref (ref);
   else if (ref && !nref)
     (*expr1)->ref = gfc_copy_ref (ref);
+  else if (ref && nref->u.ar.codimen != corank)
+    {
+      for (int i = nref->u.ar.dimen; i < GFC_MAX_DIMENSIONS; ++i)
+	nref->u.ar.dimen_type[i] = DIMEN_THIS_IMAGE;
+      nref->u.ar.codimen = corank;
+    }
 }
 
 
@@ -9816,11 +9953,16 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
   char name[GFC_MAX_SYMBOL_LEN + 12 + 1];
   gfc_namespace *ns;
   int error = 0;
-  int rank = 0;
+  int rank = 0, corank = 0;
   gfc_ref* ref = NULL;
   gfc_expr *selector_expr = NULL;
 
   ns = code->ext.block.ns;
+  if (code->expr2)
+    {
+      /* Set this, or coarray checks in resolve will fail.  */
+      code->expr1->symtree->n.sym->attr.select_type_temporary = 1;
+    }
   gfc_resolve (ns);
 
   /* Check for F03:C813.  */
@@ -9832,7 +9974,10 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
       return;
     }
 
-  if (!code->expr1->symtree->n.sym->attr.class_ok)
+  /* Prevent segfault, when class type is not initialized due to previous
+     error.  */
+  if (!code->expr1->symtree->n.sym->attr.class_ok
+      || (code->expr1->ts.type == BT_CLASS && !code->expr1->ts.u.derived))
     return;
 
   if (code->expr2)
@@ -9863,10 +10008,12 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
 	    ? CLASS_DATA (code->expr2)->ts.u.derived : code->expr2->ts.u.derived;
 	}
 
-      if (code->expr2->rank
-	  && code->expr1->ts.type == BT_CLASS
-	  && CLASS_DATA (code->expr1)->as)
-	CLASS_DATA (code->expr1)->as->rank = code->expr2->rank;
+      if (code->expr1->ts.type == BT_CLASS && CLASS_DATA (code->expr1)->as)
+	{
+	  CLASS_DATA (code->expr1)->as->rank = code->expr2->rank;
+	  CLASS_DATA (code->expr1)->as->corank = code->expr2->corank;
+	  CLASS_DATA (code->expr1)->as->cotype = AS_DEFERRED;
+	}
 
       /* F2008: C803 The selector expression must not be coindexed.  */
       if (gfc_is_coindexed (code->expr2))
@@ -10003,9 +10150,10 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
 
   /* Ensure that the selector rank and arrayspec are available to
      correct expressions in which they might be missing.  */
-  if (code->expr2 && code->expr2->rank)
+  if (code->expr2 && (code->expr2->rank || code->expr2->corank))
     {
       rank = code->expr2->rank;
+      corank = code->expr2->corank;
       for (ref = code->expr2->ref; ref; ref = ref->next)
 	if (ref->next == NULL)
 	  break;
@@ -10013,12 +10161,13 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
 	ref = gfc_copy_ref (ref);
 
       /* Fixup expr1 if necessary.  */
-      if (rank)
-	fixup_array_ref (&code->expr1, code->expr2, rank, ref);
+      if (rank || corank)
+	fixup_array_ref (&code->expr1, code->expr2, rank, corank, ref);
     }
-  else if (code->expr1->rank)
+  else if (code->expr1->rank || code->expr1->corank)
     {
       rank = code->expr1->rank;
+      corank = code->expr1->corank;
       for (ref = code->expr1->ref; ref; ref = ref->next)
 	if (ref->next == NULL)
 	  break;
@@ -10045,6 +10194,7 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
      expression has to be set to zero.  */
   gfc_add_vptr_component (code->expr1);
   code->expr1->rank = 0;
+  code->expr1->corank = 0;
   code->expr1 = build_loc_call (code->expr1);
   selector_expr = code->expr1->value.function.actual->expr;
 
@@ -10119,8 +10269,9 @@ resolve_select_type (gfc_code *code, gfc_namespace *old_ns)
 	{
 	  gfc_add_data_component (st->n.sym->assoc->target);
 	  /* Fixup the target expression if necessary.  */
-	  if (rank)
-	    fixup_array_ref (&st->n.sym->assoc->target, NULL, rank, ref);
+	  if (rank || corank)
+	    fixup_array_ref (&st->n.sym->assoc->target, nullptr, rank, corank,
+			     ref);
 	}
 
       new_st = gfc_get_code (EXEC_BLOCK);
@@ -11755,6 +11906,7 @@ add_comp_ref (gfc_expr *e, gfc_component *c)
     {
       gfc_add_full_array_ref (e, c->as);
       e->rank = c->as->rank;
+      e->corank = c->as->corank;
     }
 }
 
@@ -11849,15 +12001,17 @@ get_temp_from_expr (gfc_expr *e, gfc_namespace *ns)
       if (as->type == AS_DEFERRED)
 	tmp->n.sym->attr.allocatable = 1;
     }
-  else if (e->rank && (e->expr_type == EXPR_ARRAY
-		       || e->expr_type == EXPR_FUNCTION
-		       || e->expr_type == EXPR_OP))
+  else if ((e->rank || e->corank)
+	   && (e->expr_type == EXPR_ARRAY || e->expr_type == EXPR_FUNCTION
+	       || e->expr_type == EXPR_OP))
     {
       tmp->n.sym->as = gfc_get_array_spec ();
       tmp->n.sym->as->type = AS_DEFERRED;
       tmp->n.sym->as->rank = e->rank;
+      tmp->n.sym->as->corank = e->corank;
       tmp->n.sym->attr.allocatable = 1;
-      tmp->n.sym->attr.dimension = 1;
+      tmp->n.sym->attr.dimension = e->rank ? 1 : 0;
+      tmp->n.sym->attr.codimension = e->corank ? 1 : 0;
     }
   else
     tmp->n.sym->attr.dimension = 0;
@@ -13654,7 +13808,9 @@ resolve_fl_var_and_proc (gfc_symbol *sym, int mp_flag)
       /* Assume that use associated symbols were checked in the module ns.
 	 Class-variables that are associate-names are also something special
 	 and excepted from the test.  */
-      if (!sym->attr.class_ok && !sym->attr.use_assoc && !sym->assoc)
+      if (!sym->attr.class_ok && !sym->attr.use_assoc && !sym->assoc
+	  && !sym->attr.select_type_temporary
+	  && !sym->attr.select_rank_temporary)
 	{
 	  gfc_error ("CLASS variable %qs at %L must be dummy, allocatable "
 		     "or pointer", sym->name, &sym->declared_at);
@@ -16439,6 +16595,7 @@ resolve_symbol (gfc_symbol *sym)
 		  sym->ts = sym->result->ts;
 		  sym->as = gfc_copy_array_spec (sym->result->as);
 		  sym->attr.dimension = sym->result->attr.dimension;
+		  sym->attr.codimension = sym->result->attr.codimension;
 		  sym->attr.pointer = sym->result->attr.pointer;
 		  sym->attr.allocatable = sym->result->attr.allocatable;
 		  sym->attr.contiguous = sym->result->attr.contiguous;
