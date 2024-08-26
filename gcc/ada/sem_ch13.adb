@@ -1982,6 +1982,11 @@ package body Sem_Ch13 is
                   Error_Msg_N
                     ("aspect must apply to a type with discriminants", Expr);
 
+               elsif not Is_First_Subtype (E) then
+                  Error_Msg_N
+                    ("aspect not specifiable in a subtype declaration",
+                     Aspect);
+
                elsif not Is_Entity_Name (Expr) then
                   Error_Msg_N
                     ("aspect must name a discriminant of current type", Expr);
@@ -4510,6 +4515,55 @@ package body Sem_Ch13 is
                              Make_Pragma_Argument_Association (Sloc (Ent),
                                Expression => Ent)),
                            Pragma_Name                  => Nam);
+                     end if;
+
+                     --  Minimum check of First_Controlling_Parameter aspect;
+                     --  the checks shared by the aspect and its corresponding
+                     --  pragma are performed when the pragma is analyzed.
+
+                     if A_Id = Aspect_First_Controlling_Parameter then
+                        if Present (Expr) then
+                           Analyze (Expr);
+                        end if;
+
+                        if (No (Expr) or else Entity (Expr) = Standard_True)
+                          and then not Core_Extensions_Allowed
+                        then
+                           goto Continue;
+                        end if;
+
+                        if not (Is_Type (E)
+                                  and then
+                                    (Is_Tagged_Type (E)
+                                       or else Is_Concurrent_Type (E)))
+                        then
+                           Error_Msg_N
+                             ("aspect 'First_'Controlling_'Parameter can only "
+                              & "apply to tagged type or concurrent type",
+                              Aspect);
+                           goto Continue;
+                        end if;
+
+                        --  If the aspect is specified for a derived type, the
+                        --  specified value shall be confirming.
+
+                        if Present (Expr)
+                          and then Is_Derived_Type (E)
+                          and then
+                            Has_First_Controlling_Parameter_Aspect (Etype (E))
+                          and then Entity (Expr) = Standard_False
+                        then
+                           Error_Msg_Name_1 := Nam;
+                           Error_Msg_N
+                             ("specification of inherited aspect% can only "
+                               & "confirm parent value", Id);
+                        end if;
+
+                        --  Given that the aspect has been explicitly given,
+                        --  we take note to avoid checking for its implicit
+                        --  inheritance (see Analyze_Full_Type_Declaration).
+
+                        Set_Has_First_Controlling_Parameter_Aspect (E);
                      end if;
 
                   --  In general cases, the corresponding pragma/attribute
@@ -13931,8 +13985,8 @@ package body Sem_Ch13 is
         (E   : Entity_Id;
          Nam : Name_Id) return Node_Id
       is
-         Rep : constant Node_Id
-                 := Get_Rep_Item (E, Nam, Check_Parents => True);
+         Rep : constant Node_Id :=
+           Get_Rep_Item (E, Nam, Check_Parents => True);
       begin
          if Present (Rep)
            and then not Has_Rep_Item (E, Nam, Check_Parents => False)
@@ -13948,8 +14002,8 @@ package body Sem_Ch13 is
          Nam1 : Name_Id;
          Nam2 : Name_Id) return Node_Id
       is
-         Rep : constant Node_Id
-                 := Get_Rep_Item (E, Nam1, Nam2, Check_Parents => True);
+         Rep : constant Node_Id :=
+           Get_Rep_Item (E, Nam1, Nam2, Check_Parents => True);
       begin
          if Present (Rep)
            and then not Has_Rep_Item (E, Nam1, Nam2, Check_Parents => False)
@@ -16364,8 +16418,8 @@ package body Sem_Ch13 is
       end if;
 
       declare
-         Set : constant Local_Restriction_Set
-           := Parse_Aspect_Local_Restrictions (Parent (N));
+         Set : constant Local_Restriction_Set :=
+           Parse_Aspect_Local_Restrictions (Parent (N));
          pragma Unreferenced (Set);
       begin
          null;

@@ -8574,6 +8574,21 @@ package body Exp_Util is
                   and then Is_Formal (Entity (N)));
    end Is_Conversion_Or_Reference_To_Formal;
 
+   --------------------------------------------------
+   -- Is_Expanded_Class_Wide_Interface_Object_Decl --
+   --------------------------------------------------
+
+   function Is_Expanded_Class_Wide_Interface_Object_Decl
+      (N : Node_Id) return Boolean is
+   begin
+      return not Comes_From_Source (N)
+        and then Nkind (Original_Node (N)) = N_Object_Declaration
+        and then Nkind (N) = N_Object_Renaming_Declaration
+        and then Is_Class_Wide_Type (Etype (Defining_Identifier (N)))
+        and then Is_Interface (Etype (Defining_Identifier (N)))
+        and then Nkind (Name (N)) = N_Explicit_Dereference;
+   end Is_Expanded_Class_Wide_Interface_Object_Decl;
+
    ------------------------------
    -- Is_Finalizable_Transient --
    ------------------------------
@@ -8685,12 +8700,12 @@ package body Exp_Util is
                     and then Nkind (Selector_Name (Param)) = N_Identifier
                   then
                      declare
-                        Actual : constant Node_Id
-                          := Explicit_Actual_Parameter (Param);
-                        Formal : constant Node_Id
-                          := Selector_Name (Param);
-                        Name   : constant String
-                          := Get_Name_String (Chars (Formal));
+                        Actual : constant Node_Id :=
+                          Explicit_Actual_Parameter (Param);
+                        Formal : constant Node_Id :=
+                          Selector_Name (Param);
+                        Name   : constant String :=
+                          Get_Name_String (Chars (Formal));
 
                      begin
                         --  A nonnull BIPaccess has been found
@@ -10320,8 +10335,8 @@ package body Exp_Util is
       pragma Assert (Has_Invariants (Typ));
       Proc_Id  : constant Entity_Id := Invariant_Procedure (Typ);
       pragma Assert (Present (Proc_Id));
-      Inv_Typ  : constant Entity_Id
-                   := Base_Type (Etype (First_Formal (Proc_Id)));
+      Inv_Typ  : constant Entity_Id :=
+        Base_Type (Etype (First_Formal (Proc_Id)));
 
       Arg : Node_Id;
 
@@ -11565,8 +11580,8 @@ package body Exp_Util is
 
       if All_Extensions_Allowed then
          declare
-            Rep : constant Node_Id
-              := Get_Rep_Item (Typ, Name_Finalizable, Check_Parents => True);
+            Rep : constant Node_Id :=
+              Get_Rep_Item (Typ, Name_Finalizable, Check_Parents => True);
 
             Assoc : Node_Id;
 
@@ -12709,11 +12724,11 @@ package body Exp_Util is
                   --  was called).
 
                   if Is_Array_Type (Exp_Type) then
-                     Scope_Suppress.Suppress (Length_Check)
-                       := Svg_Suppress.Suppress (Length_Check);
+                     Scope_Suppress.Suppress (Length_Check) :=
+                       Svg_Suppress.Suppress (Length_Check);
                   else
-                     Scope_Suppress.Suppress (Discriminant_Check)
-                       := Svg_Suppress.Suppress (Discriminant_Check);
+                     Scope_Suppress.Suppress (Discriminant_Check) :=
+                       Svg_Suppress.Suppress (Discriminant_Check);
                   end if;
 
                   E := Make_Qualified_Expression (Loc,
@@ -13055,14 +13070,14 @@ package body Exp_Util is
       begin
          --  Examine the list of actual and formal parameters in parallel
 
-         A := First (Parameter_Associations (Call));
+         A := First_Actual (Call);
          F := First_Formal (Entity (Name (Call)));
          while Present (A) and then Present (F) loop
             if A = Actual then
                return Etype (F);
             end if;
 
-            Next (A);
+            Next_Actual (A);
             Next_Formal (F);
          end loop;
 

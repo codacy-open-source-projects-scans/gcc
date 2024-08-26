@@ -914,6 +914,37 @@ dump_final_callee_vcg (FILE *f, location_t location, tree callee)
   fputs ("\" }\n", f);
 }
 
+/* Callback for cgraph_node::call_for_symbol_thunks_and_aliases to dump to F_ a
+   node and an edge from ALIAS->DECL to CURRENT_FUNCTION_DECL.  */
+
+static bool
+dump_final_alias_vcg (cgraph_node *alias, void *f_)
+{
+  FILE *f = (FILE *)f_;
+
+  if (alias->decl == current_function_decl)
+    return false;
+
+  dump_final_node_vcg_start (f, alias->decl);
+  fputs ("\" shape : triangle }\n", f);
+
+  fputs ("edge: { sourcename: \"", f);
+  print_decl_identifier (f, alias->decl, PRINT_DECL_UNIQUE_NAME);
+  fputs ("\" targetname: \"", f);
+  print_decl_identifier (f, current_function_decl, PRINT_DECL_UNIQUE_NAME);
+  location_t location = DECL_SOURCE_LOCATION (alias->decl);
+  if (LOCATION_LOCUS (location) != UNKNOWN_LOCATION)
+    {
+      expanded_location loc;
+      fputs ("\" label: \"", f);
+      loc = expand_location (location);
+      fprintf (f, "%s:%d:%d", loc.file, loc.line, loc.column);
+    }
+  fputs ("\" }\n", f);
+
+  return false;
+}
+
 /* Dump final cgraph node in VCG format.  */
 
 static void
@@ -950,6 +981,12 @@ dump_final_node_vcg (FILE *f)
     dump_final_callee_vcg (f, c->location, c->decl);
   vec_free (cfun->su->callees);
   cfun->su->callees = NULL;
+
+  cgraph_node *node = cgraph_node::get (current_function_decl);
+  if (!node)
+    return;
+  node->call_for_symbol_thunks_and_aliases (dump_final_alias_vcg, f,
+					    true, false);
 }
 
 /* Output stack usage and callgraph info, as requested.  */
@@ -1468,6 +1505,14 @@ process_options ()
     dwarf2out_as_loc_support = dwarf2out_default_as_loc_support ();
   if (!OPTION_SET_P (dwarf2out_as_locview_support))
     dwarf2out_as_locview_support = dwarf2out_default_as_locview_support ();
+  if (dwarf2out_as_locview_support && !dwarf2out_as_loc_support)
+    {
+      if (OPTION_SET_P (dwarf2out_as_locview_support))
+	warning_at (UNKNOWN_LOCATION, 0,
+		    "%<-gas-locview-support%> is forced disabled "
+		    "without %<-gas-loc-support%>");
+      dwarf2out_as_locview_support = false;
+    }
 
   if (!OPTION_SET_P (debug_variable_location_views))
     {
@@ -1475,9 +1520,7 @@ process_options ()
 	= (flag_var_tracking
 	   && debug_info_level >= DINFO_LEVEL_NORMAL
 	   && dwarf_debuginfo_p ()
-	   && !dwarf_strict
-	   && dwarf2out_as_loc_support
-	   && dwarf2out_as_locview_support);
+	   && !dwarf_strict);
     }
   else if (debug_variable_location_views == -1 && dwarf_version != 5)
     {

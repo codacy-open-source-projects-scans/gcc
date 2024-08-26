@@ -2521,10 +2521,11 @@ aarch64_hard_regno_caller_save_mode (unsigned regno, unsigned,
      unnecessarily significant.  */
   if (PR_REGNUM_P (regno))
     return mode;
-  if (known_ge (GET_MODE_SIZE (mode), 4))
-    return mode;
-  else
+  if (known_lt (GET_MODE_SIZE (mode), 4)
+      && REG_CAN_CHANGE_MODE_P (regno, mode, SImode)
+      && REG_CAN_CHANGE_MODE_P (regno, SImode, mode))
     return SImode;
+  return mode;
 }
 
 /* Return true if I's bits are consecutive ones from the MSB.  */
@@ -16404,7 +16405,7 @@ record_potential_advsimd_unrolling (loop_vec_info loop_vinfo)
 
   /* Check whether it is possible in principle to use Advanced SIMD
      instead.  */
-  if (aarch64_autovec_preference == 2)
+  if (aarch64_autovec_preference == AARCH64_AUTOVEC_SVE_ONLY)
     return;
 
   /* We don't want to apply the heuristic to outer loops, since it's
@@ -22310,8 +22311,8 @@ static bool
 aarch64_cmp_autovec_modes (machine_mode sve_m, machine_mode asimd_m)
 {
   /* Take into account the aarch64-autovec-preference param if non-zero.  */
-  bool only_asimd_p = aarch64_autovec_preference == 1;
-  bool only_sve_p = aarch64_autovec_preference == 2;
+  bool only_asimd_p = aarch64_autovec_preference == AARCH64_AUTOVEC_ASIMD_ONLY;
+  bool only_sve_p = aarch64_autovec_preference == AARCH64_AUTOVEC_SVE_ONLY;
 
   if (only_asimd_p)
     return false;
@@ -22319,8 +22320,8 @@ aarch64_cmp_autovec_modes (machine_mode sve_m, machine_mode asimd_m)
     return true;
 
   /* The preference in case of a tie in costs.  */
-  bool prefer_asimd = aarch64_autovec_preference == 3;
-  bool prefer_sve = aarch64_autovec_preference == 4;
+  bool prefer_asimd = aarch64_autovec_preference == AARCH64_AUTOVEC_PREFER_ASIMD;
+  bool prefer_sve = aarch64_autovec_preference == AARCH64_AUTOVEC_PREFER_SVE;
 
   poly_int64 nunits_sve = GET_MODE_NUNITS (sve_m);
   poly_int64 nunits_asimd = GET_MODE_NUNITS (asimd_m);
@@ -22421,8 +22422,8 @@ aarch64_autovectorize_vector_modes (vector_modes *modes, bool)
        than an SVE main loop with N bytes then by default we'll try to
        use the SVE loop to vectorize the epilogue instead.  */
 
-  bool only_asimd_p = aarch64_autovec_preference == 1;
-  bool only_sve_p = aarch64_autovec_preference == 2;
+  bool only_asimd_p = aarch64_autovec_preference == AARCH64_AUTOVEC_ASIMD_ONLY;
+  bool only_sve_p = aarch64_autovec_preference == AARCH64_AUTOVEC_SVE_ONLY;
 
   unsigned int sve_i = (TARGET_SVE && !only_asimd_p) ? 0 : ARRAY_SIZE (sve_modes);
   unsigned int advsimd_i = 0;
@@ -26759,7 +26760,8 @@ aarch64_expand_cpymem (rtx *operands, bool is_memmove)
 	 (when !STRICT_ALIGNMENT) - this is smaller and faster.  */
       if (size > 0 && size < 16 && !STRICT_ALIGNMENT)
 	{
-	  next_mode = smallest_mode_for_size (size * BITS_PER_UNIT, MODE_INT);
+	  next_mode = smallest_mode_for_size
+	    (size * BITS_PER_UNIT, MODE_INT).require ();
 	  int n_bytes = GET_MODE_SIZE (next_mode).to_constant ();
 	  gcc_assert (n_bytes <= mode_bytes);
 	  offset -= n_bytes - size;
@@ -26870,7 +26872,8 @@ aarch64_expand_setmem (rtx *operands)
 	 (when !STRICT_ALIGNMENT) - this is smaller and faster.  */
       if (len > 0 && len < 16 && !STRICT_ALIGNMENT)
 	{
-	  next_mode = smallest_mode_for_size (len * BITS_PER_UNIT, MODE_INT);
+	  next_mode = smallest_mode_for_size
+	    (len * BITS_PER_UNIT, MODE_INT).require ();
 	  int n_bytes = GET_MODE_SIZE (next_mode).to_constant ();
 	  gcc_assert (n_bytes <= mode_bytes);
 	  offset -= n_bytes - len;

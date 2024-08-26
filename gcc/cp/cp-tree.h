@@ -6754,6 +6754,9 @@ extern bool usual_deallocation_fn_p		(tree);
 extern tree build_op_delete_call		(enum tree_code, tree, tree,
 						 bool, tree, tree,
 						 tsubst_flags_t);
+extern tree build_coroutine_op_delete_call	(enum tree_code, tree, tree,
+						 bool, tree, tree,
+						 tsubst_flags_t complain);
 extern bool can_convert				(tree, tree, tsubst_flags_t);
 extern bool can_convert_standard		(tree, tree, tsubst_flags_t);
 extern bool can_convert_arg			(tree, tree, tree, int,
@@ -7626,7 +7629,8 @@ enum { nt_opaque = false, nt_transparent = true };
 extern tree alias_template_specialization_p     (const_tree, bool);
 extern tree dependent_alias_template_spec_p     (const_tree, bool);
 extern bool dependent_opaque_alias_p            (const_tree);
-extern tree get_template_parm_object		(tree expr, tree mangle);
+extern tree get_template_parm_object		(tree expr, tree mangle,
+						 bool check_init = true);
 extern tree tparm_object_argument		(tree);
 extern bool explicit_class_specialization_p     (tree);
 extern bool push_tinst_level                    (tree);
@@ -7672,7 +7676,8 @@ extern void walk_specializations		(bool,
 							  void *),
 						 void *);
 extern tree match_mergeable_specialization	(bool is_decl, spec_entry *);
-extern unsigned get_mergeable_specialization_flags (tree tmpl, tree spec);
+extern unsigned get_mergeable_specialization_flags (bool is_decl, tree tmpl,
+						    tree spec);
 extern void add_mergeable_specialization        (bool is_decl, spec_entry *,
 						 tree outer, unsigned);
 extern tree add_to_template_args		(tree, tree);
@@ -8767,7 +8772,6 @@ extern tree finish_co_await_expr		(location_t, tree);
 extern tree finish_co_yield_expr		(location_t, tree);
 extern tree coro_validate_builtin_call		(tree,
 						 tsubst_flags_t = tf_warning_or_error);
-extern bool morph_fn_to_coro			(tree, tree *, tree *);
 extern tree coro_get_actor_function		(tree);
 extern tree coro_get_destroy_function		(tree);
 extern tree coro_get_ramp_function		(tree);

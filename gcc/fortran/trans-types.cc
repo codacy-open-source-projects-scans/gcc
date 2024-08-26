@@ -2386,7 +2386,7 @@ gfc_sym_type (gfc_symbol * sym, bool is_bind_c)
 	  else if (sym->attr.allocatable)
 	    akind = GFC_ARRAY_ALLOCATABLE;
 	  type = gfc_build_array_type (type, sym->as, akind, restricted,
-				       sym->attr.contiguous, false);
+				       sym->attr.contiguous, sym->as->corank);
 	}
     }
   else
@@ -2661,7 +2661,7 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
   tree *chain = NULL;
   bool got_canonical = false;
   bool unlimited_entity = false;
-  gfc_component *c;
+  gfc_component *c, *last_c = nullptr;
   gfc_namespace *ns;
   tree tmp;
   bool coarray_flag, class_coarray_flag;
@@ -2909,12 +2909,16 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
 	      else
 		akind = GFC_ARRAY_ALLOCATABLE;
 	      /* Pointers to arrays aren't actually pointer types.  The
-	         descriptors are separate, but the data is common.  */
-	      field_type = gfc_build_array_type (field_type, c->as, akind,
-						 !c->attr.target
-						 && !c->attr.pointer,
-						 c->attr.contiguous,
-						 codimen);
+		 descriptors are separate, but the data is common.  Every
+		 array pointer in a coarray derived type needs to provide space
+		 for the coarray management, too.  Therefore treat coarrays
+		 and pointers to coarrays in derived types the same.  */
+	      field_type = gfc_build_array_type
+		(
+		  field_type, c->as, akind, !c->attr.target && !c->attr.pointer,
+		  c->attr.contiguous,
+		  c->attr.codimension || c->attr.pointer ? codimen : 0
+		);
 	    }
 	  else
 	    field_type = gfc_get_nodesc_array_type (field_type, c->as,
@@ -2961,10 +2965,14 @@ gfc_get_derived_type (gfc_symbol * derived, int codimen)
 	 types.  */
       if (class_coarray_flag || !c->backend_decl)
 	c->backend_decl = field;
+      if (c->attr.caf_token && last_c)
+	last_c->caf_token = field;
 
       if (c->attr.pointer && (c->attr.dimension || c->attr.codimension)
 	  && !(c->ts.type == BT_DERIVED && strcmp (c->name, "_data") == 0))
 	GFC_DECL_PTR_ARRAY_P (c->backend_decl) = 1;
+
+      last_c = c;
     }
 
   /* Now lay out the derived type, including the fields.  */

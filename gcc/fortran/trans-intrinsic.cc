@@ -1945,11 +1945,14 @@ conv_caf_send (gfc_code *code) {
   tree lhs_type = NULL_TREE;
   tree vec = null_pointer_node, rhs_vec = null_pointer_node;
   symbol_attribute lhs_caf_attr, rhs_caf_attr;
+  bool lhs_is_coindexed, rhs_is_coindexed;
 
   gcc_assert (flag_coarray == GFC_FCOARRAY_LIB);
 
   lhs_expr = code->ext.actual->expr;
   rhs_expr = code->ext.actual->next->expr;
+  lhs_is_coindexed = gfc_is_coindexed (lhs_expr);
+  rhs_is_coindexed = gfc_is_coindexed (rhs_expr);
   may_require_tmp = gfc_check_dependency (lhs_expr, rhs_expr, true) == 0
 		    ? boolean_false_node : boolean_true_node;
   gfc_init_block (&block);
@@ -1966,7 +1969,8 @@ conv_caf_send (gfc_code *code) {
       if (lhs_expr->ts.type == BT_CHARACTER && lhs_expr->ts.deferred)
 	{
 	  lhs_se.expr = gfc_get_tree_for_caf_expr (lhs_expr);
-	  lhs_se.expr = gfc_build_addr_expr (NULL_TREE, lhs_se.expr);
+	  if (!POINTER_TYPE_P (TREE_TYPE (lhs_se.expr)))
+	    lhs_se.expr = gfc_build_addr_expr (NULL_TREE, lhs_se.expr);
 	}
       else
 	{
@@ -1999,7 +2003,7 @@ conv_caf_send (gfc_code *code) {
     {
       bool has_vector = gfc_has_vector_subscript (lhs_expr);
 
-      if (gfc_is_coindexed (lhs_expr) || !has_vector)
+      if (lhs_is_coindexed || !has_vector)
 	{
 	  /* If has_vector, pass descriptor for whole array and the
 	     vector bounds separately.  */
@@ -2030,7 +2034,7 @@ conv_caf_send (gfc_code *code) {
 	      *ar = ar2;
 	    }
 	}
-      else
+      else if (rhs_is_coindexed)
 	{
 	  /* Special casing for arr1 ([...]) = arr2[...], i.e. caf_get to
 	     indexed array expression.  This is rewritten to:
@@ -2122,13 +2126,12 @@ conv_caf_send (gfc_code *code) {
 
   /* Special case: RHS is a coarray but LHS is not; this code path avoids a
      temporary and a loop.  */
-  if (!gfc_is_coindexed (lhs_expr)
+  if (!lhs_is_coindexed && rhs_is_coindexed
       && (!lhs_caf_attr.codimension
 	  || !(lhs_expr->rank > 0
 	       && (lhs_caf_attr.allocatable || lhs_caf_attr.pointer))))
     {
       bool lhs_may_realloc = lhs_expr->rank > 0 && lhs_caf_attr.allocatable;
-      gcc_assert (gfc_is_coindexed (rhs_expr));
       gfc_init_se (&rhs_se, NULL);
       if (lhs_expr->rank == 0 && lhs_caf_attr.allocatable)
 	{
@@ -2217,7 +2220,7 @@ conv_caf_send (gfc_code *code) {
       bool has_vector = false;
       tree tmp2;
 
-      if (gfc_is_coindexed (rhs_expr) && gfc_has_vector_subscript (rhs_expr))
+      if (rhs_is_coindexed && gfc_has_vector_subscript (rhs_expr))
 	{
           has_vector = true;
           ar = gfc_find_array_ref (rhs_expr);
@@ -2271,7 +2274,7 @@ conv_caf_send (gfc_code *code) {
       gfc_add_block_to_block (&block, &team_se.post);
     }
 
-  if (!gfc_is_coindexed (rhs_expr))
+  if (!rhs_is_coindexed)
     {
       if (lhs_caf_attr.alloc_comp || lhs_caf_attr.pointer_comp)
 	{
@@ -8213,10 +8216,17 @@ gfc_conv_intrinsic_sizeof (gfc_se *se, gfc_expr *expr)
       else if (arg->rank > 0
 	       || (arg->rank == 0
 		   && arg->ref && arg->ref->type == REF_COMPONENT))
-	/* The scalarizer added an additional temp.  To get the class' vptr
-	   one has to look at the original backend_decl.  */
-	byte_size = gfc_class_vtab_size_get (
+	{
+	  /* The scalarizer added an additional temp.  To get the class' vptr
+	     one has to look at the original backend_decl.  */
+	  if (argse.class_container)
+	    byte_size = gfc_class_vtab_size_get (argse.class_container);
+	  else if (DECL_LANG_SPECIFIC (arg->symtree->n.sym->backend_decl))
+	    byte_size = gfc_class_vtab_size_get (
 	      GFC_DECL_SAVED_DESCRIPTOR (arg->symtree->n.sym->backend_decl));
+	  else
+	    gcc_unreachable ();
+	}
       else
 	gcc_unreachable ();
     }
@@ -12896,7 +12906,7 @@ conv_intrinsic_move_alloc (gfc_code *code)
       gfc_add_expr_to_block (&block, tmp);
     }
 
-  /* Move the pointer and update the array descriptor data.  */
+  /* Copy the array descriptor data.  */
   gfc_add_modify_loc (input_location, &block, to_se.expr, from_se.expr);
 
   /* Set "from" to NULL.  */

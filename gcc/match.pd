@@ -2339,6 +2339,16 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
  (if (INTEGRAL_TYPE_P (type))
   (bit_and @0 @1)))
 
+/* Fold `(a ? b : 0) | (a ? 0 : c)` into (a ? b : c).
+    Handle also ^ and + in replacement of `|`. */
+(for cnd (cond vec_cond)
+ (for op (bit_ior bit_xor plus)
+  (simplify
+   (op:c
+    (cnd:s @0 @00 integer_zerop)
+    (cnd:s @0 integer_zerop @01))
+   (cnd @0 @00 @01))))
+
 (for cmp (tcc_comparison)
      icmp (inverted_tcc_comparison)
  /* Fold (((a < b) & c) | ((a >= b) & d)) into (a < b ? c : d) & 1.  */
@@ -2356,18 +2366,20 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
 
  /* Fold ((-(a < b) & c) | (-(a >= b) & d)) into a < b ? c : d.  This is
     canonicalized further and we recognize the conditional form:
-    (a < b ? c : 0) | (a >= b ? d : 0) into a < b ? c : d.  */
- (simplify
-  (bit_ior
-   (cond (cmp@0  @01 @02) @3 zerop)
-   (cond (icmp@4 @01 @02) @5 zerop))
-    (if (INTEGRAL_TYPE_P (type)
-	 && invert_tree_comparison (cmp, HONOR_NANS (@01)) == icmp
-	 /* The scalar version has to be canonicalized after vectorization
-	    because it makes unconditional loads conditional ones, which
-	    means we lose vectorization because the loads may trap.  */
-	 && canonicalize_math_after_vectorization_p ())
-    (cond @0 @3 @5)))
+    (a < b ? c : 0) | (a >= b ? d : 0) into a < b ? c : d.
+    Handle also ^ and + in replacement of `|`. */
+ (for op (bit_ior bit_xor plus)
+  (simplify
+   (op
+    (cond (cmp@0  @01 @02) @3 zerop)
+    (cond (icmp@4 @01 @02) @5 zerop))
+     (if (INTEGRAL_TYPE_P (type)
+	  && invert_tree_comparison (cmp, HONOR_NANS (@01)) == icmp
+	  /* The scalar version has to be canonicalized after vectorization
+	     because it makes unconditional loads conditional ones, which
+	     means we lose vectorization because the loads may trap.  */
+	  && canonicalize_math_after_vectorization_p ())
+     (cond @0 @3 @5))))
 
  /* Vector Fold (((a < b) & c) | ((a >= b) & d)) into a < b ? c : d. 
     and ((~(a < b) & c) | (~(a >= b) & d)) into a < b ? c : d.  */
@@ -2391,13 +2403,15 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
        (vec_cond @0 @3 @2))))))
 
  /* Scalar Vectorized Fold ((-(a < b) & c) | (-(a >= b) & d))
-    into a < b ? d : c.  */
- (simplify
-  (bit_ior
-   (vec_cond:s (cmp@0 @4 @5) @2 integer_zerop)
-   (vec_cond:s (icmp@1 @4 @5) @3 integer_zerop))
-  (if (invert_tree_comparison (cmp, HONOR_NANS (@4)) == icmp)
-   (vec_cond @0 @2 @3))))
+    into a < b ? d : c.
+    Handle also ^ and + in replacement of `|`. */
+ (for op (bit_ior bit_xor plus)
+  (simplify
+   (op
+    (vec_cond:s (cmp@0 @4 @5) @2 integer_zerop)
+    (vec_cond:s (icmp@1 @4 @5) @3 integer_zerop))
+   (if (invert_tree_comparison (cmp, HONOR_NANS (@4)) == icmp)
+    (vec_cond @0 @2 @3)))))
 
 /* Transform X & -Y into X * Y when Y is { 0 or 1 }.  */
 (simplify
@@ -3310,6 +3324,24 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
    wide_int int_cst = wi::to_wide (@1, itype_precision);
   }
   (if (otype_precision < itype_precision && wi::eq_p (trunc_max, int_cst))))))
+
+/* Unsigned saturation truncate, case 3, sizeof (WT) > sizeof (NT).
+   SAT_U_TRUNC = (NT)X | ((NT)(X <= (WT)-1) + (NT)-1).  */
+(match (unsigned_integer_sat_trunc @0)
+ (bit_ior:c (plus:c (convert (le @0 INTEGER_CST@1)) INTEGER_CST@2)
+	    (convert @0))
+ (if (INTEGRAL_TYPE_P (type) && TYPE_UNSIGNED (type)
+      && TYPE_UNSIGNED (TREE_TYPE (@0)))
+ (with
+  {
+   unsigned itype_precision = TYPE_PRECISION (TREE_TYPE (@0));
+   unsigned otype_precision = TYPE_PRECISION (type);
+   wide_int trunc_max = wi::mask (otype_precision, false, itype_precision);
+   wide_int max = wi::mask (otype_precision, false, otype_precision);
+   wide_int int_cst_1 = wi::to_wide (@1);
+   wide_int int_cst_2 = wi::to_wide (@2);
+  }
+  (if (wi::eq_p (trunc_max, int_cst_1) && wi::eq_p (max, int_cst_2))))))
 
 /* x >  y  &&  x != XXX_MIN  -->  x > y
    x >  y  &&  x == XXX_MIN  -->  false . */

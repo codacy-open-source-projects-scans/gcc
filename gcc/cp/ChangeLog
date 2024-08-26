@@ -1,3 +1,203 @@
+2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/110635
+	* coroutines.cc
+	(cp_coroutine_transform::wrap_original_function_body): Look through
+	initial await target expressions to find the actual co_await_expr
+	that we need to update.
+
+2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/102051
+	* coroutines.cc
+	(cp_coroutine_transform::build_ramp_function): Handle
+	"throwing_cleanup" here instead of ...
+	(cp_coroutine_transform::apply_transforms): ... here.
+
+2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/115908
+	* coroutines.cc
+	(cp_coroutine_transform::build_ramp_function): Rework the return
+	value initialisation to initialise the return slot always from
+	get_return_object,  even if that implies carrying out conversions
+	to do so.
+
+2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/109682
+	* coroutines.cc
+	(cp_coroutine_transform::build_ramp_function): Allow for cases where
+	get_return_on_allocation_fail has a type convertible to the ramp
+	return type.
+
+2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/100476
+	* coroutines.cc
+	(cp_coroutine_transform::build_ramp_function): Remove special
+	handling of void get_return_object expressions.
+
+2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/113773
+	* coroutines.cc
+	(cp_coroutine_transform::build_ramp_function): Only cleanup the
+	frame state on exceptions that occur before the initial await
+	resume has begun.
+
+2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* call.cc (build_op_delete_call_1): Renamed and added a param
+	to allow the caller to prioritize two argument usual deleters.
+	(build_op_delete_call): New.
+	(build_coroutine_op_delete_call): New.
+	* coroutines.cc (coro_get_frame_dtor): Rename...
+	(build_coroutine_frame_delete_expr):... to this; simplify to
+	use build_op_delete_call for all cases.
+	(build_actor_fn): Use revised frame delete function.
+	(build_coroutine_frame_alloc_expr): New.
+	(cp_coroutine_transform::complete_ramp_function): Rename...
+	(cp_coroutine_transform::build_ramp_function): ... to this.
+	Reorder code to carry out checks for prerequisites before the
+	codegen. Split out the allocation/delete code.
+	(cp_coroutine_transform::apply_transforms): Use revised name.
+	* coroutines.h: Rename function.
+	* cp-tree.h (build_coroutine_op_delete_call): New.
+
+2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
+	    Arsen Arsenović  <arsen@aarsen.me>
+
+	* coroutines.cc (struct suspend_point_info, struct param_info,
+	struct local_var_info, struct susp_frame_data,
+	struct local_vars_frame_data): Move to coroutines.h.
+	(build_actor_fn): Use start/finish function APIs.
+	(build_destroy_fn): Likewise.
+	(coro_build_actor_or_destroy_function): No longer mark the
+	actor / destroyer as DECL_COROUTINE_P.
+	(coro_rewrite_function_body): Use class members.
+	(cp_coroutine_transform::wrap_original_function_body): Likewise.
+	(build_ramp_function): Replace by...
+	(cp_coroutine_transform::complete_ramp_function): ...this.
+	(cp_coroutine_transform::cp_coroutine_transform): New.
+	(cp_coroutine_transform::~cp_coroutine_transform): New
+	(morph_fn_to_coro): Replace by...
+	(cp_coroutine_transform::apply_transforms): ...this.
+	(cp_coroutine_transform::finish_transforms): New.
+	* cp-tree.h (morph_fn_to_coro): Remove.
+	* decl.cc (emit_coro_helper): Remove.
+	(finish_function): Revise handling of coroutine transforms.
+	* coroutines.h: New file.
+
+2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc (build_actor_fn): Arrange to apply any
+	required parameter copy DTORs in reverse order to their
+	creation.
+	(coro_rewrite_function_body): Handle revised param uses.
+	(morph_fn_to_coro): Split the ramp function completion
+	into a separate function.
+	(build_ramp_function): New.
+
+2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc (build_co_await): Simplify checks for the cases that
+	we need to materialise an awaiter.
+
+2024-08-21  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc (split_coroutine_body_from_ramp): Check
+	that the binding level is as expected before attempting
+	to outline the function body.
+
+2024-08-20  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	* module.cc (module_state::write_begin): Return a boolean to
+	indicate errors rather than just doing set_error().
+	(finish_module_processing): Prevent emission of unnecessary
+	errors; only indicate module writing occurred if write_begin
+	succeeds.
+
+2024-08-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/110345
+	* decl.cc (grokdeclarator): Apply declarator->std_attributes
+	for cdk_array to type, rather than chaining it to returned_attrs.
+
+2024-08-20  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/110345
+	* parser.cc (cp_parser_base_specifier): Parse standard attributes
+	at the start and emit a warning if there are any non-ignored ones.
+
+2024-08-20  Franciszek Witt  <franek.witt@gmail.com>
+
+	PR c++/101232
+	* parser.cc (cp_parser_postfix_expression): Commit to the
+	parse in case we know its either a cast or invalid syntax.
+	(cp_parser_braced_list): Add a heuristic to inform about
+	missing comma or operator.
+
+2024-08-20  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/101463
+	* pt.cc (type_unification_real): Directly look for undeduced
+	parameters in the default argument instead of doing a trial
+	substitution.
+
+2024-08-20  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/115020
+	* module.cc (has_definition): Only force writing definitions for
+	header_module_p.
+
+2024-08-20  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/116403
+	* pt.cc (deduction_guides_for): Use ANY_REACHABLE for lookup of
+	deduction guides.
+	* module.cc (depset::hash::add_deduction_guides): Likewise.
+	(module_state::write_cluster): No longer override deduction
+	guides as exported.
+	* name-lookup.cc (name_lookup::search_namespace_only): Ignore
+	visibility when LOOK_want::ANY_REACHABLE is specified.
+	(check_module_override): Ignore visibility when checking for
+	ambiguating deduction guides.
+	* name-lookup.h (LOOK_want): New flag 'ANY_REACHABLE'.
+
+2024-08-20  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/116382
+	* cp-tree.h (get_template_parm_object): Add check_init param.
+	* module.cc (trees_in::tree_node): Pass check_init=false when
+	building NTTPs.
+	* pt.cc (get_template_parm_object): Prevent cp_finish_decl from
+	validating the initializer when check_init=false.
+
+2024-08-20  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/116364
+	* cp-tree.h (get_mergeable_specialization_flags): Adjust
+	signature.
+	* module.cc (trees_out::decl_value): Indicate whether this is a
+	type or decl specialisation.
+	* pt.cc (get_mergeable_specialization_flags): Match against the
+	type of a non-decl specialisation.
+	(add_mergeable_specialization): Use the already calculated spec
+	instead of always adding decl to DECL_TEMPLATE_INSTANTIATIONS.
+
+2024-08-19  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/115657
+	* decl.cc (build_enumerator): Call maybe_fold_non_dependent_expr
+	instead of fold_non_dependent_expr.
+
+2024-08-19  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/116384
+	* pt.cc (tsubst_expr) <case IMPLICIT_CONV_EXPR>: Bail if tsubst
+	returns error_mark_node.
+
 2024-08-16  Jakub Jelinek  <jakub@redhat.com>
 
 	PR c++/110345

@@ -7974,8 +7974,22 @@ riscv_v_adjust_scalable_frame (rtx target, poly_int64 offset, bool epilogue)
 
   /* If doing stack clash protection then we use a loop to allocate and probe
      the stack.  */
-  if (flag_stack_clash_protection && !epilogue)
+  if (flag_stack_clash_protection)
     {
+      if (epilogue)
+	{
+	  insn = emit_insn (gen_add3_insn (target, target, adjust_size));
+
+	  if (!frame_pointer_needed)
+	    {
+	      add_reg_note (insn, REG_CFA_DEF_CFA,
+			plus_constant (Pmode, stack_pointer_rtx, -offset));
+	      RTX_FRAME_RELATED_P (insn) = 1;
+	    }
+
+	  return;
+	}
+
       HOST_WIDE_INT min_probe_threshold
 	= (1 << param_stack_clash_protection_guard_size) - STACK_CLASH_CALLER_GUARD;
 
@@ -8008,7 +8022,7 @@ riscv_v_adjust_scalable_frame (rtx target, poly_int64 offset, bool epilogue)
       if (!frame_pointer_needed)
 	{
 	  add_reg_note (insn, REG_CFA_DEF_CFA,
-			plus_constant (Pmode, stack_pointer_rtx, -offset));
+			plus_constant (Pmode, stack_pointer_rtx, offset));
 	  RTX_FRAME_RELATED_P (insn) = 1;
 	}
 
@@ -11828,12 +11842,29 @@ riscv_get_raw_result_mode (int regno)
   return default_get_reg_raw_mode (regno);
 }
 
+/* Generate a new rtx of Xmode based on the rtx and mode in define pattern.
+   The rtx x will be zero extended to Xmode if the mode is HI/QImode,  and
+   the new zero extended Xmode rtx will be returned.
+   Or the gen_lowpart rtx of Xmode will be returned.  */
+
+static rtx
+riscv_gen_zero_extend_rtx (rtx x, machine_mode mode)
+{
+  if (mode == Xmode)
+    return x;
+
+  rtx xmode_reg = gen_reg_rtx (Xmode);
+  riscv_emit_unary (ZERO_EXTEND, xmode_reg, x);
+
+  return xmode_reg;
+}
+
 /* Implements the unsigned saturation add standard name usadd for int mode.
 
    z = SAT_ADD(x, y).
    =>
    1. sum = x + y.
-   2. sum = truncate (sum) for QI and HI only.
+   2. sum = truncate (sum) for non-Xmode.
    3. lt = sum < x.
    4. lt = -lt.
    5. z = sum | lt.  */
@@ -11844,22 +11875,15 @@ riscv_expand_usadd (rtx dest, rtx x, rtx y)
   machine_mode mode = GET_MODE (dest);
   rtx xmode_sum = gen_reg_rtx (Xmode);
   rtx xmode_lt = gen_reg_rtx (Xmode);
-  rtx xmode_x = gen_lowpart (Xmode, x);
+  rtx xmode_x = riscv_gen_zero_extend_rtx (x, mode);
   rtx xmode_y = gen_lowpart (Xmode, y);
   rtx xmode_dest = gen_reg_rtx (Xmode);
 
   /* Step-1: sum = x + y  */
-  if (mode == SImode && mode != Xmode)
-    { /* Take addw to avoid the sum truncate.  */
-      rtx simode_sum = gen_reg_rtx (SImode);
-      riscv_emit_binary (PLUS, simode_sum, x, y);
-      emit_move_insn (xmode_sum, gen_lowpart (Xmode, simode_sum));
-    }
-  else
-    riscv_emit_binary (PLUS, xmode_sum, xmode_x, xmode_y);
+  riscv_emit_binary (PLUS, xmode_sum, xmode_x, xmode_y);
 
-  /* Step-1.1: truncate sum for HI and QI as we have no insn for add QI/HI.  */
-  if (mode == HImode || mode == QImode)
+  /* Step-1.1: truncate sum for non-Xmode for overflow check.  */
+  if (mode != Xmode)
     {
       int shift_bits = GET_MODE_BITSIZE (Xmode)
 	- GET_MODE_BITSIZE (mode).to_constant ();

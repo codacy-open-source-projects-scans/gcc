@@ -3681,7 +3681,7 @@ class GTY((chain_next ("%h.parent"), for_user)) module_state {
 
  public:
   /* Read and write module.  */
-  void write_begin (elf_out *to, cpp_reader *,
+  bool write_begin (elf_out *to, cpp_reader *,
 		    module_state_config &, unsigned &crc);
   void write_end (elf_out *to, cpp_reader *,
 		  module_state_config &, unsigned &crc);
@@ -7981,7 +7981,8 @@ trees_out::decl_value (tree decl, depset *dep)
 	      auto *entry = reinterpret_cast <spec_entry *> (dep->deps[0]);
 
 	      if (streaming_p ())
-		u (get_mergeable_specialization_flags (entry->tmpl, decl));
+		u (get_mergeable_specialization_flags (mk & MK_tmpl_decl_mask,
+						       entry->tmpl, decl));
 	      tree_node (entry->tmpl);
 	      tree_node (entry->args);
 	    }
@@ -9937,7 +9938,11 @@ trees_in::tree_node (bool is_use)
 	tree name = tree_node ();
 	if (!get_overrun ())
 	  {
-	    res = get_template_parm_object (init, name);
+	    /* We don't want to check the initializer as that may require
+	       name lookup, which could recursively start lazy loading.
+	       Instead we know that INIT is already valid so we can just
+	       apply that directly.  */
+	    res = get_template_parm_object (init, name, /*check_init=*/false);
 	    int tag = insert (res);
 	    dump (dumper::TREE)
 	      && dump ("Created nttp object:%d %N", tag, name);
@@ -11785,10 +11790,9 @@ has_definition (tree decl)
       if (DECL_DECLARED_INLINE_P (decl))
 	return true;
 
-      if (DECL_THIS_STATIC (decl)
-	  && (header_module_p ()
-	      || (!DECL_LANG_SPECIFIC (decl) || !DECL_MODULE_PURVIEW_P (decl))))
-	/* GM static function.  */
+      if (header_module_p ())
+	/* We always need to write definitions in header modules,
+	   since there's no TU to emit them in otherwise.  */
 	return true;
 
       if (DECL_TEMPLATE_INFO (decl))
@@ -11821,11 +11825,12 @@ has_definition (tree decl)
       else
 	{
 	  if (!DECL_INITIALIZED_P (decl))
+	    /* Not defined.  */
 	    return false;
 
-	  if (header_module_p ()
-	      || (!DECL_LANG_SPECIFIC (decl) || !DECL_MODULE_PURVIEW_P (decl)))
-	    /* GM static variable.  */
+	  if (header_module_p ())
+	    /* We always need to write definitions in header modules,
+	       since there's no TU to emit them in otherwise.  */
 	    return true;
 
 	  if (!TREE_CONSTANT (decl))
@@ -13640,7 +13645,7 @@ depset::hash::add_deduction_guides (tree decl)
   if (find_binding (ns, name))
     return;
 
-  tree guides = lookup_qualified_name (ns, name, LOOK_want::NORMAL,
+  tree guides = lookup_qualified_name (ns, name, LOOK_want::ANY_REACHABLE,
 				       /*complain=*/false);
   if (guides == error_mark_node)
     return;
@@ -15222,11 +15227,6 @@ module_state::write_cluster (elf_out *to, depset *scc[], unsigned size,
 		    if (dep->is_hidden ())
 		      flags |= cbf_hidden;
 		    else if (DECL_MODULE_EXPORT_P (STRIP_TEMPLATE (bound)))
-		      flags |= cbf_export;
-		    else if (deduction_guide_p (bound))
-		      /* Deduction guides are always exported so that they are
-			 visible to name lookup whenever their class template
-			 is reachable.  */
 		      flags |= cbf_export;
 		  }
 
@@ -18317,7 +18317,7 @@ ool_cmp (const void *a_, const void *b_)
      MOD_SNAME_PFX.cfg      : config data
 */
 
-void
+bool
 module_state::write_begin (elf_out *to, cpp_reader *reader,
 			   module_state_config &config, unsigned &crc)
 {
@@ -18395,10 +18395,7 @@ module_state::write_begin (elf_out *to, cpp_reader *reader,
   table.find_dependencies (this);
 
   if (!table.finalize_dependencies ())
-    {
-      to->set_error ();
-      return;
-    }
+    return false;
 
 #if CHECKING_P
   /* We're done verifying at-most once reading, reset to verify
@@ -18595,6 +18592,8 @@ module_state::write_begin (elf_out *to, cpp_reader *reader,
   // so-controlled.
   if (false)
     write_env (to);
+
+  return true;
 }
 
 // Finish module writing after we've emitted all dynamic initializers. 
@@ -20847,20 +20846,29 @@ finish_module_processing (cpp_reader *reader)
 
       cookie = new module_processing_cookie (cmi_name, tmp_name, fd, e);
 
-      if (errorcount
-	  /* Don't write the module if it contains an erroneous template.  */
-	  || (erroneous_templates
-	      && !erroneous_templates->is_empty ()))
-	warning_at (state->loc, 0, "not writing module %qs due to errors",
-		    state->get_flatname ());
+      if (errorcount)
+	/* Don't write the module if we have reported errors.  */;
+      else if (erroneous_templates
+	       && !erroneous_templates->is_empty ())
+	{
+	  /* Don't write the module if it contains an erroneous template.
+	     Also emit notes about where errors occurred in case
+	     -Wno-template-body was passed.  */
+	  auto_diagnostic_group d;
+	  error_at (state->loc, "not writing module %qs due to errors "
+		    "in template bodies", state->get_flatname ());
+	  if (!warn_template_body)
+	    inform (state->loc, "enable %<-Wtemplate-body%> for more details");
+	  for (auto e : *erroneous_templates)
+	    inform (e.second, "first error in %qD appeared here", e.first);
+	}
       else if (cookie->out.begin ())
 	{
-	  cookie->began = true;
-	  auto loc = input_location;
 	  /* So crashes finger-point the module decl.  */
-	  input_location = state->loc;
-	  state->write_begin (&cookie->out, reader, cookie->config, cookie->crc);
-	  input_location = loc;
+	  iloc_sentinel ils = state->loc;
+	  if (state->write_begin (&cookie->out, reader, cookie->config,
+				  cookie->crc))
+	    cookie->began = true;
 	}
 
       dump.pop (n);
