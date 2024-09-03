@@ -1328,15 +1328,16 @@ to @var{var_value} before execution of the program created by the test.
 Specify additional files, other than source files, that must be copied
 to the system where the compiler runs.
 
-@item @{ dg-additional-sources "@var{filelist}" [@{ target @var{selector} @}] @}
+@item @{ dg-additional-sources "@var{filelist}" [@{ \[linkonly\] \[target @var{selector}\] @}] @}
 Specify additional source files to appear in the compile line
 following the main test file.
 If the directive includes the optional @samp{@{ @var{selector} @}}
 then the additional sources are only added if the target system
 matches the @var{selector}.
-Additional sources are generally used only in @samp{link} and @samp{run}
-tests; they are reported as unsupported and discarded in other kinds of
-tests that direct the compiler to output to a single file.
+If @samp{linkonly} is specified, additional sources are used only in
+@samp{link} and @samp{run} tests; they are reported as unsupported and
+discarded in other kinds of tests that direct the compiler to output to
+a single file.
 @end table
 
 @subsubsection Add checks at the end of a test
@@ -3530,7 +3531,7 @@ assembly output.
 Passes if @var{symbol} is not defined as a hidden symbol in the test's
 assembly output.
 
-@item check-function-bodies @var{prefix} @var{terminator} [@var{options} [@{ target/xfail @var{selector} @}]]
+@item check-function-bodies @var{prefix} @var{terminator} [@var{options} [@{ target/xfail @var{selector} @} [@var{matched}]]]
 Looks through the source file for comments that give the expected assembly
 output for selected functions.  Each line of expected output starts with the
 prefix string @var{prefix} and the expected output for a function as a whole
@@ -3557,8 +3558,11 @@ Depending on the configuration (see
 @code{configure_check-function-bodies} in
 @file{gcc/testsuite/lib/scanasm.exp}), the test may discard from the
 compiler's assembly output directives such as @code{.cfi_startproc},
-local label definitions such as @code{.LFB0}, and more.
-It then matches the result against the expected
+local label definitions such as @code{.LFB0}, and more.  This behavior
+can be overridden using the optional @var{matched} argument, which
+specifies a regexp for lines that should not be discarded in this way.
+
+The test then matches the result against the expected
 output for a function as a single regular expression.  This means that
 later lines can use backslashes to refer back to @samp{(@dots{})}
 captures on earlier lines.  For example:
@@ -3624,8 +3628,8 @@ stands for zero or more unmatched lines; the whitespace after
 @subsubsection Scan optimization dump files
 
 These commands are available for @var{kind} of @code{tree}, @code{ltrans-tree},
-@code{offload-tree}, @code{rtl}, @code{offload-rtl}, @code{ipa},
-@code{offload-ipa}, and @code{wpa-ipa}.
+@code{offload-tree}, @code{rtl}, @code{ltrans-rtl}, @code{offload-rtl},
+@code{ipa}, @code{offload-ipa}, and @code{wpa-ipa}.
 
 @table @code
 @item scan-@var{kind}-dump @var{regex} @var{suffix} [@{ target/xfail @var{selector} @}]

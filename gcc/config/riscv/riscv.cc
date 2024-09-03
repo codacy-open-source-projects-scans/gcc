@@ -21,6 +21,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #define IN_TARGET_CODE 1
 
+#define INCLUDE_MEMORY
 #define INCLUDE_STRING
 #include "config.h"
 #include "system.h"
@@ -75,6 +76,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "gcse.h"
 #include "tree-dfa.h"
 #include "target-globals.h"
+#include "riscv-v.h"
 
 /* This file should be included last.  */
 #include "target-def.h"
@@ -2142,18 +2144,13 @@ riscv_const_insns (rtx x, bool allow_new_pseudos)
 	  ...etc.  */
 	if (riscv_v_ext_mode_p (GET_MODE (x)))
 	  {
-	    /* const series vector.  */
-	    rtx base, step;
-	    if (const_vec_series_p (x, &base, &step))
-	      {
-		/* This is not accurate, we will need to adapt the COST
-		 * accurately according to BASE && STEP.  */
-		return 1;
-	      }
-
 	    rtx elt;
 	    if (const_vec_duplicate_p (x, &elt))
 	      {
+		if (GET_MODE_CLASS (GET_MODE (x)) == MODE_VECTOR_BOOL)
+		  /* Duplicate values of 0/1 can be emitted using vmv.v.i.  */
+		  return 1;
+
 		/* We don't allow CONST_VECTOR for DI vector on RV32
 		   system since the ELT constant value can not held
 		   within a single register to disable reload a DI
@@ -2162,11 +2159,9 @@ riscv_const_insns (rtx x, bool allow_new_pseudos)
 		if (maybe_gt (GET_MODE_SIZE (smode), UNITS_PER_WORD)
 		    && !immediate_operand (elt, Pmode))
 		  return 0;
-		/* Constants from -16 to 15 can be loaded with vmv.v.i.
-		   The Wc0, Wc1 constraints are already covered by the
-		   vi constraint so we do not need to check them here
-		   separately.  */
-		if (satisfies_constraint_vi (x))
+		/* Constants in range -16 ~ 15 integer or 0.0 floating-point
+		   can be emitted using vmv.v.i.  */
+		if (valid_vec_immediate_p (x))
 		  return 1;
 
 		/* Any int/FP constants can always be broadcast from a
@@ -2185,6 +2180,52 @@ riscv_const_insns (rtx x, bool allow_new_pseudos)
 		    else
 		      return 1 + 4; /*vmv.v.x + memory access.  */
 		  }
+	      }
+
+	    /* const series vector.  */
+	    rtx base, step;
+	    if (const_vec_series_p (x, &base, &step))
+	      {
+		/* This cost is not accurate, we will need to adapt the COST
+		   accurately according to BASE && STEP.  */
+		return 1;
+	      }
+
+	    if (CONST_VECTOR_STEPPED_P (x))
+	      {
+		/* Some cases are unhandled so we need construct a builder to
+		   detect/allow those cases to be handled by the fallthrough
+		   handler.  */
+		unsigned int nelts_per_pattern = CONST_VECTOR_NELTS_PER_PATTERN (x);
+		unsigned int npatterns = CONST_VECTOR_NPATTERNS (x);
+		rvv_builder builder (GET_MODE(x), npatterns, nelts_per_pattern);
+		for (unsigned int i = 0; i < nelts_per_pattern; i++)
+		  {
+		    for (unsigned int j = 0; j < npatterns; j++)
+		      builder.quick_push (CONST_VECTOR_ELT (x, i * npatterns + j));
+		  }
+		builder.finalize ();
+
+		if (builder.single_step_npatterns_p ())
+		  {
+		    if (builder.npatterns_all_equal_p ())
+		      {
+			/* TODO: This cost is not accurate.  */
+			return 1;
+		      }
+		    else
+		      {
+			/* TODO: This cost is not accurate.  */
+			return 1;
+		      }
+		  }
+		else if (builder.interleaved_stepped_npatterns_p ())
+		  {
+		    /* TODO: This cost is not accurate.  */
+		    return 1;
+		  }
+
+		/* Fallthrough.  */
 	      }
 	  }
 
@@ -3560,6 +3601,11 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
       if (outer_code == INSN
 	  && register_operand (SET_DEST (x), GET_MODE (SET_DEST (x))))
 	{
+	  if (REG_P (SET_SRC (x)) && TARGET_DOUBLE_FLOAT && mode == DFmode)
+	    {
+	      *total = COSTS_N_INSNS (1);
+	      return true;
+	    }
 	  riscv_rtx_costs (SET_SRC (x), mode, outer_code, opno, total, speed);
 	  return true;
 	}
@@ -10630,6 +10676,17 @@ riscv_can_change_mode_class (machine_mode from, machine_mode to,
   if (reg_classes_intersect_p (V_REGS, rclass)
       && !ordered_p (GET_MODE_PRECISION (from), GET_MODE_PRECISION (to)))
     return false;
+
+  /* Subregs of modes larger than one vector are ambiguous.
+     A V4DImode with rv64gcv_zvl128b could, for example, span two registers/one
+     register group of two at VLEN = 128 or one register at VLEN >= 256 and
+     we cannot, statically, determine which part of it to extract.
+     Therefore prevent that.  */
+  if (reg_classes_intersect_p (V_REGS, rclass)
+      && riscv_v_ext_vls_mode_p (from)
+      && !ordered_p (BITS_PER_RISCV_VECTOR, GET_MODE_PRECISION (from)))
+      return false;
+
   return !reg_classes_intersect_p (FP_REGS, rclass);
 }
 
@@ -11842,19 +11899,56 @@ riscv_get_raw_result_mode (int regno)
   return default_get_reg_raw_mode (regno);
 }
 
-/* Generate a new rtx of Xmode based on the rtx and mode in define pattern.
-   The rtx x will be zero extended to Xmode if the mode is HI/QImode,  and
-   the new zero extended Xmode rtx will be returned.
-   Or the gen_lowpart rtx of Xmode will be returned.  */
+/* Generate a REG rtx of Xmode from the given rtx and mode.
+   The rtx x can be REG (QI/HI/SI/DI) or const_int.
+   The machine_mode mode is the original mode from define pattern.
+
+   If rtx is REG and Xmode, the RTX x will be returned directly.
+
+   If rtx is REG and non-Xmode, the zero extended to new REG of Xmode will be
+   returned.
+
+   If rtx is const_int, a new REG rtx will be created to hold the value of
+   const_int and then returned.
+
+   According to the gccint doc, the constants generated for modes with fewer
+   bits than in HOST_WIDE_INT must be sign extended to full width.  Thus there
+   will be two cases here, take QImode as example.
+
+   For .SAT_SUB (127, y) in QImode, we have (const_int 127) and one simple
+   mov from const_int to the new REG rtx is good enough here.
+
+   For .SAT_SUB (254, y) in QImode, we have (const_int -2) after define_expand.
+   Aka 0xfffffffffffffffe in Xmode of RV64 but we actually need 0xfe in Xmode
+   of RV64.  So we need to cleanup the highest 56 bits of the new REG rtx moved
+   from the (const_int -2).
+
+   Then the underlying expanding can perform the code generation based on
+   the REG rtx of Xmode, instead of taking care of these in expand func.  */
 
 static rtx
 riscv_gen_zero_extend_rtx (rtx x, machine_mode mode)
 {
-  if (mode == Xmode)
-    return x;
-
   rtx xmode_reg = gen_reg_rtx (Xmode);
-  riscv_emit_unary (ZERO_EXTEND, xmode_reg, x);
+
+  if (!CONST_INT_P (x))
+    {
+      if (mode == Xmode)
+	return x;
+
+      riscv_emit_unary (ZERO_EXTEND, xmode_reg, x);
+      return xmode_reg;
+    }
+
+  if (mode == Xmode)
+    emit_move_insn (xmode_reg, x);
+  else
+    {
+      rtx reg_x = gen_reg_rtx (mode);
+
+      emit_move_insn (reg_x, x);
+      riscv_emit_unary (ZERO_EXTEND, xmode_reg, reg_x);
+    }
 
   return xmode_reg;
 }
@@ -11920,8 +12014,8 @@ void
 riscv_expand_ussub (rtx dest, rtx x, rtx y)
 {
   machine_mode mode = GET_MODE (dest);
-  rtx xmode_x = gen_lowpart (Xmode, x);
-  rtx xmode_y = gen_lowpart (Xmode, y);
+  rtx xmode_x = riscv_gen_zero_extend_rtx (x, mode);
+  rtx xmode_y = riscv_gen_zero_extend_rtx (y, mode);
   rtx xmode_lt = gen_reg_rtx (Xmode);
   rtx xmode_minus = gen_reg_rtx (Xmode);
   rtx xmode_dest = gen_reg_rtx (Xmode);

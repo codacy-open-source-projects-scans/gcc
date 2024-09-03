@@ -3190,7 +3190,22 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
  (cond^ (ne (imagpart (IFN_ADD_OVERFLOW@2 @0 INTEGER_CST@1)) integer_zerop)
   integer_minus_onep (realpart @2))
   (if (INTEGRAL_TYPE_P (type) && TYPE_UNSIGNED (type)
-      && types_match (type, @0))))
+       && types_match (type, @0) && int_fits_type_p (@1, type))))
+
+/* Signed saturation add, case 1:
+   T sum = (T)((UT)X + (UT)Y)
+   SAT_S_ADD = (X ^ sum) & !(X ^ Y) < 0 ? (-(T)(X < 0) ^ MAX) : sum;
+
+   The T and UT are type pair like T=int8_t, UT=uint8_t.  */
+(match (signed_integer_sat_add @0 @1)
+ (cond^ (lt (bit_and:c (bit_xor:c @0 (nop_convert@2 (plus (nop_convert @0)
+							  (nop_convert @1))))
+		       (bit_not (bit_xor:c @0 @1)))
+	    integer_zerop)
+	(bit_xor:c (negate (convert (lt @0 integer_zerop))) max_value)
+	@2)
+ (if (INTEGRAL_TYPE_P (type) && !TYPE_UNSIGNED (type)
+      && types_match (type, @0, @1))))
 
 /* Unsigned saturation sub, case 1 (branch with gt):
    SAT_U_SUB = X > Y ? X - Y : 0  */
@@ -6636,6 +6651,9 @@ DEFINE_INT_AND_FLOAT_ROUND_FN (RINT)
  (ltgt @0 @0)
  (if (!flag_trapping_math || !tree_expr_maybe_nan_p (@0))
   { constant_boolean_node (false, type); }))
+(simplify
+ (bit_and (ordered @0 @1) (ne @0 @1))
+ (bit_not (uneq @0 @1)))
 
 /* x == ~x -> false */
 /* x != ~x -> true */

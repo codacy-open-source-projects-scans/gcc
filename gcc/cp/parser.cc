@@ -1689,7 +1689,7 @@ static cp_declarator *make_call_declarator
   (cp_declarator *, tree, cp_cv_quals, cp_virt_specifiers, cp_ref_qualifier,
    tree, tree, tree, tree, tree, location_t);
 static cp_declarator *make_array_declarator
-  (cp_declarator *, tree);
+  (cp_declarator *, tree, tree);
 static cp_declarator *make_pointer_declarator
   (cp_cv_quals, cp_declarator *, tree);
 static cp_declarator *make_reference_declarator
@@ -1904,10 +1904,11 @@ make_call_declarator (cp_declarator *target,
 }
 
 /* Make a declarator for an array of BOUNDS elements, each of which is
-   defined by ELEMENT.  */
+   defined by ELEMENT.  STD_ATTRS contains attributes that appertain to
+   the array type.  */
 
 cp_declarator *
-make_array_declarator (cp_declarator *element, tree bounds)
+make_array_declarator (cp_declarator *element, tree bounds, tree std_attrs)
 {
   cp_declarator *declarator;
 
@@ -1922,6 +1923,8 @@ make_array_declarator (cp_declarator *element, tree bounds)
     }
   else
     declarator->parameter_pack_p = false;
+
+  declarator->std_attributes = std_attrs;
 
   return declarator;
 }
@@ -9789,6 +9792,15 @@ cp_parser_new_type_id (cp_parser* parser, tree *nelts)
       if (*nelts == error_mark_node)
 	*nelts = integer_one_node;
 
+      /* FIXME: Maybe build even the outermost array type and strip
+	 it, to diagnose the attributes on it.  Problem is that VLAs aren't
+	 pedantically allowed except for this case.  */
+      if (*nelts
+	  && declarator->std_attributes
+	  && any_nonignored_attribute_p (declarator->std_attributes))
+	warning (OPT_Wattributes, "attributes ignored on outermost array "
+				  "type in new expression");
+
       if (*nelts == NULL_TREE)
 	/* Leave [] in the declarator.  */;
       else if (outer_declarator)
@@ -9843,8 +9855,8 @@ cp_parser_new_declarator_opt (cp_parser* parser)
 /* Parse a direct-new-declarator.
 
    direct-new-declarator:
-     [ expression ]
-     direct-new-declarator [constant-expression]
+     [ expression ] attribute-specifier-seq [opt]
+     direct-new-declarator [constant-expression] attribute-specifier-seq [opt]
 
    */
 
@@ -9891,8 +9903,9 @@ cp_parser_direct_new_declarator (cp_parser* parser)
       /* Look for the closing `]'.  */
       cp_parser_require (parser, CPP_CLOSE_SQUARE, RT_CLOSE_SQUARE);
 
+      tree attrs = cp_parser_std_attribute_spec_seq (parser);
       /* Add this bound to the declarator.  */
-      declarator = make_array_declarator (declarator, expression);
+      declarator = make_array_declarator (declarator, expression, attrs);
 
       /* If the next token is not a `[', then there are no more
 	 bounds.  */
@@ -13232,18 +13245,22 @@ cp_parser_expression_statement (cp_parser* parser, tree in_statement_expr)
   if (cp_lexer_next_token_is_not (parser->lexer, CPP_SEMICOLON)
       && !cp_parser_uncommitted_to_tentative_parse_p (parser))
     {
+      bool has_errored = true;
       if (TREE_CODE (statement) == SCOPE_REF)
 	error_at (token->location, "need %<typename%> before %qE because "
 		  "%qT is a dependent scope",
 		  statement, TREE_OPERAND (statement, 0));
       else if (is_overloaded_fn (statement)
 	       && DECL_CONSTRUCTOR_P (get_first_fn (statement)))
+	/* A::A a; */
+	error_at (token->location, "%qE names the constructor, not the type",
+		  get_first_fn (statement));
+      else
+	has_errored = false;
+      if (has_errored)
 	{
-	  /* A::A a; */
-	  tree fn = get_first_fn (statement);
-	  error_at (token->location,
-		    "%<%T::%D%> names the constructor, not the type",
-		    DECL_CONTEXT (fn), DECL_NAME (fn));
+	  cp_parser_skip_to_end_of_statement (parser);
+	  return error_mark_node;
 	}
     }
 
@@ -20523,7 +20540,7 @@ cp_parser_simple_type_specifier (cp_parser* parser,
 	    error_at (token->location,
 		     "use of %<auto%> in template argument");
 	  else if (!flag_concepts)
-	    pedwarn (token->location, 0,
+	    pedwarn (token->location, OPT_Wc__20_extensions,
 		     "use of %<auto%> in parameter declaration "
 		     "only available with %<-std=c++20%> or %<-fconcepts%>");
 	  else if (cxx_dialect < cxx14)
@@ -23126,7 +23143,7 @@ cp_parser_asm_definition (cp_parser* parser)
 	      if (TREE_CODE (temp) == CLEANUP_POINT_EXPR)
 		temp = TREE_OPERAND (temp, 0);
 
-	      ASM_INPUT_P (temp) = 1;
+	      ASM_BASIC_P (temp) = 1;
 	    }
 	}
       else
@@ -24335,8 +24352,7 @@ cp_parser_direct_declarator (cp_parser* parser,
 	    }
 
 	  attrs = cp_parser_std_attribute_spec_seq (parser);
-	  declarator = make_array_declarator (declarator, bounds);
-	  declarator->std_attributes = attrs;
+	  declarator = make_array_declarator (declarator, bounds, attrs);
 	}
       else if (first && dcl_kind != CP_PARSER_DECLARATOR_ABSTRACT)
 	{

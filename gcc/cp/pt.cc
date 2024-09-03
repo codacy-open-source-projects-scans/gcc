@@ -1173,6 +1173,11 @@ maybe_process_partial_specialization (tree type)
 		       type, inst);
 	    }
 
+	  /* Make sure that the specialization is valid.  */
+	  if (!redeclare_class_template (type, current_template_parms,
+					 current_template_constraints ()))
+	    return error_mark_node;
+
 	  /* Mark TYPE as a specialization.  And as a result, we only
 	     have one level of template argument for the innermost
 	     class template.  */
@@ -18925,7 +18930,7 @@ tsubst_stmt (tree t, tree args, tsubst_flags_t complain, tree in_decl)
 	tree asm_expr = tmp;
 	if (TREE_CODE (asm_expr) == CLEANUP_POINT_EXPR)
 	  asm_expr = TREE_OPERAND (asm_expr, 0);
-	ASM_INPUT_P (asm_expr) = ASM_INPUT_P (t);
+	ASM_BASIC_P (asm_expr) = ASM_BASIC_P (t);
       }
       break;
 
@@ -26526,8 +26531,8 @@ do_decl_instantiation (tree decl, tree storage)
     ;
   else if (storage == ridpointers[(int) RID_EXTERN])
     {
-      if (cxx_dialect == cxx98)
-	pedwarn (input_location, OPT_Wpedantic,
+      if (cxx_dialect == cxx98 && pedantic)
+	pedwarn (input_location, OPT_Wc__11_extensions,
 		 "ISO C++ 1998 forbids the use of %<extern%> on explicit "
 		 "instantiations");
       extern_p = 1;
@@ -26593,8 +26598,8 @@ do_type_instantiation (tree t, tree storage, tsubst_flags_t complain)
     {
       if (storage == ridpointers[(int) RID_EXTERN])
 	{
-	  if (cxx_dialect == cxx98)
-	    pedwarn (input_location, OPT_Wpedantic,
+	  if (cxx_dialect == cxx98 && pedantic)
+	    pedwarn (input_location, OPT_Wc__11_extensions,
 		     "ISO C++ 1998 forbids the use of %<extern%> on "
 		     "explicit instantiations");
 	}

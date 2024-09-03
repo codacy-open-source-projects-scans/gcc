@@ -19,6 +19,7 @@ along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
 #include "config.h"
+#define INCLUDE_MEMORY
 #include "system.h"
 #include "coretypes.h"
 #include "backend.h"
@@ -4558,6 +4559,9 @@ vect_recog_sat_add_pattern (vec_info *vinfo, stmt_vec_info stmt_vinfo,
 
   if (gimple_unsigned_integer_sat_add (lhs, ops, NULL))
     {
+      if (TREE_CODE (ops[1]) == INTEGER_CST)
+	ops[1] = fold_convert (TREE_TYPE (ops[0]), ops[1]);
+
       gimple *stmt = vect_recog_build_binary_gimple_stmt (vinfo, stmt_vinfo,
 							  IFN_SAT_ADD, type_out,
 							  lhs, ops[0], ops[1]);

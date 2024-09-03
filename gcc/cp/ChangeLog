@@ -1,3 +1,142 @@
+2024-09-02  Richard Sandiford  <richard.sandiford@arm.com>
+
+	* pt.cc (tsubst_stmt): Rename ASM_INPUT_P to ASM_BASIC_P.
+	* parser.cc (cp_parser_asm_definition): Likewise.
+
+2024-08-31  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* coroutines.cc (coro_build_frame_access_expr): New.
+	(transform_await_expr): Use coro_build_frame_access_expr.
+	(transform_local_var_uses): Likewise.
+	(build_actor_fn): Likewise.
+	(build_destroy_fn): Likewise.
+	(cp_coroutine_transform::build_ramp_function): Likewise.
+
+2024-08-30  Jason Merrill  <jason@redhat.com>
+
+	* decl2.cc (c_parse_final_cleanups): Also check
+	DECL_FRIEND_PSEUDO_TEMPLATE_INSTANTIATION.
+
+2024-08-30  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/110345
+	* parser.cc (make_array_declarator): Add STD_ATTRS argument, set
+	declarator->std_attributes to it.
+	(cp_parser_new_type_id): Warn on non-ignored std_attributes on the
+	array declarator which is being omitted.
+	(cp_parser_direct_new_declarator): Parse standard attributes after
+	closing square bracket, pass it to make_array_declarator.
+	(cp_parser_direct_declarator): Pass std_attrs to make_array_declarator
+	instead of setting declarator->std_attributes manually.
+
+2024-08-29  David Malcolm  <dmalcolm@redhat.com>
+
+	* error.cc: Include "make-unique.h".
+	(deferred_printed_type::m_buffer_ptr): Replace with...
+	(deferred_printed_type::m_printed_text): ...this and...
+	(deferred_printed_type::m_token_list): ...this.
+	(deferred_printed_type::deferred_printed_type): Update ctors for
+	above changes.
+	(deferred_printed_type::set_text_for_token_list): New.
+	(append_formatted_chunk): Pass chunk_obstack to
+	append_formatted_chunk.
+	(add_quotes): Delete.
+	(cxx_format_postprocessor::handle): Reimplement to call
+	deferred_printed_type::set_text_for_token_list, rather than store
+	buffer pointers.
+	(defer_phase_2_of_type_diff): Replace param "buffer_ptr"
+	with "formatted_token_list".  Reimplement by storing
+	a pointer to formatted_token_list so that the postprocessor can
+	put its text there.
+	(cp_printer): Convert param "buffer_ptr" to
+	"formatted_token_list".  Update calls to
+	defer_phase_2_of_type_diff accordingly.
+
+2024-08-29  David Malcolm  <dmalcolm@redhat.com>
+
+	* error.cc: Include "pretty-print-format-impl.h".
+
+2024-08-28  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/116476
+	* call.cc (maybe_init_list_as_array): Try convert_like and see if it
+	worked.
+
+2024-08-28  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/116424
+	* typeck2.cc (process_init_constructor_record): Move the clearing of
+	TARGET_EXPR_ELIDING_P down.
+
+2024-08-28  Jason Merrill  <jason@redhat.com>
+
+	* parser.cc (cp_parser_simple_type_specifier): Use
+	-Wc++20-extensions for auto parameter pedwarn.
+	* pt.cc (do_decl_instantiation, do_type_instantiation): Use
+	-Wc++11-extensions for 'extern template'.
+
+2024-08-27  Arsen Arsenović  <arsen@aarsen.me>
+
+	PR c++/109867
+	* coroutines.cc (expand_one_await_expression): Replace uses of
+	build_case_label with finish_case_label.
+	(build_actor_fn): Ditto.
+	(create_anon_label_with_ctx): Remove now-unused function.
+
+2024-08-27  Simon Martin  <simon@nasilyan.com>
+
+	PR c++/105483
+	* parser.cc (cp_parser_expression_statement): Use %qE instead of
+	incorrect %<%T::%D%>. Skip to end of statement and return
+	error_mark_node in case of error.
+
+2024-08-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	* cxxapi-data.csv: Add C++20 and C++23 names from <chrono>,
+	<format>, <generator>, <iterator>, <print>, and <stdfloat>.
+	Set cxx11 dialect for std::ignore in <tuple>. Uncomment
+	atomic_flag functions from <atomic>.
+	* std-name-hint.gperf: Regenerate.
+	* std-name-hint.h: Regenerate.
+
+2024-08-27  Jonathan Wakely  <jwakely@redhat.com>
+
+	* gen-cxxapi-file.py: Fix copyright dates in generated output.
+
+2024-08-27  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/116482
+	* coroutines.cc
+	(coro_build_actor_or_destroy_function): Make the parameter
+	decls DECL_ARTIFICIAL.
+
+2024-08-27  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/99243
+	* module.cc (module_state::set_filename): Handle repeated calls
+	to 'set_filename' as long as the CMI path matches.
+	(maybe_translate_include): Adjust comment.
+
+2024-08-27  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/110980
+	* module.cc (maybe_translate_include): Clean up.
+
+2024-08-26  Arsen Arsenović  <arsen@aarsen.me>
+
+	PR c++/113457
+	* coroutines.cc (struct coroutine_info): Add integer field
+	awaitable_number.  This is a counter used for assigning unique
+	names to awaitable temporaries.
+	(get_awaitable_var): Use awaitable_number from coroutine_info
+	instead of the static int awn.
+
+2024-08-26  Simon Martin  <simon@nasilyan.com>
+
+	PR c++/115716
+	* pt.cc (maybe_process_partial_specialization): Call
+	redeclare_class_template.
+
 2024-08-24  Iain Sandoe  <iain@sandoe.co.uk>
 
 	PR c++/110635

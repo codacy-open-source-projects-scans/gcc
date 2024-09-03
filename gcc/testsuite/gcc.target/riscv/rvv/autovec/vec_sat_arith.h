@@ -169,6 +169,34 @@ vec_sat_u_add_imm##IMM##_##T##_fmt_2 (T *out, T *in, unsigned limit) \
 #define DEF_VEC_SAT_U_ADD_IMM_FMT_2_WRAP(T, IMM) \
   DEF_VEC_SAT_U_ADD_IMM_FMT_2(T, IMM)
 
+#define DEF_VEC_SAT_U_ADD_IMM_FMT_3(T, IMM)                          \
+T __attribute__((noinline))                                          \
+vec_sat_u_add_imm##IMM##_##T##_fmt_3 (T *out, T *in, unsigned limit) \
+{                                                                    \
+  unsigned i;                                                        \
+  T ret;                                                             \
+  for (i = 0; i < limit; i++)                                        \
+    {                                                                \
+      out[i] = __builtin_add_overflow (in[i], IMM, &ret) ? -1 : ret; \
+    }                                                                \
+}
+#define DEF_VEC_SAT_U_ADD_IMM_FMT_3_WRAP(T, IMM) \
+  DEF_VEC_SAT_U_ADD_IMM_FMT_3(T, IMM)
+
+#define DEF_VEC_SAT_U_ADD_IMM_FMT_4(T, IMM)                               \
+T __attribute__((noinline))                                               \
+vec_sat_u_add_imm##IMM##_##T##_fmt_4 (T *out, T *in, unsigned limit)      \
+{                                                                         \
+  unsigned i;                                                             \
+  T ret;                                                                  \
+  for (i = 0; i < limit; i++)                                             \
+    {                                                                     \
+      out[i] = __builtin_add_overflow (in[i], IMM, &ret) == 0 ? ret : -1; \
+    }                                                                     \
+}
+#define DEF_VEC_SAT_U_ADD_IMM_FMT_4_WRAP(T, IMM) \
+  DEF_VEC_SAT_U_ADD_IMM_FMT_4(T, IMM)
+
 #define RUN_VEC_SAT_U_ADD_IMM_FMT_1(T, out, op_1, expect, IMM, N) \
   vec_sat_u_add_imm##IMM##_##T##_fmt_1(out, op_1, N);             \
   VALIDATE_RESULT (out, expect, N)
@@ -180,6 +208,18 @@ vec_sat_u_add_imm##IMM##_##T##_fmt_2 (T *out, T *in, unsigned limit) \
   VALIDATE_RESULT (out, expect, N)
 #define RUN_VEC_SAT_U_ADD_IMM_FMT_2_WRAP(T, out, op_1, expect, IMM, N) \
   RUN_VEC_SAT_U_ADD_IMM_FMT_2(T, out, op_1, expect, IMM, N)
+
+#define RUN_VEC_SAT_U_ADD_IMM_FMT_3(T, out, op_1, expect, IMM, N) \
+  vec_sat_u_add_imm##IMM##_##T##_fmt_3(out, op_1, N);             \
+  VALIDATE_RESULT (out, expect, N)
+#define RUN_VEC_SAT_U_ADD_IMM_FMT_3_WRAP(T, out, op_1, expect, IMM, N) \
+  RUN_VEC_SAT_U_ADD_IMM_FMT_3(T, out, op_1, expect, IMM, N)
+
+#define RUN_VEC_SAT_U_ADD_IMM_FMT_4(T, out, op_1, expect, IMM, N) \
+  vec_sat_u_add_imm##IMM##_##T##_fmt_4(out, op_1, N);             \
+  VALIDATE_RESULT (out, expect, N)
+#define RUN_VEC_SAT_U_ADD_IMM_FMT_4_WRAP(T, out, op_1, expect, IMM, N) \
+  RUN_VEC_SAT_U_ADD_IMM_FMT_4(T, out, op_1, expect, IMM, N)
 
 /******************************************************************************/
 /* Saturation Sub (Unsigned and Signed)                                       */
@@ -432,6 +472,19 @@ vec_sat_u_trunc_##NT##_##WT##_fmt_3 (NT *out, WT *in, unsigned limit) \
 }
 #define DEF_VEC_SAT_U_TRUNC_FMT_3_WRAP(NT, WT) DEF_VEC_SAT_U_TRUNC_FMT_3(NT, WT)
 
+#define DEF_VEC_SAT_U_TRUNC_FMT_4(NT, WT)                             \
+void __attribute__((noinline))                                        \
+vec_sat_u_trunc_##NT##_##WT##_fmt_4 (NT *out, WT *in, unsigned limit) \
+{                                                                     \
+  unsigned i;                                                         \
+  for (i = 0; i < limit; i++)                                         \
+    {                                                                 \
+      bool not_overflow = in[i] <= (WT)(NT)(-1);                      \
+      out[i] = ((NT)in[i]) | (NT)((NT)not_overflow - 1);              \
+    }                                                                 \
+}
+#define DEF_VEC_SAT_U_TRUNC_FMT_4_WRAP(NT, WT) DEF_VEC_SAT_U_TRUNC_FMT_4(NT, WT)
+
 #define RUN_VEC_SAT_U_TRUNC_FMT_1(NT, WT, out, in, N) \
   vec_sat_u_trunc_##NT##_##WT##_fmt_1 (out, in, N)
 #define RUN_VEC_SAT_U_TRUNC_FMT_1_WRAP(NT, WT, out, in, N) \
@@ -446,5 +499,10 @@ vec_sat_u_trunc_##NT##_##WT##_fmt_3 (NT *out, WT *in, unsigned limit) \
   vec_sat_u_trunc_##NT##_##WT##_fmt_3 (out, in, N)
 #define RUN_VEC_SAT_U_TRUNC_FMT_3_WRAP(NT, WT, out, in, N) \
   RUN_VEC_SAT_U_TRUNC_FMT_3(NT, WT, out, in, N)
+
+#define RUN_VEC_SAT_U_TRUNC_FMT_4(NT, WT, out, in, N) \
+  vec_sat_u_trunc_##NT##_##WT##_fmt_4 (out, in, N)
+#define RUN_VEC_SAT_U_TRUNC_FMT_4_WRAP(NT, WT, out, in, N) \
+  RUN_VEC_SAT_U_TRUNC_FMT_4(NT, WT, out, in, N)
 
 #endif
