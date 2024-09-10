@@ -1,3 +1,947 @@
+2024-09-09  David Malcolm  <dmalcolm@redhat.com>
+
+	* ipa-pure-const.cc: Replace include of "opts.h" with
+	"opts-diagnostic.h".
+	(suggest_attribute): Convert param from int to
+	diagnostic_option_id.
+	* lto-wrapper.cc (class lto_diagnostic_option_manager): Use
+	diagnostic_option_id rather than "int".
+	* opts-common.cc
+	(compiler_diagnostic_option_manager::option_enabled_p): Likewise.
+	* opts-diagnostic.h (class gcc_diagnostic_option_manager):
+	Likewise.
+	(class compiler_diagnostic_option_manager): Likewise.
+	* opts.cc (compiler_diagnostic_option_manager::make_option_name):
+	Likewise.
+	(gcc_diagnostic_option_manager::make_option_url): Likewise.
+	* substring-locations.cc
+	(format_string_diagnostic_t::emit_warning_n_va): Likewise.
+	(format_string_diagnostic_t::emit_warning_va): Likewise.
+	(format_string_diagnostic_t::emit_warning): Likewise.
+	(format_string_diagnostic_t::emit_warning_n): Likewise.
+	* substring-locations.h
+	(format_string_diagnostic_t::emit_warning_va): Likewise.
+	(format_string_diagnostic_t::emit_warning_n_va): Likewise.
+	(format_string_diagnostic_t::emit_warning): Likewise.
+	(format_string_diagnostic_t::emit_warning_n): Likewise.
+
+2024-09-09  David Malcolm  <dmalcolm@redhat.com>
+
+	* diagnostic-core.h (struct diagnostic_option_id): New.
+	(warning): Use it rather than "int" for param.
+	(warning_n): Likewise.
+	(warning_at): Likewise.
+	(warning_meta): Likewise.
+	(pedwarn): Likewise.
+	(permerror_opt): Likewise.
+	(emit_diagnostic): Likewise.
+	(emit_diagnostic_valist): Likewise.
+	(emit_diagnostic_valist_meta): Likewise.
+	* diagnostic-format-json.cc
+	(json_output_format::on_report_diagnostic): Update for renaming of
+	diagnostic_info field.
+	* diagnostic-format-sarif.cc (sarif_builder::make_result_object):
+	Likewise.
+	(make_reporting_descriptor_object_for_warning): Likewise.
+	* diagnostic-format-text.cc (print_option_information): Likewise.
+	* diagnostic-global-context.cc (emit_diagnostic): Use
+	"diagnostic_option_id option_id" rather than "int opt".
+	(emit_diagnostic_valist): Likewise.
+	(emit_diagnostic_valist_meta): Likewise.
+	(warning): Likewise.
+	(warning_at): Likewise.
+	(warning_meta): Likewise.
+	(warning_n): Likewise.
+	(pedwarn): Likewise.
+	(permerror_opt): Likewise.
+	* diagnostic.cc (diagnostic_set_info_translated): Update for
+	renaming of diagnostic_info field.
+	(diagnostic_option_classifier::classify_diagnostic): Use
+	"diagnostic_option_id option_id" rather than "int opt".
+	(update_effective_level_from_pragmas): Update for renaming of
+	diagnostic_info field.
+	(diagnostic_context::diagnostic_enabled): Likewise.
+	(diagnostic_context::warning_enabled_at): Use
+	"diagnostic_option_id option_id" rather than "int opt".
+	(diagnostic_context::diagnostic_impl): Likewise.
+	(diagnostic_context::diagnostic_n_impl): Likewise.
+	* diagnostic.h (diagnostic_info::diagnostic_info): Update for...
+	(diagnostic_info::option_index): Rename...
+	(diagnostic_info::option_id): ...to this.
+	(class diagnostic_option_manager): Use
+	"diagnostic_option_id option_id" rather than "int opt" for vfuncs.
+	(diagnostic_option_classifier): Likewise for member funcs.
+	(diagnostic_classification_change_t::option): Add comment.
+	(diagnostic_context::warning_enabled_at): Use
+	"diagnostic_option_id option_id" rather than "int option_index".
+	(diagnostic_context::option_unspecified_p): Likewise.
+	(diagnostic_context::classify_diagnostic): Likewise.
+	(diagnostic_context::option_enabled_p): Likewise.
+	(diagnostic_context::make_option_name): Likewise.
+	(diagnostic_context::make_option_url): Likewise.
+	(diagnostic_context::diagnostic_impl): Likewise.
+	(diagnostic_context::diagnostic_n_impl): Likewise.
+	(diagnostic_override_option_index): Rename...
+	(diagnostic_set_option_id): ...to this, and update for
+	diagnostic_info field renaming.
+	(diagnostic_classify_diagnostic): Use "diagnostic_option_id"
+	rather than "int".
+	(warning_enabled_at): Likewise.
+	(option_unspecified_p): Likewise.
+
+2024-09-09  David Malcolm  <dmalcolm@redhat.com>
+
+	* diagnostic.cc (diagnostic_context::initialize): Replace
+	m_options_callbacks with m_option_mgr.
+	(diagnostic_context::set_option_hooks): Replace with...
+	(diagnostic_context::set_option_manager): ...this.
+	* diagnostic.h (diagnostic_option_enabled_cb): Delete.
+	(diagnostic_make_option_name_cb): Delete.
+	(diagnostic_make_option_url_cb): Delete.
+	(class diagnostic_option_manager): New.
+	(diagnostic_manager::option_enabled_p): Convert from using
+	m_option_callbacks to m_option_mgr.
+	(diagnostic_manager::make_option_name): Likewise.
+	(diagnostic_manager::make_option_url): Likewise.
+	(diagnostic_manager::set_option_hooks): Replace with...
+	(diagnostic_manager::set_option_manager): ...this.
+	(diagnostic_manager::get_lang_mask): Update for field changes.
+	(diagnostic_manager::m_option_callbacks): Replace with...
+	(diagnostic_manager::m_option_mgr): ...this and...
+	(diagnostic_manager::m_lang_mask): ...this.
+	* lto-wrapper.cc (class lto_diagnostic_option_manager): New.
+	(main): Port from option hooks to diagnostic_option_manager.
+	* opts-common.cc: Include "opts-diagnostic.h".
+	(compiler_diagnostic_option_manager::option_enabled_p): New.
+	* opts-diagnostic.h (option_name): Drop decl.
+	(get_option_url): Drop decl.
+	(class gcc_diagnostic_option_manager): New.
+	(class compiler_diagnostic_option_manager): New.
+	* opts.cc (option_name): Convert to...
+	(compiler_diagnostic_option_manager::make_option_name): ...this.
+	(get_option_url): Convert to...
+	(gcc_diagnostic_option_manager::make_option_url): ...this.
+	* toplev.cc (general_init): Port from option hooks to
+	diagnostic_option_manager.
+
+2024-09-09  David Malcolm  <dmalcolm@redhat.com>
+
+	PR other/116613
+	* attribs.cc (decls_mismatched_attributes): Rename
+	diagnostic_context's "printer" field to "m_printer".
+	(attr_access::array_as_string): Likewise.
+	* diagnostic-format-json.cc
+	(json_output_format::on_report_diagnostic): Likewise.
+	(diagnostic_output_format_init_json): Likewise.
+	* diagnostic-format-sarif.cc
+	(sarif_result::on_nested_diagnostic): Likewise.
+	(sarif_ice_notification): Likewise.
+	(sarif_builder::on_report_diagnostic): Likewise.
+	(sarif_builder::make_result_object): Likewise.
+	(sarif_builder::make_location_object): Likewise.
+	(sarif_builder::make_message_object_for_diagram): Likewise.
+	(diagnostic_output_format_init_sarif): Likewise.
+	* diagnostic-format-text.cc
+	(diagnostic_text_output_format::~diagnostic_text_output_format):
+	Likewise.
+	(diagnostic_text_output_format::on_report_diagnostic): Likewise.
+	(diagnostic_text_output_format::on_diagram): Likewise.
+	(diagnostic_text_output_format::print_any_cwe): Likewise.
+	(diagnostic_text_output_format::print_any_rules): Likewise.
+	(diagnostic_text_output_format::print_option_information):
+	Likewise.
+	* diagnostic-format.h (diagnostic_output_format::get_printer):
+	New.
+	* diagnostic-global-context.cc (verbatim): Rename
+	diagnostic_context's "printer" field to "m_printer".
+	* diagnostic-path.cc (path_label::get_text): Likewise.
+	(print_path_summary_as_text): Likewise.
+	(diagnostic_context::print_path): Likewise.
+	(selftest::test_empty_path): Likewise.
+	(selftest::test_intraprocedural_path): Likewise.
+	(selftest::test_interprocedural_path_1): Likewise.
+	(selftest::test_interprocedural_path_2): Likewise.
+	(selftest::test_recursion): Likewise.
+	(selftest::test_control_flow_1): Likewise.
+	(selftest::test_control_flow_2): Likewise.
+	(selftest::test_control_flow_3): Likewise.
+	(assert_cfg_edge_path_streq): Likewise.
+	(selftest::test_control_flow_5): Likewise.
+	(selftest::test_control_flow_6): Likewise.
+	* diagnostic-show-locus.cc (layout::layout): Likewise.
+	(selftest::test_layout_x_offset_display_utf8): Likewise.
+	(selftest::test_layout_x_offset_display_tab): Likewise.
+	(selftest::test_diagnostic_show_locus_unknown_location): Likewise.
+	(selftest::test_one_liner_simple_caret): Likewise.
+	(selftest::test_one_liner_no_column): Likewise.
+	(selftest::test_one_liner_caret_and_range): Likewise.
+	(selftest::test_one_liner_multiple_carets_and_ranges): Likewise.
+	(selftest::test_one_liner_fixit_insert_before): Likewise.
+	(selftest::test_one_liner_fixit_insert_after): Likewise.
+	(selftest::test_one_liner_fixit_remove): Likewise.
+	(selftest::test_one_liner_fixit_replace): Likewise.
+	(selftest::test_one_liner_fixit_replace_non_equal_range):
+	Likewise.
+	(selftest::test_one_liner_fixit_replace_equal_secondary_range):
+	Likewise.
+	(selftest::test_one_liner_fixit_validation_adhoc_locations):
+	Likewise.
+	(selftest::test_one_liner_many_fixits_1): Likewise.
+	(selftest::test_one_liner_many_fixits_2): Likewise.
+	(selftest::test_one_liner_labels): Likewise.
+	(selftest::test_one_liner_simple_caret_utf8): Likewise.
+	(selftest::test_one_liner_caret_and_range_utf8): Likewise.
+	(selftest::test_one_liner_multiple_carets_and_ranges_utf8):
+	Likewise.
+	(selftest::test_one_liner_fixit_insert_before_utf8): Likewise.
+	(selftest::test_one_liner_fixit_insert_after_utf8): Likewise.
+	(selftest::test_one_liner_fixit_remove_utf8): Likewise.
+	(selftest::test_one_liner_fixit_replace_utf8): Likewise.
+	(selftest::test_one_liner_fixit_replace_non_equal_range_utf8):
+	Likewise.
+	(selftest::test_one_liner_fixit_replace_equal_secondary_range_utf8):
+	Likewise.
+	(selftest::test_one_liner_fixit_validation_adhoc_locations_utf8):
+	Likewise.
+	(selftest::test_one_liner_many_fixits_1_utf8): Likewise.
+	(selftest::test_one_liner_many_fixits_2_utf8): Likewise.
+	(selftest::test_one_liner_labels_utf8): Likewise.
+	(selftest::test_one_liner_colorized_utf8): Likewise.
+	(selftest::test_add_location_if_nearby): Likewise.
+	(selftest::test_diagnostic_show_locus_fixit_lines): Likewise.
+	(selftest::test_overlapped_fixit_printing): Likewise.
+	(selftest::test_overlapped_fixit_printing_utf8): Likewise.
+	(selftest::test_overlapped_fixit_printing_2): Likewise.
+	(selftest::test_fixit_insert_containing_newline): Likewise.
+	(selftest::test_fixit_insert_containing_newline_2): Likewise.
+	(selftest::test_fixit_replace_containing_newline): Likewise.
+	(selftest::test_fixit_deletion_affecting_newline): Likewise.
+	(selftest::test_tab_expansion): Likewise.
+	(selftest::test_escaping_bytes_1): Likewise.
+	(selftest::test_escaping_bytes_2): Likewise.
+	(selftest::test_line_numbers_multiline_range): Likewise.
+	* diagnostic.cc (file_name_as_prefix): Likewise.
+	(diagnostic_set_caret_max_width): Likewise.
+	(diagnostic_context::initialize): Likewise.
+	(diagnostic_context::color_init): Likewise.
+	(diagnostic_context::urls_init): Likewise.
+	(diagnostic_context::finish): Likewise.
+	(diagnostic_context::get_location_text): Likewise.
+	(diagnostic_build_prefix): Likewise.
+	(diagnostic_context::report_current_module): Likewise.
+	(default_diagnostic_starter): Likewise.
+	(default_diagnostic_start_span_fn): Likewise.
+	(default_diagnostic_finalizer): Likewise.
+	(diagnostic_context::report_diagnostic): Likewise.
+	(diagnostic_append_note): Likewise.
+	(diagnostic_context::error_recursion): Likewise.
+	(fancy_abort): Likewise.
+	* diagnostic.h (diagnostic_context::set_show_highlight_colors):
+	Likewise.
+	(diagnostic_context::printer): Rename to...
+	(diagnostic_context::m_printer): ...this.
+	(diagnostic_format_decoder): Rename diagnostic_context's "printer"
+	field to "m_printer".
+	(diagnostic_prefixing_rule): Likewise.
+	(diagnostic_ready_p): Likewise.
+	* gimple-ssa-warn-access.cc (pass_waccess::maybe_warn_memmodel):
+	Likewise.
+	* langhooks.cc (lhd_print_error_function): Likewise.
+	* lto-wrapper.cc (print_lto_docs_link): Likewise.
+	* opts-global.cc (init_options_once): Likewise.
+	* opts.cc (common_handle_option): Likewise.
+	* simple-diagnostic-path.cc (simple_diagnostic_path_cc_tests):
+	Likewise.
+	* text-art/dump.h (dump_to_file<T>): Likewise.
+	* toplev.cc (announce_function): Likewise.
+	(toplev::main): Likewise.
+	* tree-diagnostic.cc (default_tree_diagnostic_starter): Likewise.
+	* tree.cc (escaped_string::escape): Likewise.
+	(selftest::test_escaped_strings): Likewise.
+
+2024-09-09  David Malcolm  <dmalcolm@redhat.com>
+
+	PR other/116603
+	* diagnostic-format-sarif.cc (SARIF_SCHEMA): Update URL.
+	(sarif_builder::maybe_make_region_object): Don't create regions
+	with startLine <= 0.
+	(sarif_builder::maybe_make_region_object_for_context): Likewise.
+
+2024-09-09  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.md (*insvdi_lowpart_1): Use "o" constraint
+	instead of "m" for double-word mode memory operands.
+	(*add<dwi>3_doubleword_zext): Ditto.
+	(*addv<dwi>4_doubleword_1): Use "jO" constraint instead of "jM"
+	for double-word mode memory operands.
+
+2024-09-09  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR middle-end/90693
+	* internal-fn.cc (expand_POPCOUNT): Handle the second argument
+	being `-1` for `<= 1`.
+	* tree-ssa-math-opts.cc (match_single_bit_test): Handle LE/GT
+	cases.
+	(math_opts_dom_walker::after_dom_children): Call match_single_bit_test
+	for LE_EXPR/GT_EXPR also.
+
+2024-09-09  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa.cc (pa_legitimate_address_p): Don't
+	canonicalize operand order of scaled index addresses.
+
+2024-09-09  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/116514
+	* tree-ssa-ccp.cc (bit_value_binop): Handle EXACT_DIV_EXPR
+	like TRUNC_DIV_EXPR.  Handle exact division of a signed value
+	by a power-of-two like a shift.  Handle unsigned division by
+	a power-of-two like a shift.
+	Handle unsigned TRUNC_MOD_EXPR by power-of-two, handle signed
+	TRUNC_MOD_EXPR by power-of-two if the result is zero.
+
+2024-09-09  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/116647
+	* tree-vect-loop.cc (vect_is_simple_reduction): Add missing
+	check to double reduction detection.
+
+2024-09-09  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR tree-optimization/116601
+	* gimple-fold.cc (optimize_memcpy_to_memset): Move
+	from tree-ssa-ccp.cc and rename. Also return true
+	if the optimization happened.
+	(gimple_fold_builtin_memory_op): Call
+	optimize_memcpy_to_memset.
+	(fold_stmt_1): Call optimize_memcpy_to_memset for
+	load/store copies.
+	* tree-ssa-ccp.cc (optimize_memcpy): Delete.
+	(pass_fold_builtins::execute): Remove code that
+	calls optimize_memcpy.
+
+2024-09-09  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	* tree-ssa-phiopt.cc (factor_out_conditional_operation): Move the has_single_use
+	checks much earlier. Remove redundant check for gimple_assign_cast_p.
+	Change around the check if the integral consts fits into the new type.
+
+2024-09-09  Haochen Jiang  <haochen.jiang@intel.com>
+
+	PR target/116617
+	* doc/invoke.texi: Add meteorlake, raptorlake and lunarlake.
+
+2024-09-08  H.J. Lu  <hjl.tools@gmail.com>
+
+	PR target/116621
+	* config/i386/i386.cc (ix86_gimplify_va_arg): Don't use temp for
+	a PARALLEL BLKmode container of an EXPR_LIST expression in a
+	TImode register.
+
+2024-09-08  Jørgen Kvalsvik  <j@lambda.is>
+
+	* gcov.cc (release_structures): Release source_lines.
+	(slurp): New function.
+	(output_lines): Read sources with slurp.
+
+2024-09-07  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	* gimple-ssa-split-paths.cc (is_feasible_trace): Fix wording
+	on the print.
+
+2024-09-07  Andrew MacLeod  <amacleod@redhat.com>
+
+	PR tree-optimization/116588
+	* tree-vrp.cc (execute_fast_vrp): Start with all edges executable.
+
+2024-09-07  Zhao Dingyi  <dingyizhao.zdy@outlook.com>
+
+	* config/riscv/xiangshan.md: Add atomic, trap, fcvt_i2f, fcvt_f2i.
+
+2024-09-07  Jin Ma  <jinma@linux.alibaba.com>
+
+	PR target/116592
+	* config/riscv/thead.cc (th_asm_output_opcode): Change '0' to
+	"zero"
+
+2024-09-06  Carl Love  <cel@linux.ibm.com>
+
+	* config/rs6000/rs6000-overload.def (vec_test_lsbb_all_ones,
+	vec_test_lsbb_all_zeros): Add built-in instances for vector signed
+	char and vector bool char.
+	* doc/extend.texi (vec_test_lsbb_all_ones,
+	vec_test_lsbb_all_zeros): Add documentation for the
+	existing built-ins.
+
+2024-09-06  Tamar Christina  <tamar.christina@arm.com>
+
+	PR tree-optimization/116628
+	* tree-vect-patterns.cc (vect_recog_cond_store_pattern): Add SSA_NAME
+	check on expression.
+
+2024-09-06  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR target/116598
+	* config/aarch64/aarch64.cc (aarch64_lookup_shared_state_flags): Use
+	is_attribute_namespace_p and get_attribute_name instead of manually grabbing
+	the namespace and name of the attribute.
+
+2024-09-06  Martin Jambor  <mjambor@suse.cz>
+
+	* passes.def: Move pass_ipa_cdtor_merge before pass_ipa_cp and
+	pass_ipa_sra.
+
+2024-09-06  Martin Jambor  <mjambor@suse.cz>
+
+	PR ipa/115815
+	* cgraph.cc (cgraph_node_cannot_be_local_p_1): Also check
+	DECL_STATIC_CONSTRUCTOR and DECL_STATIC_DESTRUCTOR.
+	* ipa-visibility.cc (non_local_p): Likewise.
+	(cgraph_node::local_p): Delete extraneous line of tabs.
+
+2024-09-06  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.cc (vect_analyze_slp): Also handle discovery
+	for double reductions.
+
+2024-09-06  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.cc (vect_analyze_slp): Perform single-lane
+	loop SLP discovery for non-grouped stores.  Move check on the root
+	for re-doing SLP analysis with a single lane for load/store-lanes
+	earlier and make sure we are dealing with a grouped access.
+	* tree-vect-stmts.cc (vectorizable_store): Always set
+	vec_num for SLP.
+
+2024-09-06  Georg-Johann Lay  <avr@gjlay.de>
+
+	* config/avr/avr.h: Remove "Atmel" from header comment.
+	* config/avr/avr.cc: Same.
+	* config/avr/avr.md: Same.
+	* config/avr/avr.opt: Same.
+	* config/avr/avr-dimode.md: Same.
+	* config/avr/avr-fixed.md: Same.
+	* config/avr/constraints.md: Same.
+	* config/avr/predicates.md: Same.
+	* config/avr/avr-log.cc: Same.
+	* config/avr/avrlibc.h: Same.
+	* config/avr/specs.h: Same.
+	* common/config/avr/avr-common.cc: Same.
+	* doc/install.texi: Same.
+	* config/avr/avr-arch.h: Adjust header comment.
+	* config/avr/avr-c.cc: Same.
+	* config/avr/avr-mcus.def: Same.
+	* config/avr/avr-modes.def: Same.
+	* config/avr/avr-passes.cc: Same.
+	* config/avr/avr-passes.def: Same.
+	* config/avr/avr-protos.h: Same.
+	* config/avr/driver-avr.cc: Same.
+	* config/avr/elf.h: Same.
+	* config/avr/gen-avr-mmcu-specs.cc: Same.
+	* config/avr/gen-avr-mmcu-texi.cc: Same.
+
+2024-09-06  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/116610
+	* tree-vect-loop.cc (vectorizable_induction): Use MINUS_EXPR
+	to apply a mask peeling adjustment.
+
+2024-09-06  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/116609
+	* tree-vect-loop.cc (vectorizable_live_operation_1): Support
+	partial vectors for single-lane SLP.
+
+2024-09-06  Raphael Moreira Zinsly  <rzinsly@ventanamicro.com>
+
+	* config/riscv/riscv.cc (riscv_build_integer): Detect constants
+	were the higher half is the lower half inverted.
+
+2024-09-06  Raphael Moreira Zinsly  <rzinsly@ventanamicro.com>
+
+	* config/riscv/riscv.cc (riscv_build_integer): Detect new case
+	of constants that can be improved.
+	(riscv_move_integer): Add synthesys for concatening constants
+	without Zbkb.
+
+2024-09-06  Pan Li  <pan2.li@intel.com>
+
+	* match.pd: Add int_fits_type_p check for .SAT_SUB imm operand.
+
+2024-09-06  Pan Li  <pan2.li@intel.com>
+
+	* match.pd: Add int_fits_type_p check for .SAT_SUB imm operand.
+
+2024-09-06  YunQiang Su  <syq@gcc.gnu.org>
+
+	* common/config/riscv/riscv-common.cc(riscv_select_multilib_by_abi):
+	Fix out of index problem.
+
+2024-09-06  Jason Merrill  <jason@redhat.com>
+
+	PR c++/46457
+	PR c++/81665
+	* doc/extend.texi: Document flag_enum attribute.
+	* doc/invoke.texi: Mention flag_enum in -Wswitch.
+
+2024-09-06  liuhongt  <hongtao.liu@intel.com>
+
+	PR target/115517
+	* config/i386/sse.md (*avx2_pcmp<mode>3_1): Change predicate
+	of operands[1] and operands[2] from nonimmdiate_operand to
+	nonimm_or_0_operand.
+
+2024-09-05  Jeff Law  <jlaw@ventanamicro.com>
+
+	* config/riscv/riscv.cc (riscv_expand_int_scc): For rv64, use a DI
+	temporary for the output and a promoted subreg to extract it into SI
+	arget.
+	(riscv_noce_conversion_profitable_p): Recognize new output from
+	sCC expansion too.
+
+2024-09-05  Marek Polacek  <polacek@redhat.com>
+
+	* doc/invoke.texi: Remove an extra char in @item sme2.
+
+2024-09-05  Prathamesh Kulkarni  <prathameshk@nvidia.com>
+
+	* gimplify.cc (omp_add_variable): Check if decl size is not poly_int_tree_p.
+	(gimplify_adjust_omp_clauses): Likewise.
+	* omp-low.cc (scan_sharing_clauses): Likewise.
+	(lower_omp_target): Likewise.
+
+2024-09-05  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	PR target/104957
+	* config/nvptx/nvptx.cc (write_fn_proto_1): Revert 2022-03-22
+	change; 'write_fn_marker' also for alias DECL.
+	(nvptx_asm_output_def_from_decls): 'write_fn_marker' for alias
+	DEF.
+
+2024-09-05  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	* doc/sourcebuild.texi (Effective-Target Keywords): Document
+	'nvptx_default_ptx_isa_version_at_least_6_0',
+	'nvptx_runtime_alias_ptx'.
+	(Add Options): Document 'nvptx_alias_ptx'.
+
+2024-09-05  Tamar Christina  <tamar.christina@arm.com>
+
+	* tree-vect-patterns.cc (vect_recog_cond_store_pattern): Use pattern
+	statement.
+
+2024-09-05  Tamar Christina  <tamar.christina@arm.com>
+
+	* doc/invoke.texi: Remove duplicate armv9-a mention.
+
+2024-09-05  Jakub Jelinek  <jakub@redhat.com>
+
+	* tree-vrp.cc (pass_vrp::execute): Start diagnostics with
+	lowercase u rather than capital U, use semicolon instead of dot.
+
+2024-09-05  YunQiang Su  <yunqiang@isrc.iscas.ac.cn>
+
+	* common/config/riscv/riscv-common.cc(riscv_select_multilib_by_abi):
+	look up reversely as the fallback path is listed as the 1st one.
+
+2024-09-05  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.cc (vect_analyze_slp): Analyze SLP for live
+	but otherwise unused defs.
+
+2024-09-05  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	* gen-pass-instances.awk: Handle 'PUSH_INSERT_PASSES_WITHIN'.
+	* pass_manager.h (PUSH_INSERT_PASSES_WITHIN): Adjust.
+	* passes.cc (PUSH_INSERT_PASSES_WITHIN): Likewise.
+
+2024-09-05  Levy Hsu  <admin@levyhsu.com>
+
+	* config/i386/mmx.md (TARGET_MMX_WITH_SSE): New mode iterator VBF_32_64
+	(fma<mode>4): define_expand for V2BF/V4BF fma<mode>4.
+	(fnma<mode>4): define_expand for V2BF/V4BF fnma<mode>4.
+	(fms<mode>4): define_expand for V2BF/V4BF fms<mode>4.
+	(fnms<mode>4): define_expand for V2BF/V4BF fnms<mode>4.
+
+2024-09-05  Hu, Lin1  <lin1.hu@intel.com>
+
+	* match.pd: Fix match for (bit_and (ordered @0 @1) (ne @0 @1)).
+
+2024-09-05  Levy Hsu  <admin@levyhsu.com>
+
+	* config/i386/i386.cc (ix86_build_const_vector): Add V2BF/V4BF.
+	(ix86_build_signbit_mask): Add V2BF/V4BF.
+	* config/i386/mmx.md: Modified supported logic op to use VHBF_32_64.
+
+2024-09-05  Levy Hsu  <admin@levyhsu.com>
+
+	* config/i386/i386.cc (ix86_preferred_simd_mode): Add BFmode Support.
+
+2024-09-04  Raphael Moreira Zinsly  <rzinsly@ventanamicro.com>
+
+	* config/riscv/riscv.cc (riscv_split_integer_cost): Adjust the
+	cost of negative repeating constants.
+	(riscv_split_integer): Handle negative repeating constants.
+
+2024-09-04  Tom Tromey  <tromey@adacore.com>
+
+	* dwarf2out.cc (modified_type_die): Check DECL_NAMELESS.
+
+2024-09-04  Arsen Arsenović  <arsen@aarsen.me>
+
+	PR c++/106973
+	* internal-fn.def (CO_YIELD): Mark as ECF_LEAF.
+
+2024-09-04  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	* tree-object-size.cc (object_sizes_execute): Mark lhs for maybe dceing
+	if doing a propagate. Call simple_dce_from_worklist.
+
+2024-09-04  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	* config/nvptx/gen-opt.sh: Use 'enum ptx_isa' instead of 'int'.
+	* config/nvptx/nvptx-gen.opt: Regenerate.
+	* config/nvptx/nvptx.opt: Use 'enum ptx_version' instead of 'int'.
+	* config/nvptx/nvptx-opts.h (enum ptx_isa): Add 'PTX_ISA_unset'.
+	(enum ptx_version): Add 'PTX_VERSION_unset'.
+	* config/nvptx/nvptx-c.cc (nvptx_cpu_cpp_builtins): Adjust.
+	* config/nvptx/nvptx.cc (default_ptx_version_option)
+	(handle_ptx_version_option, nvptx_option_override)
+	(nvptx_file_start): Likewise.
+
+2024-09-04  Frederik Harwath  <frederik@codesourcery.com>
+	    Thomas Schwinge  <tschwinge@baylibre.com>
+
+	* predict.cc (pass_profile::execute): Fix dump message.
+
+2024-09-04  Frederik Harwath  <frederik@codesourcery.com>
+
+	* tree-cfg.h (gimple_debug_cfg): Change argument type from int
+	to dump_flags_t.
+
+2024-09-04  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	* passes.cc: Document 'pass_postreload' vs. 'pass_late_compilation'.
+	* passes.def: Likewise.
+
+2024-09-04  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.cc (vect_lower_load_permutations): Also
+	process single-use grouped loads.
+	Avoid lowering contiguous aligned power-of-two sized
+	chunks, those are better handled by the vector size
+	specific SLP code generation.
+	* tree-vect-stmts.cc (get_group_load_store_type): Drop
+	the unrelated requirement of a load permutation for the
+	single-element interleaving limit.
+
+2024-09-04  Jan Hubicka  <jh@suse.cz>
+
+	* config/i386/x86-tune-costs.h (znver5_cost): Update instruction
+	costs.
+
+2024-09-04  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	* expr.cc (expand_expr_divmod): Add dump of the two costs for
+	positive division.
+
+2024-09-04  Hans-Peter Nilsson  <hp@axis.com>
+
+	* config/cris/cris.md (lra_szext_decomposed_indir_plus): New
+	peephole2 pattern.
+
+2024-09-04  Pan Li  <pan2.li@intel.com>
+
+	* config/riscv/riscv.cc (riscv_expand_usadd): Zero extend
+	the second operand of usadd as the first operand does.
+	* config/riscv/riscv.md (usadd<m>3): Allow imm operand for
+	scalar usadd pattern.
+
+2024-09-03  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	PR tree-optimization/112402
+	* gimple-ssa-split-paths.cc (poor_ifcvt_pred): New function.
+	(is_feasible_trace): Remove old heurstics for ifcvt cases.
+	For num_stmts <=1 for both pred check poor_ifcvt_pred on both
+	pred.
+
+2024-09-03  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	* gimple-ssa-split-paths.cc (is_feasible_trace): Move
+	check for # of statments in join earlier and add a
+	debug print.
+
+2024-09-03  Qing Zhao  <qing.zhao@oracle.com>
+
+	* doc/extend.texi: Explicitly mentions counted_by is available
+	only in C for now.
+
+2024-09-03  David Malcolm  <dmalcolm@redhat.com>
+
+	* pretty-print-markup.h (pp_markup::context::context): Drop
+	params "buf" and "chunk_idx", initializing m_buf from pp.
+	(pp_markup::context::m_chunk_idx): Drop field.
+	* pretty-print.cc (pretty_printer::format): Convert param
+	from a text_info * to a text_info &.  Split out phase 1
+	and phase 2 into subroutines...
+	(format_phase_1): New, from pretty_printer::format.
+	(format_phase_2): Likewise.
+	* pretty-print.h (pretty_printer::format): Convert param
+	from a text_info * to a text_info &.
+	(pp_format): Update for above change.  Assert that text_info is
+	non-null.
+
+2024-09-03  David Malcolm  <dmalcolm@redhat.com>
+
+	* pretty-print-format-impl.h (pp_formatted_chunks::get_prev): New
+	accessor.
+	* pretty-print.cc (selftest::push_pp_format): New.
+	(ASSERT_TEXT_TOKEN): New macro.
+	(selftest::test_pp_format_stack): New test.
+	(selftest::pretty_print_cc_tests): New.
+
+2024-09-03  David Malcolm  <dmalcolm@redhat.com>
+
+	* diagnostic.cc (diagnostic_set_caret_max_width): Prefix all
+	output_buffer fields with "m_".
+	* dumpfile.cc (emit_any_pending_textual_chunks): Likewise.
+	(emit_any_pending_textual_chunks): Likewise.
+	* gimple-pretty-print.cc (gimple_dump_bb_buff): Likewise.
+	* json.cc (value::dump): Likewise.
+	* pretty-print-format-impl.h (class chunk_info): Rename to...
+	(class pp_formatted_chunks): ...this.  Add friend
+	class output_buffer.  Update comment near end of decl to show
+	the pp_formatted_chunks instance on the chunk_obstack.
+	(pp_formatted_chunks::pop_from_output_buffer): Delete decl.
+	(pp_formatted_chunks::on_begin_quote): Delete decl that should
+	have been removed in r15-3311-ge31b6176996567.
+	(pp_formatted_chunks::on_end_quote): Likewise.
+	(pp_formatted_chunks::m_prev): Update for renaming.
+	* pretty-print.cc (output_buffer::output_buffer): Prefix all
+	fields with "m_".  Rename "cur_chunk_array" to
+	"m_cur_formatted_chunks".
+	(output_buffer::~output_buffer): Prefix all fields with "m_".
+	(output_buffer::push_formatted_chunks): New.
+	(output_buffer::pop_formatted_chunks): New.
+	(pp_write_text_to_stream): Prefix all output_buffer fields with
+	"m_".
+	(pp_write_text_as_dot_label_to_stream): Likewise.
+	(pp_write_text_as_html_like_dot_to_stream): Likewise.
+	(chunk_info::append_formatted_chunk): Rename to...
+	(pp_formatted_chunks::append_formatted_chunk): ...this.
+	(chunk_info::pop_from_output_buffer): Delete.
+	(pretty_printer::format): Update leading comment to mention
+	pushing pp_formatted_chunks, and to reflect changes in
+	r15-3311-ge31b6176996567.  Prefix all output_buffer fields with
+	"m_".
+	(pp_output_formatted_text): Update leading comment to mention
+	popping a pp_formatted_chunks, and to reflect the changes in
+	r15-3311-ge31b6176996567.  Prefix all output_buffer fields with
+	"m_" and rename "cur_chunk_array" to "m_cur_formatted_chunks".
+	Replace call to chunk_info::pop_from_output_buffer with a call to
+	output_buffer::pop_formatted_chunks.
+	(pp_flush): Prefix all output_buffer fields with "m_".
+	(pp_really_flush): Likewise.
+	(pp_clear_output_area): Likewise.
+	(pp_append_text): Likewise.
+	(pretty_printer::remaining_character_count_for_line): Likewise.
+	(pp_newline): Likewise.
+	(pp_character): Likewise.
+	(pp_markup::context::push_back_any_text): Likewise.
+	* pretty-print.h (class chunk_info): Rename to...
+	(class pp_formatted_chunks): ...this.
+	(class output_buffer): Delete unimplemented rule-of-5 members.
+	(output_buffer::push_formatted_chunks): New decl.
+	(output_buffer::pop_formatted_chunks): New decl.
+	(output_buffer::formatted_obstack): Rename to...
+	(output_buffer::m_formatted_obstack): ...this.
+	(output_buffer::chunk_obstack): Rename to...
+	(output_buffer::m_chunk_obstack): ...this.
+	(output_buffer::obstack): Rename to...
+	(output_buffer::m_obstack): ...this.
+	(output_buffer::cur_chunk_array): Rename to...
+	(output_buffer::m_cur_formatted_chunks): ...this.
+	(output_buffer::stream): Rename to...
+	(output_buffer::m_stream): ...this.
+	(output_buffer::line_length): Rename to...
+	(output_buffer::m_line_length): ...this.
+	(output_buffer::digit_buffer): Rename to...
+	(output_buffer::m_digit_buffer): ...this.
+	(output_buffer::flush_p): Rename to...
+	(output_buffer::m_flush_p): ...this.
+	(output_buffer_formatted_text): Prefix all output_buffer fields
+	with "m_".
+	(output_buffer_append_r): Likewise.
+	(output_buffer_last_position_in_text): Likewise.
+	(pretty_printer::set_output_stream): Likewise.
+	(pp_scalar): Likewise.
+	(pp_wide_int): Likewise.
+	* tree-pretty-print.cc (dump_generic_node): Likewise.
+	(dump_generic_node): Likewise.
+	(pp_double_int): Likewise.
+
+2024-09-03  Jan Hubicka  <jh@suse.cz>
+
+	* config/i386/i386.cc (ix86_reassociation_width): Update for Znver5.
+	* config/i386/x86-tune-costs.h (znver5_costs): Update reassociation
+	widths.
+
+2024-09-03  Jeff Law  <jlaw@ventanamicro.com>
+
+	* J: Drop file that should not have been committed
+
+2024-09-03  Jan Hubicka  <jh@suse.cz>
+
+	* config/i386/x86-tune-sched.cc (ix86_fuse_mov_alu_p): Fix
+	typo.
+
+2024-09-03  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.cc (vect_print_slp_tree): Annotate load
+	and store-lanes nodes.
+
+2024-09-03  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-stmts.cc (get_group_load_store_type): Only disable
+	peeling for gaps by using smaller vectors when not using
+	load-lanes.
+
+2024-09-03  Jan Hubicka  <jh@suse.cz>
+
+	* config/i386/i386.h (TARGET_FUSE_MOV_AND_ALU): New tune.
+	* config/i386/x86-tune-sched.cc (ix86_issue_rate): Updat for znver5.
+	(ix86_adjust_cost): Add TODO about znver5 memory latency.
+	(ix86_fuse_mov_alu_p): New.
+	(ix86_macro_fusion_pair_p): Use it.
+	* config/i386/x86-tune.def (X86_TUNE_FUSE_ALU_AND_BRANCH): Add ZNVER5.
+	(X86_TUNE_FUSE_MOV_AND_ALU): New tune;
+
+2024-09-03  Jan Hubicka  <jh@suse.cz>
+
+	* config/i386/x86-tune.def (X86_TUNE_USE_GATHER_2PARTS): Disable for
+	ZNVER5.
+	(X86_TUNE_USE_SCATTER_2PARTS): Disable for ZNVER5.
+	(X86_TUNE_USE_GATHER_4PARTS): Disable for ZNVER5.
+	(X86_TUNE_USE_SCATTER_4PARTS): Disable for ZNVER5.
+	(X86_TUNE_USE_GATHER_8PARTS): Disable for ZNVER5.
+	(X86_TUNE_USE_SCATTER_8PARTS): Disable for ZNVER5.
+
+2024-09-03  H.J. Lu  <hjl.tools@gmail.com>
+
+	PR ipa/116410
+	* ipa-modref.cc (analyze_parms): Always analyze function parameter
+	for LTO.
+
+2024-09-03  Jeff Law  <jlaw@ventanamicro.com>
+
+	PR target/115921
+	* config/riscv/riscv.md (reassociate bitwise ops): Tighten test for
+	cases we do not want reassociate.
+	* J: New file.
+
+2024-09-03  Jan Hubicka  <jh@suse.cz>
+
+	* config/i386/x86-tune.def (X86_TUNE_AVOID_128FMA_CHAINS): Enable for
+	znver5.
+	(X86_TUNE_AVOID_256FMA_CHAINS): Likewise.
+	(X86_TUNE_AVOID_512FMA_CHAINS): Likewise.
+
+2024-09-03  Tobias Burnus  <tburnus@baylibre.com>
+
+	PR lto/116535
+	* lto-cgraph.cc (output_offload_tables): Remove offload_ frees.
+	* lto-streamer-out.cc (lto_output): Make call to it depend on
+	lto_get_out_decl_state ()->output_offload_tables_p.
+	* lto-streamer.h (struct lto_out_decl_state): Add
+	output_offload_tables_p field.
+	* tree-pass.h (ipa_write_optimization_summaries): Add bool argument.
+	* passes.cc (ipa_write_summaries_1): Add bool
+	output_offload_tables_p arg.
+	(ipa_write_summaries): Update call.
+	(ipa_write_optimization_summaries): Accept output_offload_tables_p.
+
+2024-09-03  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/116575
+	* tree-vect-slp.cc (vect_analyze_slp): Properly compute
+	the mask argument for vect_load/store_lanes_supported.
+	When the load is masked for now avoid rediscovery.
+
+2024-09-03  Haochen Jiang  <haochen.jiang@intel.com>
+
+	* config/i386/avx512fp16intrin.h
+	(_mm512_mask_fpclass_ph_mask): Correct mask type to __mmask32.
+	(_mm512_fpclass_ph_mask): Ditto.
+
+2024-09-03  Richard Biener  <rguenther@suse.de>
+
+	* fold-const.cc (poly_int_binop): Move assert on
+	NUM_POLY_INT_COEFFS after INTEGER_CST processing.
+
+2024-09-03  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/116501
+	* gimple-lower-bitint.cc (bitint_large_huge::lower_addsub_overflow):
+	In the last_ovf case, use build_zero_cst operand not just when
+	TYPE_UNSIGNED (typeN), but also when precN >= 0.
+
+2024-09-03  Jennifer Schmitz  <jschmitz@nvidia.com>
+
+	* config/aarch64/aarch64-sve-builtins-base.cc (svmul_impl::fold):
+	Try constant folding.
+
+2024-09-03  Jennifer Schmitz  <jschmitz@nvidia.com>
+
+	* config/aarch64/aarch64-sve-builtins-base.cc (svdiv_impl::fold):
+	Try constant folding.
+	* config/aarch64/aarch64-sve-builtins.h: Declare
+	gimple_folder::fold_const_binary.
+	* config/aarch64/aarch64-sve-builtins.cc (aarch64_const_binop):
+	New function to fold binary SVE intrinsics without overflow.
+	(gimple_folder::fold_const_binary): New helper function for
+	constant folding of SVE intrinsics.
+
+2024-09-03  Jennifer Schmitz  <jschmitz@nvidia.com>
+
+	* fold-const.h: Declare vector_const_binop.
+	* fold-const.cc (const_binop): Remove cases for vector constants.
+	(vector_const_binop): New function that folds vector constants
+	element-wise.
+	(int_const_binop): Remove call to wide_int_binop.
+	(poly_int_binop): Add call to wide_int_binop.
+
+2024-09-03  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-slp.cc (vect_build_slp_tree_1): Handle mixing
+	all of handled components besides ARRAY_RANGE_REF, drop
+	handling of INDIRECT_REF.
+
+2024-09-03  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-stmts.cc (vect_get_vector_types_for_stmt):
+	Handle all internal_store_fn_p the same.  Remove special-casing
+	for the scalar_type of IFN_MASK_STORE.
+
+2024-09-03  Levy Hsu  <admin@levyhsu.com>
+
+	* config/i386/mmx.md (<code><mode>3): New define_expand for V2BF/V4BFsmaxmin
+
+2024-09-03  Levy Hsu  <admin@levyhsu.com>
+
+	* config/i386/mmx.md (VBF_32_64): New mode iterator for partial vectorized V2BF/V4BF.
+	(<insn><mode>3): New define_expand for plusminusmultdiv.
+	(sqrt<mode>2): New define_expand for sqrt.
+
+2024-09-03  Pan Li  <pan2.li@intel.com>
+
+	* config/riscv/riscv-protos.h (riscv_expand_ssadd): Add new func
+	decl for expanding ssadd.
+	* config/riscv/riscv.cc (riscv_gen_sign_max_cst): Add new func
+	impl to gen the max int rtx.
+	(riscv_expand_ssadd): Add new func impl to expand the ssadd.
+	* config/riscv/riscv.md (ssadd<mode>3): Add new pattern for
+	signed integer .SAT_ADD.
+
 2024-09-03  YunQiang Su  <syq@gcc.gnu.org>
 
 	* config/mips/mips-msa.md: (MSA_NO_HADD): we have HADD for

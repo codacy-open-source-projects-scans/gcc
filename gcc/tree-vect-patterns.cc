@@ -6670,13 +6670,24 @@ vect_recog_cond_store_pattern (vec_info *vinfo,
   if (TREE_CODE (st_rhs) != SSA_NAME)
     return NULL;
 
-  gassign *cond_stmt = dyn_cast<gassign *> (SSA_NAME_DEF_STMT (st_rhs));
+  auto cond_vinfo = vinfo->lookup_def (st_rhs);
+
+  /* If the condition isn't part of the loop then bool recog wouldn't have seen
+     it and so this transformation may not be valid.  */
+  if (!cond_vinfo)
+    return NULL;
+
+  cond_vinfo = vect_stmt_to_vectorize (cond_vinfo);
+  gassign *cond_stmt = dyn_cast<gassign *> (STMT_VINFO_STMT (cond_vinfo));
   if (!cond_stmt || gimple_assign_rhs_code (cond_stmt) != COND_EXPR)
     return NULL;
 
   /* Check if the else value matches the original loaded one.  */
   bool invert = false;
   tree cmp_ls = gimple_arg (cond_stmt, 0);
+  if (TREE_CODE (cmp_ls) != SSA_NAME)
+    return NULL;
+
   tree cond_arg1 = gimple_arg (cond_stmt, 1);
   tree cond_arg2 = gimple_arg (cond_stmt, 2);
 

@@ -2127,6 +2127,7 @@ get_group_load_store_type (vec_info *vinfo, stmt_vec_info stmt_info,
 	  unsigned HOST_WIDE_INT tem, num;
 	  if (overrun_p
 	      && !masked_p
+	      && *memory_access_type != VMAT_LOAD_STORE_LANES
 	      && (((alss = vect_supportable_dr_alignment (vinfo, first_dr_info,
 							  vectype, misalign)))
 		   == dr_aligned
@@ -2186,7 +2187,6 @@ get_group_load_store_type (vec_info *vinfo, stmt_vec_info stmt_info,
 	     blow up memory, see PR65518).  */
 	  if (loop_vinfo
 	      && *memory_access_type == VMAT_CONTIGUOUS
-	      && SLP_TREE_LOAD_PERMUTATION (slp_node).exists ()
 	      && single_element_p
 	      && maybe_gt (group_size, TYPE_VECTOR_SUBPARTS (vectype)))
 	    {
@@ -8355,10 +8355,12 @@ vectorizable_store (vec_info *vinfo,
       return vectorizable_scan_store (vinfo, stmt_info, gsi, vec_stmt, ncopies);
     }
 
-  if (grouped_store)
+  if (grouped_store || slp)
     {
       /* FORNOW */
-      gcc_assert (!loop || !nested_in_vect_loop_p (loop, stmt_info));
+      gcc_assert (!grouped_store
+		  || !loop
+		  || !nested_in_vect_loop_p (loop, stmt_info));
 
       if (slp)
         {
@@ -8367,8 +8369,9 @@ vectorizable_store (vec_info *vinfo,
              group.  */
           vec_num = SLP_TREE_NUMBER_OF_VEC_STMTS (slp_node);
 	  first_stmt_info = SLP_TREE_SCALAR_STMTS (slp_node)[0];
-	  gcc_assert (DR_GROUP_FIRST_ELEMENT (first_stmt_info)
-		      == first_stmt_info);
+	  gcc_assert (!STMT_VINFO_GROUPED_ACCESS (first_stmt_info)
+		      || (DR_GROUP_FIRST_ELEMENT (first_stmt_info)
+			  == first_stmt_info));
 	  first_dr_info = STMT_VINFO_DR_INFO (first_stmt_info);
 	  op = vect_get_store_rhs (first_stmt_info);
         } 
@@ -14877,8 +14880,10 @@ vect_get_vector_types_for_stmt (vec_info *vinfo, stmt_vec_info stmt_info,
   if (gimple_get_lhs (stmt) == NULL_TREE
       /* Allow vector conditionals through here.  */
       && !is_a <gcond *> (stmt)
-      /* MASK_STORE has no lhs, but is ok.  */
-      && !gimple_call_internal_p (stmt, IFN_MASK_STORE))
+      /* MASK_STORE and friends have no lhs, but are ok.  */
+      && !(is_gimple_call (stmt)
+	   && gimple_call_internal_p (stmt)
+	   && internal_store_fn_p (gimple_call_internal_fn (stmt))))
     {
       if (is_a <gcall *> (stmt))
 	{
@@ -14928,8 +14933,6 @@ vect_get_vector_types_for_stmt (vec_info *vinfo, stmt_vec_info stmt_info,
 
       if (data_reference *dr = STMT_VINFO_DATA_REF (stmt_info))
 	scalar_type = TREE_TYPE (DR_REF (dr));
-      else if (gimple_call_internal_p (stmt, IFN_MASK_STORE))
-	scalar_type = TREE_TYPE (gimple_call_arg (stmt, 3));
       else
 	scalar_type = TREE_TYPE (gimple_get_lhs (stmt));
 

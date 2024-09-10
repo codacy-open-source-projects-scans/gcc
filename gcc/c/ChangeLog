@@ -1,3 +1,34 @@
+2024-09-09  David Malcolm  <dmalcolm@redhat.com>
+
+	* c-errors.cc (pedwarn_c23): Use "diagnostic_option_id option_id"
+	rather than "int opt".  Update for renaming of diagnostic_info
+	field.
+	(pedwarn_c11): Likewise.
+	(pedwarn_c99): Likewise.
+	(pedwarn_c90): Likewise.
+	* c-tree.h (pedwarn_c90): Likewise for decl.
+	(pedwarn_c99): Likewise.
+	(pedwarn_c11): Likewise.
+	(pedwarn_c23): Likewise.
+
+2024-09-09  David Malcolm  <dmalcolm@redhat.com>
+
+	PR other/116613
+	* c-objc-common.cc (c_initialize_diagnostics): Rename
+	diagnostic_context's "printer" field to "m_printer".
+
+2024-09-06  Jason Merrill  <jason@redhat.com>
+
+	PR c++/46457
+	PR c++/81665
+	* c-objc-common.h (c_objc_attribute_table): Add
+	c_common_clang_attribute_table.
+
+2024-09-03  David Malcolm  <dmalcolm@redhat.com>
+
+	* c-objc-common.cc (print_type): Prefix all output_buffer fields
+	with "m_".
+
 2024-09-02  Richard Sandiford  <richard.sandiford@arm.com>
 
 	* c-typeck.cc (build_asm_expr): Rename ASM_INPUT_P to ASM_BASIC_P.

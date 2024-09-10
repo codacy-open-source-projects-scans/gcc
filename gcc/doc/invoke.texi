@@ -7672,9 +7672,9 @@ unless C++14 mode (or newer) is active.
 Warn whenever a @code{switch} statement has an index of enumerated type
 and lacks a @code{case} for one or more of the named codes of that
 enumeration.  (The presence of a @code{default} label prevents this
-warning.)  @code{case} labels outside the enumeration range also
-provoke warnings when this option is used (even if there is a
-@code{default} label).
+warning.)  @code{case} labels that do not correspond to enumerators also
+provoke warnings when this option is used, unless the enumeration is marked
+with the @code{flag_enum} attribute.
 This warning is enabled by @option{-Wall}.
 
 @opindex Wswitch-default
@@ -7688,8 +7688,9 @@ case.
 @item -Wswitch-enum
 Warn whenever a @code{switch} statement has an index of enumerated type
 and lacks a @code{case} for one or more of the named codes of that
-enumeration.  @code{case} labels outside the enumeration range also
-provoke warnings when this option is used.  The only difference
+enumeration.  @code{case} labels that do not correspond to enumerators also
+provoke warnings when this option is used, unless the enumeration is marked
+with the @code{flag_enum} attribute.  The only difference
 between @option{-Wswitch} and this option is that this option gives a
 warning about an omitted enumeration code even if there is a
 @code{default} label.
@@ -21847,7 +21848,7 @@ Enable the Scalable Matrix Extension.
 Enable the FEAT_SME_I16I64 extension to SME.
 @item sme-f64f64
 Enable the FEAT_SME_F64F64 extension to SME.
-+@item sme2
+@item sme2
 Enable the Scalable Matrix Extension 2.  This also enables SME instructions.
 @item lse128
 Enable the LSE128 128-bit atomic instructions extension.  This also
@@ -23025,7 +23026,6 @@ Permissible names are:
 @samp{armv7-m}, @samp{armv7e-m},
 @samp{armv8-m.base}, @samp{armv8-m.main},
 @samp{armv8.1-m.main},
-@samp{armv9-a},
 @samp{iwmmxt} and @samp{iwmmxt2}.
 
 Additionally, the following architectures, which lack support for the
@@ -34741,12 +34741,14 @@ UINTR, AMX-BF16, AMX-TILE, AMX-INT8, AVX-VNNI, AVX512-FP16 and AVX512BF16
 instruction set support.
 
 @item alderlake
-Intel Alderlake CPU with 64-bit extensions, MOVBE, MMX, SSE, SSE2, SSE3, SSSE3,
-SSE4.1, SSE4.2, POPCNT, AES, PREFETCHW, PCLMUL, RDRND, XSAVE, XSAVEC, XSAVES,
-XSAVEOPT, FSGSBASE, PTWRITE, RDPID, SGX, GFNI-SSE, CLWB, MOVDIRI, MOVDIR64B,
-CLDEMOTE, WAITPKG, ADCX, AVX, AVX2, BMI, BMI2, F16C, FMA, LZCNT, PCONFIG, PKU,
-VAES, VPCLMULQDQ, SERIALIZE, HRESET, KL, WIDEKL and AVX-VNNI instruction set
-support.
+@itemx raptorlake
+@itemx meteorlake
+Intel Alderlake/Raptorlake/Meteorlake CPU with 64-bit extensions, MOVBE, MMX,
+SSE, SSE2, SSE3, SSSE3, SSE4.1, SSE4.2, POPCNT, AES, PREFETCHW, PCLMUL, RDRND,
+XSAVE, XSAVEC, XSAVES, XSAVEOPT, FSGSBASE, PTWRITE, RDPID, SGX, GFNI-SSE, CLWB,
+MOVDIRI, MOVDIR64B, CLDEMOTE, WAITPKG, ADCX, AVX, AVX2, BMI, BMI2, F16C, FMA,
+LZCNT, PCONFIG, PKU, VAES, VPCLMULQDQ, SERIALIZE, HRESET, KL, WIDEKL and
+AVX-VNNI instruction set support.
 
 @item rocketlake
 Intel Rocketlake CPU with 64-bit extensions, MMX, SSE, SSE2, SSE3, SSSE3
@@ -34788,11 +34790,12 @@ UINTR, AVXIFMA, AVXVNNIINT8, AVXNECONVERT and CMPCCXADD instruction set
 support.
 
 @item arrowlake-s
-Intel Arrow Lake S CPU with 64-bit extensions, MOVBE, MMX, SSE, SSE2, SSE3,
-SSSE3, SSE4.1, SSE4.2, POPCNT, AES, PREFETCHW, PCLMUL, RDRND, XSAVE, XSAVEC,
-XSAVES, XSAVEOPT, FSGSBASE, PTWRITE, RDPID, SGX, GFNI-SSE, CLWB, MOVDIRI,
-MOVDIR64B, CLDEMOTE, WAITPKG, ADCX, AVX, AVX2, BMI, BMI2, F16C, FMA, LZCNT,
-PCONFIG, PKU, VAES, VPCLMULQDQ, SERIALIZE, HRESET, KL, WIDEKL, AVX-VNNI,
+@itemx lunarlake
+Intel Arrow Lake S/Lunarlake CPU with 64-bit extensions, MOVBE, MMX, SSE, SSE2,
+SSE3, SSSE3, SSE4.1, SSE4.2, POPCNT, AES, PREFETCHW, PCLMUL, RDRND, XSAVE,
+XSAVEC, XSAVES, XSAVEOPT, FSGSBASE, PTWRITE, RDPID, SGX, GFNI-SSE, CLWB,
+MOVDIRI, MOVDIR64B, CLDEMOTE, WAITPKG, ADCX, AVX, AVX2, BMI, BMI2, F16C, FMA,
+LZCNT, PCONFIG, PKU, VAES, VPCLMULQDQ, SERIALIZE, HRESET, KL, WIDEKL, AVX-VNNI,
 UINTR, AVXIFMA, AVXVNNIINT8, AVXNECONVERT, CMPCCXADD, AVXVNNIINT16, SHA512,
 SM3 and SM4 instruction set support.
 

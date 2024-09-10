@@ -1318,13 +1318,15 @@ vect_build_slp_tree_1 (vec_info *vinfo, unsigned char *swap,
 	       && !(STMT_VINFO_GROUPED_ACCESS (stmt_info)
 		    && (first_stmt_code == ARRAY_REF
 			|| first_stmt_code == BIT_FIELD_REF
-			|| first_stmt_code == INDIRECT_REF
 			|| first_stmt_code == COMPONENT_REF
+			|| first_stmt_code == REALPART_EXPR
+			|| first_stmt_code == IMAGPART_EXPR
 			|| first_stmt_code == MEM_REF)
 		    && (rhs_code == ARRAY_REF
 			|| rhs_code == BIT_FIELD_REF
-			|| rhs_code == INDIRECT_REF
 			|| rhs_code == COMPONENT_REF
+			|| rhs_code == REALPART_EXPR
+			|| rhs_code == IMAGPART_EXPR
 			|| rhs_code == MEM_REF)))
 	      || (ldst_p
 		  && (STMT_VINFO_GROUPED_ACCESS (stmt_info)
@@ -2956,14 +2958,17 @@ vect_print_slp_tree (dump_flags_t dump_kind, dump_location_t loc,
 	dump_printf (dump_kind, " %u[%u]",
 		     SLP_TREE_LANE_PERMUTATION (node)[i].first,
 		     SLP_TREE_LANE_PERMUTATION (node)[i].second);
-      dump_printf (dump_kind, " }\n");
+      dump_printf (dump_kind, " }%s\n",
+		   node->ldst_lanes ? " (load-lanes)" : "");
     }
   if (SLP_TREE_CHILDREN (node).is_empty ())
     return;
   dump_printf_loc (metadata, user_loc, "\tchildren");
   FOR_EACH_VEC_ELT (SLP_TREE_CHILDREN (node), i, child)
     dump_printf (dump_kind, " %p", (void *)child);
-  dump_printf (dump_kind, "\n");
+  dump_printf (dump_kind, "%s\n",
+	       node->ldst_lanes && !SLP_TREE_LANE_PERMUTATION (node).exists ()
+	       ? " (store-lanes)" : "");
 }
 
 DEBUG_FUNCTION void
@@ -4310,6 +4315,37 @@ vect_lower_load_permutations (loop_vec_info loop_vinfo,
 	  && ld_lanes_lanes == 0)
 	continue;
 
+      /* Build the permute to get the original load permutation order.  */
+      bool contiguous = true;
+      lane_permutation_t final_perm;
+      final_perm.create (SLP_TREE_LANES (load));
+      for (unsigned i = 0; i < SLP_TREE_LANES (load); ++i)
+	{
+	  final_perm.quick_push
+	    (std::make_pair (0, SLP_TREE_LOAD_PERMUTATION (load)[i]));
+	  if (i != 0
+	      && (SLP_TREE_LOAD_PERMUTATION (load)[i]
+		  != SLP_TREE_LOAD_PERMUTATION (load)[i-1] + 1))
+	    contiguous = false;
+	}
+
+      /* When the load permutation accesses a contiguous unpermuted,
+	 power-of-two aligned and sized chunk leave the load alone.
+	 We can likely (re-)load it more efficiently rather than
+	 extracting it from the larger load.
+	 ???  Long-term some of the lowering should move to where
+	 the vector types involved are fixed.  */
+      if (ld_lanes_lanes == 0
+	  && contiguous
+	  && (SLP_TREE_LANES (load) > 1 || loads.size () == 1)
+	  && pow2p_hwi (SLP_TREE_LANES (load))
+	  && SLP_TREE_LOAD_PERMUTATION (load)[0] % SLP_TREE_LANES (load) == 0
+	  && group_lanes % SLP_TREE_LANES (load) == 0)
+	{
+	  final_perm.release ();
+	  continue;
+	}
+
       /* First build (and possibly re-use) a load node for the
 	 unpermuted group.  Gaps in the middle and on the end are
 	 represented with NULL stmts.  */
@@ -4332,13 +4368,6 @@ vect_lower_load_permutations (loop_vec_info loop_vinfo,
 					 group_lanes,
 					 &max_nunits, matches, &limit,
 					 &tree_size, bst_map);
-
-      /* Build the permute to get the original load permutation order.  */
-      lane_permutation_t final_perm;
-      final_perm.create (SLP_TREE_LANES (load));
-      for (unsigned i = 0; i < SLP_TREE_LANES (load); ++i)
-	final_perm.quick_push
-	  (std::make_pair (0, SLP_TREE_LOAD_PERMUTATION (load)[i]));
 
       if (ld_lanes_lanes != 0)
 	{
@@ -4498,20 +4527,16 @@ vect_lower_load_permutations (loop_vec_info loop_vinfo,
 	  && STMT_VINFO_GROUPED_ACCESS (b0)
 	  && DR_GROUP_FIRST_ELEMENT (a0) == DR_GROUP_FIRST_ELEMENT (b0))
 	continue;
-      /* Just one SLP load of a possible group, leave those alone.  */
-      if (i == firsti + 1)
-	{
-	  firsti = i;
-	  continue;
-	}
-      /* Now we have multiple SLP loads of the same group from
+      /* Now we have one or multiple SLP loads of the same group from
 	 firsti to i - 1.  */
-      vect_lower_load_permutations (loop_vinfo, bst_map,
-				    make_array_slice (&loads[firsti],
-						      i - firsti));
+      if (STMT_VINFO_GROUPED_ACCESS (a0))
+	vect_lower_load_permutations (loop_vinfo, bst_map,
+				      make_array_slice (&loads[firsti],
+							i - firsti));
       firsti = i;
     }
-  if (firsti < loads.length () - 1)
+  if (firsti < loads.length ()
+      && STMT_VINFO_GROUPED_ACCESS (SLP_TREE_SCALAR_STMTS (loads[firsti])[0]))
     vect_lower_load_permutations (loop_vinfo, bst_map,
 				  make_array_slice (&loads[firsti],
 						    loads.length () - firsti));
@@ -4523,6 +4548,7 @@ vect_lower_load_permutations (loop_vec_info loop_vinfo,
 opt_result
 vect_analyze_slp (vec_info *vinfo, unsigned max_tree_size)
 {
+  loop_vec_info loop_vinfo = dyn_cast <loop_vec_info> (vinfo);
   unsigned int i;
   stmt_vec_info first_element;
   slp_instance instance;
@@ -4538,6 +4564,28 @@ vect_analyze_slp (vec_info *vinfo, unsigned max_tree_size)
   FOR_EACH_VEC_ELT (vinfo->grouped_stores, i, first_element)
     vect_analyze_slp_instance (vinfo, bst_map, first_element,
 			       slp_inst_kind_store, max_tree_size, &limit);
+
+  /* For loops also start SLP discovery from non-grouped stores.  */
+  if (loop_vinfo)
+    {
+      data_reference_p dr;
+      FOR_EACH_VEC_ELT (vinfo->shared->datarefs, i, dr)
+	if (DR_IS_WRITE (dr))
+	  {
+	    stmt_vec_info stmt_info = vinfo->lookup_dr (dr)->stmt;
+	    /* Grouped stores are already handled above.  */
+	    if (STMT_VINFO_GROUPED_ACCESS (stmt_info))
+	      continue;
+	    vec<stmt_vec_info> stmts;
+	    vec<stmt_vec_info> roots = vNULL;
+	    vec<tree> remain = vNULL;
+	    stmts.create (1);
+	    stmts.quick_push (stmt_info);
+	    vect_build_slp_instance (vinfo, slp_inst_kind_store,
+				     stmts, roots, remain, max_tree_size,
+				     &limit, bst_map, NULL);
+	  }
+    }
 
   if (bb_vec_info bb_vinfo = dyn_cast <bb_vec_info> (vinfo))
     {
@@ -4604,7 +4652,9 @@ vect_analyze_slp (vec_info *vinfo, unsigned max_tree_size)
 		     reduction path.  In that case we'd have to reverse
 		     engineer that conversion stmt following the chain using
 		     reduc_idx and from the PHI using reduc_def.  */
-		  && STMT_VINFO_DEF_TYPE (next_info) == vect_reduction_def)
+		  && (STMT_VINFO_DEF_TYPE (next_info) == vect_reduction_def
+		      || (STMT_VINFO_DEF_TYPE (next_info)
+			  == vect_double_reduction_def)))
 		{
 		  /* Do not discover SLP reductions combining lane-reducing
 		     ops, that will fail later.  */
@@ -4656,6 +4706,36 @@ vect_analyze_slp (vec_info *vinfo, unsigned max_tree_size)
 	      saved_stmts.release ();
 	    }
 	}
+
+      /* Make sure to vectorize only-live stmts, usually inductions.  */
+      for (edge e : get_loop_exit_edges (LOOP_VINFO_LOOP (loop_vinfo)))
+	for (auto gsi = gsi_start_phis (e->dest); !gsi_end_p (gsi);
+	     gsi_next (&gsi))
+	  {
+	    gphi *lc_phi = *gsi;
+	    tree def = gimple_phi_arg_def_from_edge (lc_phi, e);
+	    stmt_vec_info stmt_info;
+	    if (TREE_CODE (def) == SSA_NAME
+		&& !virtual_operand_p (def)
+		&& (stmt_info = loop_vinfo->lookup_def (def))
+		&& STMT_VINFO_RELEVANT (stmt_info) == vect_used_only_live
+		&& STMT_VINFO_LIVE_P (stmt_info)
+		&& (STMT_VINFO_DEF_TYPE (stmt_info) == vect_induction_def
+		    || (STMT_VINFO_DEF_TYPE (stmt_info) == vect_internal_def
+			&& STMT_VINFO_REDUC_IDX (stmt_info) == -1)))
+	      {
+		vec<stmt_vec_info> stmts;
+		vec<stmt_vec_info> roots = vNULL;
+		vec<tree> remain = vNULL;
+		stmts.create (1);
+		stmts.quick_push (vect_stmt_to_vectorize (stmt_info));
+		vect_build_slp_instance (vinfo,
+					 slp_inst_kind_reduc_group,
+					 stmts, roots, remain,
+					 max_tree_size, &limit,
+					 bst_map, NULL);
+	      }
+	  }
     }
 
   hash_set<slp_tree> visited_patterns;
@@ -4695,6 +4775,18 @@ vect_analyze_slp (vec_info *vinfo, unsigned max_tree_size)
 	  int group_size = SLP_TREE_LANES (slp_root);
 	  tree vectype = SLP_TREE_VECTYPE (slp_root);
 
+	  stmt_vec_info rep_info = SLP_TREE_REPRESENTATIVE (slp_root);
+	  gimple *rep = STMT_VINFO_STMT (rep_info);
+	  bool masked = (is_gimple_call (rep)
+			 && gimple_call_internal_p (rep)
+			 && internal_fn_mask_index
+			      (gimple_call_internal_fn (rep)) != -1);
+	  if (!STMT_VINFO_GROUPED_ACCESS (rep_info)
+	      || slp_root->ldst_lanes
+	      || (vect_store_lanes_supported (vectype, group_size, masked)
+		  == IFN_LAST))
+	    continue;
+
 	  auto_vec<slp_tree> loads;
 	  hash_set<slp_tree> visited;
 	  vect_gather_slp_loads (loads, slp_root, visited);
@@ -4720,10 +4812,7 @@ vect_analyze_slp (vec_info *vinfo, unsigned max_tree_size)
 
 	  /* If the loads and stores can use load/store-lanes force re-discovery
 	     with single lanes.  */
-	  if (loads_permuted
-	      && !slp_root->ldst_lanes
-	      && vect_store_lanes_supported (vectype, group_size, false)
-	      != IFN_LAST)
+	  if (loads_permuted)
 	    {
 	      bool can_use_lanes = true;
 	      FOR_EACH_VEC_ELT (loads, j, load_node)
@@ -4732,13 +4821,23 @@ vect_analyze_slp (vec_info *vinfo, unsigned max_tree_size)
 		  {
 		    stmt_vec_info stmt_vinfo = DR_GROUP_FIRST_ELEMENT
 			(SLP_TREE_REPRESENTATIVE (load_node));
+		    rep = STMT_VINFO_STMT (stmt_vinfo);
+		    masked = (is_gimple_call (rep)
+			      && gimple_call_internal_p (rep)
+			      && internal_fn_mask_index
+				   (gimple_call_internal_fn (rep)));
 		    /* Use SLP for strided accesses (or if we can't
 		       load-lanes).  */
 		    if (STMT_VINFO_STRIDED_P (stmt_vinfo)
 			|| compare_step_with_zero (vinfo, stmt_vinfo) <= 0
 			|| vect_load_lanes_supported
 			     (STMT_VINFO_VECTYPE (stmt_vinfo),
-			      DR_GROUP_SIZE (stmt_vinfo), false) == IFN_LAST)
+			      DR_GROUP_SIZE (stmt_vinfo), masked) == IFN_LAST
+			/* ???  During SLP re-discovery with a single lane
+			   a masked grouped load will appear permuted and
+			   discovery will fail.  We have to rework this
+			   on the discovery side - for now avoid ICEing.  */
+			|| masked)
 		      {
 			can_use_lanes = false;
 			break;
