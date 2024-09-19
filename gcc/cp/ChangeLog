@@ -1,3 +1,138 @@
+2024-09-18  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/116714
+	PR c++/107390
+	* pt.cc (dependent_opaque_alias_p): Also return true for a
+	decltype(lambda) alias.
+
+2024-09-18  Jason Merrill  <jason@redhat.com>
+
+	* call.cc (do_warn_dangling_reference): Return temporary
+	instead of the call it's passed to.
+	(maybe_warn_dangling_reference): Adjust diagnostic.
+
+2024-09-18  Jason Merrill  <jason@redhat.com>
+
+	PR c++/115361
+	* call.cc (do_warn_dangling_reference): Check is_empty_class.
+
+2024-09-17  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/116741
+	* constexpr.cc (cxx_eval_constant_expression) <case CONVERT_EXPR>: If
+	the result of build_fold_indirect_ref is a COMPONENT_REF, use its op1.
+	Check DECL_P before calling inform.
+
+2024-09-17  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/116676
+	* constexpr.cc (maybe_warn_about_constant_value): Check DECL_NAME.
+
+2024-09-15  Jason Merrill  <jason@redhat.com>
+
+	* parser.cc (cp_parser_unary_expression) [RID_EXTENSION]: Also
+	suppress -Wconditionally-supported.
+
+2024-09-15  Jason Merrill  <jason@redhat.com>
+
+	* call.cc (convert_like_internal) [ck_user]: Use iloc_sentinel.
+
+2024-09-15  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR c++/115905
+	* coroutines.cc (struct coro_aw_data): Add a member for the
+	restart dispatch label.
+	(expand_one_await_expression): Rework to modernise and to
+	handle the boolean await_suspend() case.
+	(build_actor_fn): Rework the dispatcher and allow for a jump
+	back to the dispatcher.
+
+2024-09-14  Jason Merrill  <jason@redhat.com>
+
+	* tree.cc (handle_init_priority_attribute): Check
+	in_system_header_at.
+
+2024-09-14  Simon Martin  <simon@nasilyan.com>
+
+	PR c++/116681
+	* name-lookup.cc (qualified_namespace_lookup): Use an
+	auto_cond_timer instead of using timevar_start and timevar_stop.
+
+2024-09-13  Jason Merrill  <jason@redhat.com>
+
+	PR c++/116696
+	* constexpr.cc (explain_invalid_constexpr_fn): When
+	-fimplicit-constexpr, also explain inline functions, and point out
+	non-inline functions.
+
+2024-09-13  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/116678
+	* optimize.cc: Include decl.h.
+	(maybe_thunk_body): Temporarily change deprecated_state to
+	UNAVAILABLE_DEPRECATED_SUPPRESS.
+
+2024-09-12  Jonathan Wakely  <jwakely@redhat.com>
+
+	PR c++/116673
+	* semantics.cc (finish_builtin_launder): Diagnose function
+	pointers and cv void pointers.
+
+2024-09-12  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/116418
+	* tree.cc (strip_typedefs_expr) <case STATEMENT_LIST>: Replace
+	this error path with ...
+	<case STMT_EXPR>: ... this, returning the original tree.
+
+2024-09-12  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/116636
+	* method.cc: Include decl.h.
+	(use_thunk): Temporarily change deprecated_state to
+	UNAVAILABLE_DEPRECATED_SUPPRESS.
+
+2024-09-12  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/96097
+	* pt.cc (coerce_template_template_parm): Increment
+	processing_template_decl before calling tsubst.
+
+2024-09-12  Simon Martin  <simon@nasilyan.com>
+
+	PR c++/116323
+	* search.cc (get_parent_with_private_access): Only call access_in_type
+	for RECORD_OR_UNION_TYPE_P base BINFOs.
+
+2024-09-12  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/116496
+	* module.cc (trees_in::decl_value): Don't call
+	set_defining_module_for_partial_spec here.
+	(depset::hash::add_partial_entities): Clarity assertions.
+	* pt.cc (add_mergeable_specialization): Always call
+	set_defining_module_for_partial_spec when adding a partial spec.
+
+2024-09-11  Alex Coplan  <alex.coplan@arm.com>
+
+	PR libstdc++/116140
+	* semantics.cc (anotate_saver): New. Use it ...
+	(maybe_convert_cond): ... here, to ensure any ANNOTATE_EXPRs
+	remain the outermost expression(s) of the condition.
+
+2024-09-10  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/116449
+	* typeck.cc (get_member_function_from_ptrfunc): Use save_expr
+	on instance_ptr and function even if it doesn't have side-effects,
+	as long as it isn't a decl.
+
+2024-09-10  Marek Polacek  <polacek@redhat.com>
+
+	PR c++/116369
+	* call.cc (set_up_extended_ref_temp): Don't mark a temporary
+	TREE_READONLY if its type is TYPE_HAS_MUTABLE_P.
+
 2024-09-09  David Malcolm  <dmalcolm@redhat.com>
 
 	* constexpr.cc (constexpr_error): Update for renaming of

@@ -1,5 +1,6 @@
 ! { dg-do run }
 ! { dg-options "-funsigned" }
+! { dg-require-effective-target le }
 program main
   integer :: i
   integer(2) :: j

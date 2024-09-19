@@ -1,3 +1,30 @@
+2024-09-15  Mikael Morin  <mikael@gcc.gnu.org>
+
+	* trans-expr.cc (gfc_advance_se_ss_chain): Don't use an element
+	from the parent scalarization chain when the current chain reaches
+	its end.
+
+2024-09-13  Tobias Burnus  <tburnus@baylibre.com>
+
+	PR fortran/116661
+	* gfortran.h (gfc_omp_namelist): Rename 'init' members for clarity.
+	* match.cc (gfc_free_omp_namelist): Handle renaming.
+	* dump-parse-tree.cc (show_omp_namelist): Update for new format
+	and features.
+	* openmp.cc (gfc_match_omp_prefer_type): Parse list to 'fr' and 'attr';
+	store 'fr' values as integer.
+	(gfc_match_omp_init): Rename variable names.
+
+2024-09-12  Steven G. Kargl  <kargl@gcc.gnu.org>
+
+	* module.cc (bt_types): Add BT_UNSIGNED.
+
+2024-09-11  Tobias Burnus  <tburnus@baylibre.com>
+
+	PR fortran/116661
+	* openmp.cc (gfc_match_omp_prefer_type): NULL init a gfc_expr
+	variable and use right locus in gfc_error.
+
 2024-09-09  David Malcolm  <dmalcolm@redhat.com>
 
 	* cpp.cc (cb_cpp_diagnostic_cpp_option): Convert return type from
