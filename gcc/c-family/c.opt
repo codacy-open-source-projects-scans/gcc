@@ -629,6 +629,10 @@ Wdeclaration-missing-parameter-type
 C ObjC Var(warn_declaration_missing_parameter) Warning Init(1)
 Warn for missing parameter types in function declarations.
 
+Wdefaulted-function-deleted
+C++ ObjC++ Var(warn_defaulted_fn_deleted) Init(1) Warning
+Warn when an explicitly defaulted function is deleted.
+
 Wdelete-incomplete
 C++ ObjC++ Var(warn_delete_incomplete) Init(1) Warning
 Warn when deleting a pointer to incomplete type.
@@ -2204,6 +2208,10 @@ Do not pretty-print template specializations as the template signature followed 
 fprintf-return-value
 C ObjC C++ ObjC++ LTO Optimization Var(flag_printf_return_value) Init(1)
 Treat known sprintf return values as constants.
+
+frange-for-ext-temps
+C++ ObjC++ Var(flag_range_for_ext_temps)
+Enable lifetime extension of range based for temporaries.
 
 freplace-objc-classes
 ObjC ObjC++ LTO Var(flag_replace_objc_classes)

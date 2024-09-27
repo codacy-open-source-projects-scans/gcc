@@ -30,7 +30,11 @@
 #ifndef _LOCALE_FACETS_TCC
 #define _LOCALE_FACETS_TCC 1
 
+#ifdef _GLIBCXX_SYSHDR
 #pragma GCC system_header
+#endif
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wc++11-extensions" // extern template
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
@@ -1433,4 +1437,5 @@ _GLIBCXX_END_NAMESPACE_LDBL
 _GLIBCXX_END_NAMESPACE_VERSION
 } // namespace
 
+#pragma GCC diagnostic pop
 #endif

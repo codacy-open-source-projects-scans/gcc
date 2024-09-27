@@ -39,7 +39,12 @@
 #ifndef _BASIC_STRING_TCC
 #define _BASIC_STRING_TCC 1
 
+#ifdef _GLIBCXX_SYSHDR
 #pragma GCC system_header
+#endif
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wc++11-extensions"
 
 #include <bits/cxxabi_forced.h>
 
@@ -1031,4 +1036,5 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 _GLIBCXX_END_NAMESPACE_VERSION
 } // namespace std
 
+#pragma GCC diagnostic pop
 #endif
