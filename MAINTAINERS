@@ -272,6 +272,7 @@ check in changes outside of the parts of the compiler they maintain.
 
                         Reviewers
 
+arm port (MVE)          Christophe Lyon         <christophe.lyon@arm.com>
 callgraph               Martin Jambor           <mjambor@suse.cz>
 C front end             Marek Polacek           <polacek@redhat.com>
 CTF, BTF                Indu Bhagat             <indu.bhagat@oracle.com>
@@ -343,6 +344,7 @@ Richard Ball                    ricbal02        <richard.ball@arm.com>
 Scott Bambrough                 -               <scottb@netwinder.org>
 Wolfgang Bangerth               -               <bangerth@dealii.org>
 Gergö Barany                    -               <gergo@codesourcery.com>
+Thiago Jung Bauermann           -               <thiago.bauermann@linaro.org>
 Charles Baylis                  cbaylis         <charles.baylis@linaro.org>
 Tejas Belagod                   belagod         <tejas.belagod@arm.com>
 Andrey Belevantsev              abel            <abel@ispras.ru>
