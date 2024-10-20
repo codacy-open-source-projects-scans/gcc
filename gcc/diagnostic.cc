@@ -118,7 +118,7 @@ diagnostic_set_caret_max_width (diagnostic_context *context, int value)
   /* One minus to account for the leading empty space.  */
   value = value ? value - 1 
     : (isatty (fileno (pp_buffer (context->m_printer)->m_stream))
-       ? get_terminal_width () - 1: INT_MAX);
+       ? get_terminal_width () - 1 : INT_MAX);
   
   if (value <= 0) 
     value = INT_MAX;
@@ -284,7 +284,6 @@ diagnostic_context::initialize (int n_opts)
   m_diagnostic_groups.m_emission_count = 0;
   m_output_format = new diagnostic_text_output_format (*this);
   m_set_locations_cb = nullptr;
-  m_ice_handler_cb = nullptr;
   m_client_data_hooks = nullptr;
   m_diagrams.m_theme = nullptr;
   m_original_argv = nullptr;
@@ -417,6 +416,24 @@ diagnostic_context::finish ()
 
   freeargv (m_original_argv);
   m_original_argv = nullptr;
+}
+
+/* Dump state of this diagnostic_context to OUT, for debugging.  */
+
+void
+diagnostic_context::dump (FILE *out) const
+{
+  fprintf (out, "diagnostic_context:\n");
+  fprintf (out, "  counts:\n");
+  for (int i = 0; i < DK_LAST_DIAGNOSTIC_KIND; i++)
+    if (m_diagnostic_count[i] > 0)
+      fprintf (out, "    %s%i\n",
+	       get_diagnostic_kind_text (static_cast<diagnostic_t> (i)),
+	       m_diagnostic_count[i]);
+  fprintf (out, "  output format:\n");
+  m_output_format->dump (out, 4);
+  fprintf (out, "  printer:\n");
+  m_printer->dump (out, 4);
 }
 
 /* Return true if sufficiently severe diagnostics have been seen that
@@ -782,16 +799,15 @@ diagnostic_context::action_after_output (diagnostic_t diag_kind)
     case DK_ICE:
     case DK_ICE_NOBT:
       {
-	/* Optional callback for attempting to handle ICEs gracefully.  */
-	if (void (*ice_handler_cb) (diagnostic_context *) = m_ice_handler_cb)
+	/* Attempt to ensure that any outputs are flushed e.g. that .sarif
+	   files are written out.
+	   Only do it once.  */
+	static bool finishing_due_to_ice = false;
+	if (!finishing_due_to_ice)
 	  {
-	    /* Clear the callback, to avoid potentially re-entering
-	       the routine if there's a crash within the handler.  */
-	    m_ice_handler_cb = NULL;
-	    ice_handler_cb (this);
+	    finishing_due_to_ice = true;
+	    finish ();
 	  }
-	/* The context might have had diagnostic_finish called on
-	   it at this point.  */
 
 	struct backtrace_state *state = NULL;
 	if (diag_kind == DK_ICE)
@@ -1160,18 +1176,19 @@ diagnostic_context::warning_enabled_at (location_t loc,
 /* Emit a diagnostic within a diagnostic group on this context.  */
 
 bool
-diagnostic_context::emit_diagnostic (diagnostic_t kind,
-				     rich_location &richloc,
-				     const diagnostic_metadata *metadata,
-				     diagnostic_option_id option_id,
-				     const char *gmsgid, ...)
+diagnostic_context::
+emit_diagnostic_with_group (diagnostic_t kind,
+			    rich_location &richloc,
+			    const diagnostic_metadata *metadata,
+			    diagnostic_option_id option_id,
+			    const char *gmsgid, ...)
 {
   begin_group ();
 
   va_list ap;
   va_start (ap, gmsgid);
-  bool ret = emit_diagnostic_va (kind, richloc, metadata, option_id,
-				 gmsgid, &ap);
+  bool ret = emit_diagnostic_with_group_va (kind, richloc, metadata, option_id,
+					    gmsgid, &ap);
   va_end (ap);
 
   end_group ();
@@ -1182,11 +1199,12 @@ diagnostic_context::emit_diagnostic (diagnostic_t kind,
 /* As above, but taking a va_list *.  */
 
 bool
-diagnostic_context::emit_diagnostic_va (diagnostic_t kind,
-					rich_location &richloc,
-					const diagnostic_metadata *metadata,
-					diagnostic_option_id option_id,
-					const char *gmsgid, va_list *ap)
+diagnostic_context::
+emit_diagnostic_with_group_va (diagnostic_t kind,
+			       rich_location &richloc,
+			       const diagnostic_metadata *metadata,
+			       diagnostic_option_id option_id,
+			       const char *gmsgid, va_list *ap)
 {
   begin_group ();
 
@@ -1553,6 +1571,12 @@ diagnostic_context::end_group ()
 	m_output_format->on_end_group ();
       m_diagnostic_groups.m_emission_count = 0;
     }
+}
+
+void
+diagnostic_output_format::dump (FILE *, int) const
+{
+  /* No-op for now.  */
 }
 
 /* Set the output format for CONTEXT to FORMAT, using BASE_FILE_NAME for

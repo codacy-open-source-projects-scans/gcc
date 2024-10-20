@@ -220,7 +220,6 @@ public:
 };
 
 class edit_context;
-namespace json { class value; }
 class diagnostic_client_data_hooks;
 class logical_location;
 class diagnostic_diagram;
@@ -468,7 +467,6 @@ public:
   friend class diagnostic_source_print_policy;
   friend class diagnostic_text_output_format;
 
-  typedef void (*ice_handler_callback_t) (diagnostic_context *);
   typedef void (*set_locations_callback_t) (diagnostic_context *,
 					    diagnostic_info *);
 
@@ -477,6 +475,9 @@ public:
   void urls_init (int value);
 
   void finish ();
+
+  void dump (FILE *out) const;
+  void DEBUG_FUNCTION dump () const { dump (stderr); }
 
   bool execution_failed_p () const;
 
@@ -505,17 +506,17 @@ public:
     return m_option_classifier.option_unspecified_p (option_id);
   }
 
-  bool emit_diagnostic (diagnostic_t kind,
-			rich_location &richloc,
-			const diagnostic_metadata *metadata,
-			diagnostic_option_id option_id,
-			const char *gmsgid, ...)
+  bool emit_diagnostic_with_group (diagnostic_t kind,
+				   rich_location &richloc,
+				   const diagnostic_metadata *metadata,
+				   diagnostic_option_id option_id,
+				   const char *gmsgid, ...)
     ATTRIBUTE_GCC_DIAG(6,7);
-  bool emit_diagnostic_va (diagnostic_t kind,
-			   rich_location &richloc,
-			   const diagnostic_metadata *metadata,
-			   diagnostic_option_id option_id,
-			   const char *gmsgid, va_list *ap)
+  bool emit_diagnostic_with_group_va (diagnostic_t kind,
+				      rich_location &richloc,
+				      const diagnostic_metadata *metadata,
+				      diagnostic_option_id option_id,
+				      const char *gmsgid, va_list *ap)
     ATTRIBUTE_GCC_DIAG(6,0);
 
   bool report_diagnostic (diagnostic_info *);
@@ -586,10 +587,6 @@ public:
   void set_escape_format (enum diagnostics_escape_format val)
   {
     m_escape_format = val;
-  }
-  void set_ice_handler_callback (ice_handler_callback_t cb)
-  {
-    m_ice_handler_cb = cb;
   }
 
   /* Various accessors.  */
@@ -858,9 +855,6 @@ private:
      the BLOCK_SUPERCONTEXT() chain hanging off the LOCATION_BLOCK()
      of a diagnostic's location.  */
   set_locations_callback_t m_set_locations_cb;
-
-  /* Optional callback for attempting to handle ICEs gracefully.  */
-  ice_handler_callback_t m_ice_handler_cb;
 
   /* A bundle of hooks for providing data to the context about its client
      e.g. version information, plugins, etc.

@@ -1,3 +1,73 @@
+2024-10-18  Alejandro Colomar  <alx@kernel.org>
+
+	* cp-tree.h (array_type_nelts_top)
+	* tree.cc (array_type_nelts_top):
+	Remove function (move to gcc/).
+
+2024-10-18  Alejandro Colomar  <alx@kernel.org>
+
+	* decl.cc (reshape_init_array)
+	* init.cc
+	(build_zero_init_1)
+	(build_value_init_noctor)
+	(build_vec_init)
+	(build_delete)
+	* lambda.cc (add_capture)
+	* tree.cc (array_type_nelts_top):
+	Rename array_type_nelts => array_type_nelts_minus_one
+
+2024-10-16  Jakub Jelinek  <jakub@redhat.com>
+
+	* search.cc (lookup_member): ?: operator formatting fixes.
+	* typeck.cc (cp_build_modify_expr): Likewise.
+
+2024-10-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/117022
+	* semantics.cc (begin_while_stmt, begin_do_stmt, begin_for_stmt,
+	finish_break_stmt, finish_continue_stmt, begin_switch_stmt): Pass
+	another NULL_TREE to build_stmt calls.
+
+2024-10-15  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/116710
+	* pt.cc (unify) <case REFERENCE_TYPE>: Compare rvalueness.
+
+2024-10-15  Patrick Palka  <ppalka@redhat.com>
+
+	PR c++/117054
+	* pt.cc (extract_locals_r): Disable tree_extra_args assert
+	for LAMBDA_EXPR.
+
+2024-10-14  Jason Merrill  <jason@redhat.com>
+
+	* cp-tree.h (most_constrained_function): Declare..
+	* class.cc (resolve_address_of_overloaded_function): Call it.
+	* pt.cc (get_template_for_ordering): Handle list from
+	resolve_address_of_overloaded_function.
+	(most_constrained_function): No longer static.
+	(resolve_overloaded_unification): Always compare type rather
+	than decl.
+
+2024-10-13  Simon Martin  <simon@nasilyan.com>
+
+	Revert:
+	2024-10-12  Simon Martin  <simon@nasilyan.com>
+
+	PR c++/109918
+	* class.cc (warn_hidden): Keep track of overloaded and of hidden
+	base methods. Mention the actual hiding function in the warning,
+	not the first overload.
+	* error.cc (location_of): Skip over conv_op_marker.
+
+2024-10-12  Simon Martin  <simon@nasilyan.com>
+
+	PR c++/109918
+	* class.cc (warn_hidden): Keep track of overloaded and of hidden
+	base methods. Mention the actual hiding function in the warning,
+	not the first overload.
+	* error.cc (location_of): Skip over conv_op_marker.
+
 2024-10-07  Jason Merrill  <jason@redhat.com>
 
 	* decl.cc (duplicate_decls): Only check PURVIEW_P if

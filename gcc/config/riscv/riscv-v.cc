@@ -1890,6 +1890,18 @@ get_mask_mode (machine_mode mode)
   return get_vector_mode (BImode, nunits).require ();
 }
 
+/* Return the appropriate LMUL mode for MODE.  */
+
+opt_machine_mode
+get_lmul_mode (scalar_mode mode, int lmul)
+{
+  poly_uint64 lmul_nunits;
+  unsigned int bytes = GET_MODE_SIZE (mode);
+  if (multiple_p (BYTES_PER_RISCV_VECTOR * lmul, bytes, &lmul_nunits))
+    return get_vector_mode (mode, lmul_nunits);
+  return E_VOIDmode;
+}
+
 /* Return the appropriate M1 mode for MODE.  */
 
 static opt_machine_mode
@@ -4900,6 +4912,15 @@ void
 expand_vec_ussub (rtx op_0, rtx op_1, rtx op_2, machine_mode vec_mode)
 {
   emit_vec_binary_alu (op_0, op_1, op_2, US_MINUS, vec_mode);
+}
+
+/* Expand the standard name ssadd<mode>3 for vector mode,  we can leverage
+   the vector fixed point vector single-width saturating add directly.  */
+
+void
+expand_vec_sssub (rtx op_0, rtx op_1, rtx op_2, machine_mode vec_mode)
+{
+  emit_vec_binary_alu (op_0, op_1, op_2, SS_MINUS, vec_mode);
 }
 
 /* Expand the standard name ustrunc<m><n>2 for double vector mode,  like

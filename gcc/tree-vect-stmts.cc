@@ -411,6 +411,7 @@ vect_stmt_relevant_p (stmt_vec_info stmt_info, loop_vec_info loop_vinfo,
 	  dump_printf_loc (MSG_NOTE, vect_location,
 			   "vec_stmt_relevant_p: induction forced for "
 			   "early break.\n");
+      LOOP_VINFO_EARLY_BREAKS_LIVE_IVS (loop_vinfo).safe_push (stmt_info);
       *live_p = true;
 
     }
@@ -2080,6 +2081,35 @@ get_group_load_store_type (vec_info *vinfo, stmt_vec_info stmt_info,
 	  else
 	    *memory_access_type = VMAT_CONTIGUOUS;
 
+	  /* If this is single-element interleaving with an element
+	     distance that leaves unused vector loads around punt - we
+	     at least create very sub-optimal code in that case (and
+	     blow up memory, see PR65518).  */
+	  if (loop_vinfo
+	      && *memory_access_type == VMAT_CONTIGUOUS
+	      && single_element_p
+	      && maybe_gt (group_size, TYPE_VECTOR_SUBPARTS (vectype)))
+	    {
+	      if (SLP_TREE_LANES (slp_node) == 1)
+		{
+		  *memory_access_type = VMAT_ELEMENTWISE;
+		  overrun_p = false;
+		  if (dump_enabled_p ())
+		    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+				     "single-element interleaving not supported "
+				     "for not adjacent vector loads, using "
+				     "elementwise access\n");
+		}
+	      else
+		{
+		  if (dump_enabled_p ())
+		    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
+				     "single-element interleaving not supported "
+				     "for not adjacent vector loads\n");
+		  return false;
+		}
+	    }
+
 	  overrun_p = loop_vinfo && gap != 0;
 	  if (overrun_p && vls_type != VLS_LOAD)
 	    {
@@ -2148,6 +2178,7 @@ get_group_load_store_type (vec_info *vinfo, stmt_vec_info stmt_info,
 				 "Peeling for outer loop is not supported\n");
 	      return false;
 	    }
+
 	  /* Peeling for gaps assumes that a single scalar iteration
 	     is enough to make sure the last vector iteration doesn't
 	     access excess elements.  */
@@ -2175,34 +2206,6 @@ get_group_load_store_type (vec_info *vinfo, stmt_vec_info stmt_info,
 		    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
 				     "peeling for gaps insufficient for "
 				     "access\n");
-		  return false;
-		}
-	    }
-
-	  /* If this is single-element interleaving with an element
-	     distance that leaves unused vector loads around punt - we
-	     at least create very sub-optimal code in that case (and
-	     blow up memory, see PR65518).  */
-	  if (loop_vinfo
-	      && *memory_access_type == VMAT_CONTIGUOUS
-	      && single_element_p
-	      && maybe_gt (group_size, TYPE_VECTOR_SUBPARTS (vectype)))
-	    {
-	      if (SLP_TREE_LANES (slp_node) == 1)
-		{
-		  *memory_access_type = VMAT_ELEMENTWISE;
-		  if (dump_enabled_p ())
-		    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-				     "single-element interleaving not supported "
-				     "for not adjacent vector loads, using "
-				     "elementwise access\n");
-		}
-	      else
-		{
-		  if (dump_enabled_p ())
-		    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
-				     "single-element interleaving not supported "
-				     "for not adjacent vector loads\n");
 		  return false;
 		}
 	    }
@@ -13016,7 +13019,7 @@ vectorizable_comparison (vec_info *vinfo,
 /* Check to see if the current early break given in STMT_INFO is valid for
    vectorization.  */
 
-static bool
+bool
 vectorizable_early_exit (vec_info *vinfo, stmt_vec_info stmt_info,
 			 gimple_stmt_iterator *gsi, gimple **vec_stmt,
 			 slp_tree slp_node, stmt_vector_for_cost *cost_vec)
@@ -13040,8 +13043,13 @@ vectorizable_early_exit (vec_info *vinfo, stmt_vec_info stmt_info,
   slp_tree slp_op0;
   tree op0;
   enum vect_def_type dt0;
-  if (!vect_is_simple_use (vinfo, stmt_info, slp_node, 0, &op0, &slp_op0, &dt0,
-			   &vectype))
+
+  /* Early break gcond kind SLP trees can be root only and have no children,
+     for instance in the case where the argument is an external.  If that's
+     the case there is no operand to analyse use of.  */
+  if ((!slp_node || !SLP_TREE_CHILDREN (slp_node).is_empty ())
+      && !vect_is_simple_use (vinfo, stmt_info, slp_node, 0, &op0, &slp_op0, &dt0,
+			      &vectype))
     {
       if (dump_enabled_p ())
 	  dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
@@ -13049,16 +13057,30 @@ vectorizable_early_exit (vec_info *vinfo, stmt_vec_info stmt_info,
 	return false;
     }
 
+  /* For SLP we don't want to use the type of the operands of the SLP node, when
+     vectorizing using SLP slp_node will be the children of the gcond and we
+     want to use the type of the direct children which since the gcond is root
+     will be the current node, rather than a child node as vect_is_simple_use
+     assumes.  */
+  if (slp_node)
+    vectype = SLP_TREE_VECTYPE (slp_node);
+
   if (!vectype)
     return false;
 
   machine_mode mode = TYPE_MODE (vectype);
-  int ncopies;
+  int ncopies, vec_num;
 
   if (slp_node)
-    ncopies = 1;
+    {
+      ncopies = 1;
+      vec_num = SLP_TREE_NUMBER_OF_VEC_STMTS (slp_node);
+    }
   else
-    ncopies = vect_get_num_copies (loop_vinfo, vectype);
+    {
+      ncopies = vect_get_num_copies (loop_vinfo, vectype);
+      vec_num = 1;
+    }
 
   vec_loop_masks *masks = &LOOP_VINFO_MASKS (loop_vinfo);
   vec_loop_lens *lens = &LOOP_VINFO_LENS (loop_vinfo);
@@ -13127,9 +13149,11 @@ vectorizable_early_exit (vec_info *vinfo, stmt_vec_info stmt_info,
 	{
 	  if (direct_internal_fn_supported_p (IFN_VCOND_MASK_LEN, vectype,
 					      OPTIMIZE_FOR_SPEED))
-	    vect_record_loop_len (loop_vinfo, lens, ncopies, vectype, 1);
+	    vect_record_loop_len (loop_vinfo, lens, ncopies * vec_num,
+				  vectype, 1);
 	  else
-	    vect_record_loop_mask (loop_vinfo, masks, ncopies, vectype, NULL);
+	    vect_record_loop_mask (loop_vinfo, masks, ncopies * vec_num,
+				   vectype, NULL);
 	}
 
       return true;
@@ -13143,9 +13167,18 @@ vectorizable_early_exit (vec_info *vinfo, stmt_vec_info stmt_info,
   if (dump_enabled_p ())
     dump_printf_loc (MSG_NOTE, vect_location, "transform early-exit.\n");
 
-  if (!vectorizable_comparison_1 (vinfo, vectype, stmt_info, code, gsi,
-				  vec_stmt, slp_node, cost_vec))
-    gcc_unreachable ();
+  /* For SLP we don't do codegen of the body starting from the gcond, the gconds are
+     roots and so by the time we get to them we have already codegened the SLP tree
+     and so we shouldn't try to do so again.  The arguments have already been
+     vectorized.  It's not very clean to do this here, But the masking code below is
+     complex and this keeps it all in one place to ease fixes and backports.  Once we
+     drop the non-SLP loop vect or split vectorizable_* this can be simplified.  */
+  if (!slp_node)
+    {
+      if (!vectorizable_comparison_1 (vinfo, vectype, stmt_info, code, gsi,
+				      vec_stmt, slp_node, cost_vec))
+	gcc_unreachable ();
+    }
 
   gimple *stmt = STMT_VINFO_STMT (stmt_info);
   basic_block cond_bb = gimple_bb (stmt);
@@ -13177,8 +13210,8 @@ vectorizable_early_exit (vec_info *vinfo, stmt_vec_info stmt_info,
 	for (unsigned i = 0; i < stmts.length (); i++)
 	  {
 	    tree stmt_mask
-	      = vect_get_loop_mask (loop_vinfo, gsi, masks, ncopies, vectype,
-				    i);
+	      = vect_get_loop_mask (loop_vinfo, gsi, masks, ncopies * vec_num,
+				    vectype, i);
 	    stmt_mask
 	      = prepare_vec_mask (loop_vinfo, TREE_TYPE (stmt_mask), stmt_mask,
 				  stmts[i], &cond_gsi);
@@ -13188,8 +13221,8 @@ vectorizable_early_exit (vec_info *vinfo, stmt_vec_info stmt_info,
 	for (unsigned i = 0; i < stmts.length (); i++)
 	  {
 	    tree len_mask = vect_gen_loop_len_mask (loop_vinfo, gsi, &cond_gsi,
-						    lens, ncopies, vectype,
-						    stmts[i], i, 1);
+						    lens, ncopies * vec_num,
+						    vectype, stmts[i], i, 1);
 
 	    workset.quick_push (len_mask);
 	  }
@@ -14257,9 +14290,12 @@ vect_maybe_update_slp_op_vectype (slp_tree op, tree vectype)
   if (SLP_TREE_VECTYPE (op))
     return types_compatible_p (SLP_TREE_VECTYPE (op), vectype);
   /* For external defs refuse to produce VECTOR_BOOLEAN_TYPE_P, those
-     should be handled by patters.  Allow vect_constant_def for now.  */
+     should be handled by patters.  Allow vect_constant_def for now
+     as well as the trivial single-lane uniform vect_external_def case
+     both of which we code-generate reasonably.  */
   if (VECTOR_BOOLEAN_TYPE_P (vectype)
-      && SLP_TREE_DEF_TYPE (op) == vect_external_def)
+      && SLP_TREE_DEF_TYPE (op) == vect_external_def
+      && SLP_TREE_LANES (op) > 1)
     return false;
   SLP_TREE_VECTYPE (op) = vectype;
   return true;

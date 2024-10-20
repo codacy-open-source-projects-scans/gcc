@@ -50,6 +50,47 @@ static gfc_error_buffer error_buffer;
 static output_buffer *pp_error_buffer, *pp_warning_buffer;
 static int warningcount_buffered, werrorcount_buffered;
 
+
+/* Return a location_t suitable for 'tree' for a gfortran locus.  During
+   parsing in gfortran, loc->u.lb->location contains only the line number
+   and LOCATION_COLUMN is 0; hence, the column has to be added when generating
+   locations for 'tree'.  If available, return location_t directly, which
+   might be a range. */
+
+location_t
+gfc_get_location_with_offset (locus *loc, unsigned offset)
+{
+  if (loc->nextc == (gfc_char_t *) -1)
+    {
+      gcc_checking_assert (offset == 0);
+      return loc->u.location;
+    }
+  gcc_checking_assert (loc->nextc >= loc->u.lb->line);
+  return linemap_position_for_loc_and_offset (line_table, loc->u.lb->location,
+					      loc->nextc - loc->u.lb->line
+					      + offset);
+}
+
+/* Convert a locus to a range. */
+
+locus
+gfc_get_location_range (locus *caret_loc, unsigned caret_offset,
+			locus *start_loc, unsigned start_offset,
+			locus *end_loc)
+{
+  location_t caret;
+  location_t start = gfc_get_location_with_offset (start_loc, start_offset);
+  location_t end = gfc_get_location_with_offset (end_loc, 0);
+
+  if (caret_loc)
+    caret = gfc_get_location_with_offset (caret_loc, caret_offset);
+
+  locus range;
+  range.nextc = (gfc_char_t *) -1;
+  range.u.location = make_location (caret_loc ? caret : start, start, end);
+  return range;
+}
+
 /* Return buffered_p.  */
 bool
 gfc_buffered_p (void)
@@ -347,6 +388,8 @@ notify_std_msg(int std)
     return _("Obsolescent feature:");
   else if (std & GFC_STD_F95_DEL)
     return _("Deleted feature:");
+  else if (std & GFC_STD_UNSIGNED)
+    return _("Unsigned:");
   else
     gcc_unreachable ();
 }
@@ -411,6 +454,7 @@ gfc_format_decoder (pretty_printer *pp, text_info *text, const char *spec,
 		    int precision, bool wide, bool set_locus, bool hash,
 		    bool *quoted, pp_token_list &formatted_token_list)
 {
+  unsigned offset = 0;
   switch (*spec)
     {
     case 'C':
@@ -419,21 +463,19 @@ gfc_format_decoder (pretty_printer *pp, text_info *text, const char *spec,
 	static const char *result[2] = { "(1)", "(2)" };
 	locus *loc;
 	if (*spec == 'C')
-	  loc = &gfc_current_locus;
+	  {
+	    loc = &gfc_current_locus;
+	    /* Point %C first offending character not the last good one. */
+	    if (*loc->nextc != '\0')
+	      offset++;
+	  }
 	else
 	  loc = va_arg (*text->m_args_ptr, locus *);
-	gcc_assert (loc->nextc - loc->lb->line >= 0);
-	unsigned int offset = loc->nextc - loc->lb->line;
-	if (*spec == 'C' && *loc->nextc != '\0')
-	  /* Point %C first offending character not the last good one. */
-	  offset++;
+
 	/* If location[0] != UNKNOWN_LOCATION means that we already
 	   processed one of %C/%L.  */
 	int loc_num = text->get_location (0) == UNKNOWN_LOCATION ? 0 : 1;
-	location_t src_loc
-	  = linemap_position_for_loc_and_offset (line_table,
-						 loc->lb->location,
-						 offset);
+	location_t src_loc = gfc_get_location_with_offset (loc, offset);
 	text->set_location (loc_num, src_loc, SHOW_RANGE_WITH_CARET);
 	/* Colorize the markers to match the color choices of
 	   diagnostic_show_locus (the initial location has a color given
