@@ -208,7 +208,6 @@ Classes used:
 
 #define _DEFAULT_SOURCE 1 /* To get TZ field of struct tm, if available.  */
 #include "config.h"
-#define INCLUDE_MEMORY
 #define INCLUDE_STRING
 #define INCLUDE_VECTOR
 #include "system.h"
@@ -350,6 +349,9 @@ typedef hash_map<void *,signed,ptr_int_traits> ptr_int_hash_map;
 /* Variable length buffer.  */
 
 namespace {
+
+constexpr line_map_uint_t loc_one = 1;
+
 class data {
 public:
   class allocator {
@@ -549,6 +551,7 @@ public:
   int i ();		/* Read a signed int.  */
   unsigned u ();	/* Read an unsigned int.  */
   size_t z ();		/* Read a size_t.  */
+  location_t loc ();    /* Read a location_t.  */
   HOST_WIDE_INT wi ();  /* Read a HOST_WIDE_INT.  */
   unsigned HOST_WIDE_INT wu (); /* Read an unsigned HOST_WIDE_INT.  */
   const char *str (size_t * = NULL); /* Read a string.  */
@@ -585,7 +588,7 @@ class bytes_out : public data {
 
 public:
   allocator *memory;	/* Obtainer of memory.  */
-  
+
 public:
   bytes_out (allocator *memory)
     : parent (), memory (memory)
@@ -616,7 +619,7 @@ public:
     if (unsigned pad = pos & (boundary - 1))
       write (boundary - pad);
   }
-  
+
 public:
   char *write (unsigned count, bool exact = false)
   {
@@ -633,6 +636,7 @@ public:
   void i (int);		/* Write signed int.  */
   void u (unsigned);	/* Write unsigned int.  */
   void z (size_t s);	/* Write size_t.  */
+  void loc (location_t); /* Write location_t.  */
   void wi (HOST_WIDE_INT); /* Write HOST_WIDE_INT.  */
   void wu (unsigned HOST_WIDE_INT);  /* Write unsigned HOST_WIDE_INT.  */
   void str (const char *ptr)
@@ -1057,6 +1061,24 @@ bytes_in::z ()
     return wu ();
 }
 
+/* location_t written as 32- or 64-bit as needed.  */
+
+inline void bytes_out::loc (location_t l)
+{
+  if (sizeof (location_t) > sizeof (unsigned))
+    wu (l);
+  else
+    u (l);
+}
+
+inline location_t bytes_in::loc ()
+{
+  if (sizeof (location_t) > sizeof (unsigned))
+    return wu ();
+  else
+    return u ();
+}
+
 /* Buffer simply memcpied.  */
 void *
 bytes_out::buf (size_t len)
@@ -1235,7 +1257,7 @@ protected:
     uint32_t entry;	/* 0 */
     uint32_t phoff;	/* 0 */
     uint32_t shoff;	/* Section Header Offset in file */
-    uint32_t flags; 
+    uint32_t flags;
     uint16_t ehsize;	/* ELROND Header SIZE -- sizeof (header) */
     uint16_t phentsize; /* 0 */
     uint16_t phnum;	/* 0 */
@@ -1709,7 +1731,7 @@ elf_in::read (data *data, unsigned pos, unsigned length)
     }
 #endif
   grow (*data, length);
-#if MAPPED_READING  
+#if MAPPED_READING
   data->buffer = hdr.buffer + pos;
 #else
   if (::read (fd, data->buffer, data->size) != ssize_t (length))
@@ -2310,7 +2332,7 @@ public:
     EK_USING,		/* A using declaration (at namespace scope).  */
     EK_NAMESPACE,	/* A namespace.  */
     EK_REDIRECT,	/* Redirect to a template_decl.  */
-    EK_EXPLICIT_HWM,  
+    EK_EXPLICIT_HWM,
     EK_BINDING = EK_EXPLICIT_HWM, /* Implicitly encoded.  */
     EK_FOR_BINDING,	/* A decl being inserted for a binding.  */
     EK_INNER_DECL,	/* A decl defined outside of its imported
@@ -2322,20 +2344,22 @@ public:
 
 private:
   /* Placement of bit fields in discriminator.  */
-  enum disc_bits 
+  enum disc_bits
   {
     DB_ZERO_BIT, /* Set to disambiguate identifier from flags  */
     DB_SPECIAL_BIT, /* First dep slot is special.  */
     DB_KIND_BIT, /* Kind of the entity.  */
     DB_KIND_BITS = EK_BITS,
     DB_DEFN_BIT = DB_KIND_BIT + DB_KIND_BITS,
-    DB_IS_MEMBER_BIT,		/* Is an out-of-class member.  */
+    DB_IS_PENDING_BIT,		/* Is a maybe-pending entity.  */
     DB_IS_INTERNAL_BIT,		/* It is an (erroneous)
 				   internal-linkage entity.  */
     DB_REFS_INTERNAL_BIT,	/* Refers to an internal-linkage
 				   entity. */
     DB_IMPORTED_BIT,		/* An imported entity.  */
     DB_UNREACHED_BIT,		/* A yet-to-be reached entity.  */
+    DB_MAYBE_RECURSIVE_BIT,	/* An entity maybe in a recursive cluster.  */
+    DB_ENTRY_BIT,		/* The first reached recursive dep.  */
     DB_HIDDEN_BIT,		/* A hidden binding.  */
     /* The following bits are not independent, but enumerating them is
        awkward.  */
@@ -2386,7 +2410,7 @@ private:
     gcc_checking_assert (I < 2 || !is_binding ());
     return bool ((discriminator >> I) & 1);
   }
-  
+
 public:
   bool is_binding () const
   {
@@ -2407,11 +2431,14 @@ public:
   }
 
 public:
-  /* This class-member is defined here, but the class was imported.  */
-  bool is_member () const
+  /* This entity might be found other than by namespace-scope lookup;
+     see module_state::write_pendings for more details.  */
+  bool is_pending_entity () const
   {
-    gcc_checking_assert (get_entity_kind () == EK_DECL);
-    return get_flag_bit<DB_IS_MEMBER_BIT> ();
+    return (get_entity_kind () == EK_SPECIALIZATION
+	    || get_entity_kind () == EK_PARTIAL
+	    || (get_entity_kind () == EK_DECL
+		&& get_flag_bit<DB_IS_PENDING_BIT> ()));
   }
 public:
   bool is_internal () const
@@ -2433,6 +2460,14 @@ public:
   bool is_hidden () const
   {
     return get_flag_bit<DB_HIDDEN_BIT> ();
+  }
+  bool is_maybe_recursive () const
+  {
+    return get_flag_bit<DB_MAYBE_RECURSIVE_BIT> ();
+  }
+  bool is_entry () const
+  {
+    return get_flag_bit<DB_ENTRY_BIT> ();
   }
   bool is_type_spec () const
   {
@@ -2545,11 +2580,12 @@ public:
     depset *current;         /* Current depset being depended.  */
     unsigned section;	     /* When writing out, the section.  */
     bool reached_unreached;  /* We reached an unreached entity.  */
+    bool writing_merge_key;  /* We're writing merge key information.  */
 
   public:
     hash (size_t size, hash *c = NULL)
       : parent (size), chain (c), current (NULL), section (0),
-	reached_unreached (false)
+	reached_unreached (false), writing_merge_key (false)
     {
       worklist.create (size);
     }
@@ -2592,7 +2628,7 @@ public:
   private:
     void add_deduction_guides (tree decl);
 
-  public:    
+  public:
     void find_dependencies (module_state *);
     bool finalize_dependencies ();
     vec<depset *> connect ();
@@ -2610,7 +2646,7 @@ public:
       result.create (size);
       stack.create (50);
     }
-    ~tarjan () 
+    ~tarjan ()
     {
       gcc_assert (!stack.length ());
       stack.release ();
@@ -2638,7 +2674,7 @@ const char *
 depset::entity_kind_name () const
 {
   /* Same order as entity_kind.  */
-  static const char *const names[] = 
+  static const char *const names[] =
     {"decl", "specialization", "partial", "using",
      "namespace", "redirect", "binding"};
   entity_kind kind = get_entity_kind ();
@@ -2807,7 +2843,7 @@ enum merge_kind
   MK_local_friend, /* Found by CTX, index.  */
 
   MK_indirect_lwm = MK_enum,
-  
+
   /* Template specialization kinds below. These are all found via
      primary template and specialization args.  */
   MK_template_mask = 0x10,  /* A template specialization.  */
@@ -2946,7 +2982,7 @@ public:
 public:
   /* Serialize various definitions. */
   bool read_definition (tree decl);
-  
+
 private:
   bool is_matching_decl (tree existing, tree decl, bool is_typedef);
   static bool install_implicit_member (tree decl);
@@ -3050,7 +3086,7 @@ public:
   void end ();
 
 public:
-  enum tags 
+  enum tags
   {
     tag_backref = -1,	/* Upper bound on the backrefs.  */
     tag_value = 0,	/* Write by value.  */
@@ -3196,7 +3232,7 @@ trees_out::~trees_out ()
 
 
 /* I use half-open [first,second) ranges.  */
-typedef std::pair<unsigned,unsigned> range_t;
+typedef std::pair<line_map_uint_t,line_map_uint_t> range_t;
 
 /* A range of locations.  */
 typedef std::pair<location_t,location_t> loc_range_t;
@@ -3213,18 +3249,20 @@ public:
   struct span {
     loc_range_t ordinary;	/* Ordinary map location range. */
     loc_range_t macro;		/* Macro map location range.  */
-    int ordinary_delta;	/* Add to ordinary loc to get serialized loc.  */
-    int macro_delta;	/* Likewise for macro loc.  */
+    /* Add to locs to get serialized loc.  */
+    location_diff_t ordinary_delta;
+    location_diff_t macro_delta;
   };
 
 private:
   vec<span> *spans;
+  bool locs_exhausted_p;
 
 public:
   loc_spans ()
     /* Do not preallocate spans, as that causes
        --enable-detailed-mem-stats problems.  */
-    : spans (nullptr)
+    : spans (nullptr), locs_exhausted_p (false)
   {
   }
   ~loc_spans ()
@@ -3280,6 +3318,22 @@ public:
   bool maybe_propagate (module_state *import, location_t loc);
 
 public:
+  /* Whether we can no longer represent new imported locations.  */
+  bool locations_exhausted_p () const
+  {
+    return locs_exhausted_p;
+  }
+  void report_location_exhaustion (location_t loc)
+  {
+    if (!locs_exhausted_p)
+      {
+	/* Just give the notice once.  */
+	locs_exhausted_p = true;
+	inform (loc, "unable to represent further imported source locations");
+      }
+  }
+
+public:
   const span *ordinary (location_t);
   const span *macro (location_t);
 };
@@ -3290,9 +3344,9 @@ static loc_spans spans;
 struct ord_loc_info
 {
   const line_map_ordinary *src; // line map we're based on
-  unsigned offset;	// offset to this line
-  unsigned span;	// number of locs we span
-  unsigned remap;	// serialization
+  line_map_uint_t offset;       // offset to this line
+  line_map_uint_t span;         // number of locs we span
+  line_map_uint_t remap;        // serialization
 
   static int compare (const void *a_, const void *b_)
   {
@@ -3338,7 +3392,7 @@ struct ord_loc_traits
 
   static bool is_deleted (value_type &) { return false; }
   static void mark_deleted (value_type &) { gcc_unreachable (); }
-  
+
   static void remove (value_type &) {}
 };
 /* Table keyed by ord_loc_info, used for noting.  */
@@ -3350,7 +3404,7 @@ static vec<ord_loc_info> *ord_loc_remap;
 struct macro_loc_info
 {
   const line_map_macro *src;    // original expansion
-  unsigned remap;	  // serialization
+  line_map_uint_t remap;	// serialization
 
   static int compare (const void *a_, const void *b_)
   {
@@ -3396,7 +3450,7 @@ struct macro_loc_traits
 
   static bool is_deleted (value_type &) { return false; }
   static void mark_deleted (value_type &) { gcc_unreachable (); }
-  
+
   static void remove (value_type &) {}
 };
 /* Table keyed by line_map_macro, used for noting.  */
@@ -3771,7 +3825,7 @@ class GTY((chain_next ("%h.parent"), for_user)) module_state {
 			    bool, unsigned *crc_ptr);
   bool read_ordinary_maps (unsigned, unsigned);
   void write_macro_maps (elf_out *to, range_t &, unsigned *crc_ptr);
-  bool read_macro_maps (unsigned);
+  bool read_macro_maps (line_map_uint_t);
 
  private:
   void write_define (bytes_out &, const cpp_macro *);
@@ -4032,7 +4086,7 @@ get_clone_target (tree decl)
   if (TREE_CODE (decl) == TEMPLATE_DECL)
     {
       tree res_orig = DECL_CLONED_FUNCTION (DECL_TEMPLATE_RESULT (decl));
-      
+
       target = DECL_TI_TEMPLATE (res_orig);
     }
   else
@@ -4406,6 +4460,7 @@ dumper::impl::nested_name (tree t)
    Escapes:
       %C - tree_code
       %I - identifier
+      %K - location_t or line_map_uint_t
       %M - module_state
       %N - name -- DECL_NAME
       %P - context:name pair
@@ -4482,6 +4537,13 @@ dumper::operator () (const char *format, ...)
 	  }
 	  break;
 
+	case 'K': /* location_t, either 32- or 64-bit.  */
+	  {
+	    unsigned long long u = va_arg (args, location_t);
+	    fprintf (dumps->stream, "%llu", u);
+	  }
+	  break;
+
 	case 'M': /* Module. */
 	  {
 	    const char *str = "(none)";
@@ -4551,7 +4613,7 @@ dumper::operator () (const char *format, ...)
 	  }
 	  break;
 
-	case 'V': /* Verson.  */
+	case 'V': /* Version.  */
 	  {
 	    unsigned v = va_arg (args, unsigned);
 	    verstr_t string;
@@ -4695,7 +4757,7 @@ noisy_p ()
   if (quiet_flag)
     return false;
 
-  pp_needs_newline (global_dc->m_printer) = true;
+  pp_needs_newline (global_dc->get_reference_printer ()) = true;
   diagnostic_set_last_function (global_dc, (diagnostic_info *) NULL);
 
   return true;
@@ -4719,7 +4781,7 @@ set_cmi_repo (const char *r)
   size_t len = strlen (r);
   cmi_repo = XNEWVEC (char, len + 1);
   memcpy (cmi_repo, r, len + 1);
-  
+
   if (len > 1 && IS_DIR_SEPARATOR (cmi_repo[len-1]))
     len--;
   if (len == 1 && cmi_repo[0] == '.')
@@ -5459,16 +5521,13 @@ trees_out::core_bools (tree t, bits_out& bits)
 
 	    case VAR_DECL:
 	      if (TREE_PUBLIC (t)
-		  && !(TREE_STATIC (t)
-		       && DECL_FUNCTION_SCOPE_P (t)
-		       && DECL_DECLARED_INLINE_P (DECL_CONTEXT (t)))
-		  && !DECL_VAR_DECLARED_INLINE_P (t))
+		  && DECL_VTABLE_OR_VTT_P (t))
+		/* We handle vtable linkage specially.  */
 		is_external = true;
-	      break;
-
+	      gcc_fallthrough ();
 	    case FUNCTION_DECL:
 	      if (TREE_PUBLIC (t)
-		  && !DECL_DECLARED_INLINE_P (t))
+		  && !vague_linkage_p (t))
 		is_external = true;
 	      break;
 	    }
@@ -5680,7 +5739,7 @@ trees_in::core_bools (tree t, bits_in& bits)
       RB (t->function_decl.disregard_inline_limits);
       RB (t->function_decl.pure_flag);
       RB (t->function_decl.looping_const_or_pure_flag);
-      
+
       RB (t->function_decl.has_debug_args_flag);
       RB (t->function_decl.versioned_function);
 
@@ -6422,7 +6481,7 @@ trees_out::core_vals (tree t)
       WT (((lang_tree_node *)t)->overload.function);
       WT (t->common.chain);
       break;
-      
+
     case PTRMEM_CST:
       WT (((lang_tree_node *)t)->ptrmem.member);
       break;
@@ -6482,7 +6541,7 @@ trees_out::core_vals (tree t)
       /* TEMPLATE_PARM_DESCENDANTS (AKA TREE_CHAIN) is an internal
 	 cache, do not stream.  */
       break;
-      
+
     case TRAIT_EXPR:
       WT (((lang_tree_node *)t)->trait_expression.type1);
       WT (((lang_tree_node *)t)->trait_expression.type2);
@@ -6768,7 +6827,7 @@ trees_in::core_vals (tree t)
       RU (t->label_decl.label_decl_uid);
       RU (t->label_decl.eh_landing_pad_nr);
       break;
-  
+
     case FUNCTION_DECL:
       {
 	unsigned bltin = u ();
@@ -6864,7 +6923,12 @@ trees_in::core_vals (tree t)
       {
 	tree_stmt_iterator iter = tsi_start (t);
 	for (tree stmt; RT (stmt);)
-	  tsi_link_after (&iter, stmt, TSI_CONTINUE_LINKING);
+	  {
+	    if (TREE_CODE (stmt) == DEBUG_BEGIN_STMT
+		&& !MAY_HAVE_DEBUG_MARKER_STMTS)
+	      continue;
+	    tsi_link_after (&iter, stmt, TSI_CONTINUE_LINKING);
+	  }
       }
       break;
 
@@ -7534,7 +7598,7 @@ bool
 trees_in::add_indirects (tree decl)
 {
   unsigned count = 0;
-	    
+
   tree inner = decl;
   if (TREE_CODE (inner) == TEMPLATE_DECL)
     {
@@ -7722,7 +7786,7 @@ void
 trees_out::install_entity (tree decl, depset *dep)
 {
   gcc_checking_assert (streaming_p ());
-  
+
   /* Write the entity index, so we can insert it as soon as we
      know this is new.  */
   u (dep ? dep->cluster + 1 : 0);
@@ -7931,21 +7995,24 @@ trees_out::decl_value (tree decl, depset *dep)
   /* Stream the container, we want it correctly canonicalized before
      we start emitting keys for this decl.  */
   tree container = decl_container (decl);
-
   unsigned tpl_levels = 0;
-  if (decl != inner)
-    tpl_header (decl, &tpl_levels);
-  if (TREE_CODE (inner) == FUNCTION_DECL)
-    fn_parms_init (inner);
 
-  /* Now write out the merging information, and then really
-     install the tag values.  */
-  key_mergeable (tag, mk, decl, inner, container, dep);
+  {
+    auto wmk = make_temp_override (dep_hash->writing_merge_key, true);
+    if (decl != inner)
+      tpl_header (decl, &tpl_levels);
+    if (TREE_CODE (inner) == FUNCTION_DECL)
+      fn_parms_init (inner);
 
-  if (streaming_p ())
-    dump (dumper::MERGE)
-      && dump ("Wrote:%d's %s merge key %C:%N", tag,
-	       merge_kind_name[mk], TREE_CODE (decl), decl);
+    /* Now write out the merging information, and then really
+       install the tag values.  */
+    key_mergeable (tag, mk, decl, inner, container, dep);
+
+    if (streaming_p ())
+      dump (dumper::MERGE)
+	&& dump ("Wrote:%d's %s merge key %C:%N", tag,
+		 merge_kind_name[mk], TREE_CODE (decl), decl);
+  }
 
   if (TREE_CODE (inner) == FUNCTION_DECL)
     fn_parms_fini (inner);
@@ -8120,7 +8187,7 @@ trees_in::decl_value ()
 
   unsigned saved_unused = unused;
   unused = 0;
-  
+
   merge_kind mk = merge_kind (mk_u);
 
   tree decl = start ();
@@ -8141,7 +8208,7 @@ trees_in::decl_value ()
       if (!tree_node_bools (decl))
 	decl = NULL_TREE;
     }
-  
+
   /* Insert into map.  */
   tag = insert (decl);
   if (decl)
@@ -9206,6 +9273,11 @@ trees_out::type_node (tree type)
       tree_node (PACK_EXPANSION_EXTRA_ARGS (type));
       break;
 
+    case PACK_INDEX_TYPE:
+      tree_node (PACK_INDEX_PACK (type));
+      tree_node (PACK_INDEX_INDEX (type));
+      break;
+
     case TYPENAME_TYPE:
       {
 	tree_node (TYPE_CONTEXT (type));
@@ -9400,7 +9472,7 @@ trees_out::tree_node (tree t)
       if (streaming_p ())
 	{
 	  /* We know the ordering of the 4 id tags.  */
-	  static const char *const kinds[] = 
+	  static const char *const kinds[] =
 	    {"", "conv_op ", "anon ", "lambda "};
 	  dump (dumper::TREE)
 	    && dump ("Written:%d %sidentifier:%N", tag,
@@ -9770,6 +9842,15 @@ trees_in::tree_node (bool is_use)
 		  PACK_EXPANSION_LOCAL_P (expn) = local;
 		  res = expn;
 		}
+	    }
+	    break;
+
+	  case PACK_INDEX_TYPE:
+	    {
+	      tree pack = tree_node ();
+	      tree index = tree_node ();
+	      if (!get_overrun ())
+		res = make_pack_index (pack, index);
 	    }
 	    break;
 
@@ -11389,7 +11470,7 @@ trees_in::key_mergeable (int tag, merge_kind mk, tree decl, tree inner,
 
 			    existing = check_mergeable_decl
 			      (mk, inner, existing, key);
-			    
+
 			    if (!existing && DECL_ALIAS_TEMPLATE_P (decl))
 			      {} // FIXME: Insert into specialization
 			    // tables, we'll need the arguments for that!
@@ -11551,8 +11632,6 @@ trees_in::is_matching_decl (tree existing, tree decl, bool is_typedef)
 
 	  if (!same_type_p (TREE_VALUE (d_args), TREE_VALUE (e_args)))
 	    goto mismatch;
-
-	  // FIXME: Check default values
 	}
 
       /* If EXISTING has an undeduced or uninstantiated exception
@@ -11691,7 +11770,60 @@ trees_in::is_matching_decl (tree existing, tree decl, bool is_typedef)
   if (!DECL_EXTERNAL (d_inner))
     DECL_EXTERNAL (e_inner) = false;
 
-  // FIXME: Check default tmpl and fn parms here
+  if (TREE_CODE (decl) == TEMPLATE_DECL)
+    {
+      /* Merge default template arguments.  */
+      tree d_parms = DECL_INNERMOST_TEMPLATE_PARMS (decl);
+      tree e_parms = DECL_INNERMOST_TEMPLATE_PARMS (existing);
+      gcc_checking_assert (TREE_VEC_LENGTH (d_parms)
+			   == TREE_VEC_LENGTH (e_parms));
+      for (int i = 0; i < TREE_VEC_LENGTH (d_parms); ++i)
+	{
+	  tree d_default = TREE_PURPOSE (TREE_VEC_ELT (d_parms, i));
+	  tree& e_default = TREE_PURPOSE (TREE_VEC_ELT (e_parms, i));
+	  if (e_default == NULL_TREE)
+	    e_default = d_default;
+	  else if (d_default != NULL_TREE
+		   && !cp_tree_equal (d_default, e_default))
+	    {
+	      auto_diagnostic_group d;
+	      tree d_parm = TREE_VALUE (TREE_VEC_ELT (d_parms, i));
+	      tree e_parm = TREE_VALUE (TREE_VEC_ELT (e_parms, i));
+	      error_at (DECL_SOURCE_LOCATION (d_parm),
+			"conflicting default argument for %#qD", d_parm);
+	      inform (DECL_SOURCE_LOCATION (e_parm),
+		      "existing default declared here");
+	      return false;
+	    }
+	}
+    }
+
+  if (TREE_CODE (d_inner) == FUNCTION_DECL)
+    {
+      /* Merge default function arguments.  */
+      tree d_parm = FUNCTION_FIRST_USER_PARMTYPE (d_inner);
+      tree e_parm = FUNCTION_FIRST_USER_PARMTYPE (e_inner);
+      int i = 0;
+      for (; d_parm && d_parm != void_list_node;
+	   d_parm = TREE_CHAIN (d_parm), e_parm = TREE_CHAIN (e_parm), ++i)
+	{
+	  tree d_default = TREE_PURPOSE (d_parm);
+	  tree& e_default = TREE_PURPOSE (e_parm);
+	  if (e_default == NULL_TREE)
+	    e_default = d_default;
+	  else if (d_default != NULL_TREE
+		   && !cp_tree_equal (d_default, e_default))
+	    {
+	      auto_diagnostic_group d;
+	      error_at (get_fndecl_argument_location (d_inner, i),
+			"conflicting default argument for parameter %P of %#qD",
+			i, decl);
+	      inform (get_fndecl_argument_location (e_inner, i),
+		      "existing default declared here");
+	      return false;
+	    }
+	}
+    }
 
   return true;
 }
@@ -11829,10 +11961,15 @@ has_definition (tree decl)
 	       since there's no TU to emit them in otherwise.  */
 	    return true;
 
-	  if (!decl_maybe_constant_var_p (decl))
-	    return false;
+	  if (decl_maybe_constant_var_p (decl))
+	    /* We might need its constant value.  */
+	    return true;
 
-	  return true;
+	  if (vague_linkage_p (decl))
+	    /* These are emitted as needed.  */
+	    return true;
+
+	  return false;
 	}
       break;
 
@@ -12008,7 +12145,7 @@ trees_in::read_function_def (tree decl, tree maybe_template)
     {
       // FIXME:QOI Check matching defn
     }
-  
+
   return true;
 }
 
@@ -12376,8 +12513,12 @@ trees_in::read_class_def (tree defn, tree maybe_template)
 
 	  /* Core pieces.  */
 	  TYPE_MODE_RAW (type) = TYPE_MODE_RAW (type_dup);
+	  TYPE_ALIGN_RAW (type) = TYPE_ALIGN_RAW (type_dup);
+	  TYPE_WARN_IF_NOT_ALIGN_RAW (type)
+	    = TYPE_WARN_IF_NOT_ALIGN_RAW (type_dup);
+	  TYPE_USER_ALIGN (type) = TYPE_USER_ALIGN (type_dup);
+
 	  SET_DECL_MODE (defn, DECL_MODE (maybe_dup));
-	  TREE_ADDRESSABLE (type) = TREE_ADDRESSABLE (type_dup);
 	  DECL_SIZE (defn) = DECL_SIZE (maybe_dup);
 	  DECL_SIZE_UNIT (defn) = DECL_SIZE_UNIT (maybe_dup);
 	  DECL_ALIGN_RAW (defn) = DECL_ALIGN_RAW (maybe_dup);
@@ -12385,12 +12526,26 @@ trees_in::read_class_def (tree defn, tree maybe_template)
 	    = DECL_WARN_IF_NOT_ALIGN_RAW (maybe_dup);
 	  DECL_USER_ALIGN (defn) = DECL_USER_ALIGN (maybe_dup);
 
+	  TYPE_TYPELESS_STORAGE (type) = TYPE_TYPELESS_STORAGE (type_dup);
+	  TYPE_CXX_ODR_P (type) = TYPE_CXX_ODR_P (type_dup);
+	  TYPE_NO_FORCE_BLK (type) = TYPE_NO_FORCE_BLK (type_dup);
+	  TYPE_TRANSPARENT_AGGR (type) = TYPE_TRANSPARENT_AGGR (type_dup);
+	  TYPE_CONTAINS_PLACEHOLDER_INTERNAL (type)
+	    = TYPE_CONTAINS_PLACEHOLDER_INTERNAL (type_dup);
+
+	  TYPE_EMPTY_P (type) = TYPE_EMPTY_P (type_dup);
+	  TREE_ADDRESSABLE (type) = TREE_ADDRESSABLE (type_dup);
+
 	  /* C++ pieces.  */
 	  TYPE_POLYMORPHIC_P (type) = TYPE_POLYMORPHIC_P (type_dup);
+	  CLASSTYPE_FINAL (type) = CLASSTYPE_FINAL (type_dup);
+
 	  TYPE_HAS_USER_CONSTRUCTOR (type)
 	    = TYPE_HAS_USER_CONSTRUCTOR (type_dup);
 	  TYPE_HAS_NONTRIVIAL_DESTRUCTOR (type)
 	    = TYPE_HAS_NONTRIVIAL_DESTRUCTOR (type_dup);
+	  TYPE_NEEDS_CONSTRUCTING (type)
+	    = TYPE_NEEDS_CONSTRUCTING (type_dup);
 
 	  if (auto ls = TYPE_LANG_SPECIFIC (type_dup))
 	    {
@@ -12571,7 +12726,7 @@ trees_in::read_class_def (tree defn, tree maybe_template)
 		 friend_decls; friend_decls = TREE_CHAIN (friend_decls))
 	      {
 		tree f = TREE_VALUE (friend_decls);
-		
+
 		DECL_BEFRIENDING_CLASSES (f)
 		  = tree_cons (NULL_TREE, type, DECL_BEFRIENDING_CLASSES (f));
 		dump () && dump ("Class %N befriending %C:%N",
@@ -12668,7 +12823,7 @@ trees_in::read_enum_def (tree defn, tree maybe_template)
 
 	  if (DECL_NAME (known_decl) != DECL_NAME (new_decl))
 	    break;
-	      
+
 	  new_decl = maybe_duplicate (new_decl);
 
 	  if (!cp_tree_equal (DECL_INITIAL (known_decl),
@@ -13031,6 +13186,18 @@ depset::hash::make_dependency (tree decl, entity_kind ek)
 		    dep->set_flag_bit<DB_IS_INTERNAL_BIT> ();
 		}
 	    }
+
+	  /* A namespace-scope type may be declared in one module unit
+	     and defined in another; make sure that we're found when
+	     completing the class.  */
+	  if (ek == EK_DECL
+	      && !dep->is_import ()
+	      && dep->has_defn ()
+	      && DECL_NAMESPACE_SCOPE_P (not_tmpl)
+	      && DECL_IMPLICIT_TYPEDEF_P (not_tmpl)
+	      /* Anonymous types can't be forward-declared.  */
+	      && !IDENTIFIER_ANON_P (DECL_NAME (not_tmpl)))
+	    dep->set_flag_bit<DB_IS_PENDING_BIT> ();
 	}
 
       if (!dep->is_import ())
@@ -13071,6 +13238,17 @@ depset::hash::add_dependency (depset *dep)
 	      == CP_DECL_CONTEXT (dep->get_entity ())))
 	/* Make DECL depend on CURRENT.  */
 	dep->deps.safe_push (current);
+    }
+
+  /* If two dependencies recursively depend on each other existing within
+     their own merge keys, we must ensure that the first dep we saw while
+     walking is written first in this cluster.  See sort_cluster for more
+     details.  */
+  if (writing_merge_key)
+    {
+      dep->set_flag_bit<DB_MAYBE_RECURSIVE_BIT> ();
+      if (!current->is_maybe_recursive ())
+	current->set_flag_bit<DB_ENTRY_BIT> ();
     }
 
   if (dep->is_unreached ())
@@ -13383,9 +13561,9 @@ depset::hash::add_class_entities (vec<tree, va_gc> *class_members)
       if (dep->get_entity_kind () == EK_REDIRECT)
 	dep = dep->deps[0];
 
-      /* Only non-instantiations need marking as members.  */
+      /* Only non-instantiations need marking as pendings.  */
       if (dep->get_entity_kind () == EK_DECL)
-	dep->set_flag_bit <DB_IS_MEMBER_BIT> ();
+	dep->set_flag_bit <DB_IS_PENDING_BIT> ();
     }
 }
 
@@ -13711,10 +13889,7 @@ depset::hash::find_dependencies (module_state *module)
 		  walker.mark_declaration (decl, current->has_defn ());
 
 		  if (!walker.is_key_order ()
-		      && (item->get_entity_kind () == EK_SPECIALIZATION
-			  || item->get_entity_kind () == EK_PARTIAL
-			  || (item->get_entity_kind () == EK_DECL
-			      && item->is_member ())))
+		      && item->is_pending_entity ())
 		    {
 		      tree ns = find_pending_key (decl, nullptr);
 		      add_namespace_context (item, ns);
@@ -13833,7 +14008,7 @@ binding_cmp (const void *a_, const void *b_)
     a_export = DECL_MODULE_EXPORT_P (TREE_CODE (a_ent) == CONST_DECL
 				     ? TYPE_NAME (TREE_TYPE (a_ent))
 				     : STRIP_TEMPLATE (a_ent));
-  
+
   bool b_using = b->get_entity_kind () == depset::EK_USING;
   bool b_export;
   if (b_using)
@@ -13982,7 +14157,7 @@ depset_cmp (const void *a_, const void *b_)
   if  (a_kind != b_kind)
     /* Different entity kinds, order by that.  */
     return a_kind < b_kind ? -1 : +1;
-  
+
   tree a_decl = a->get_entity ();
   tree b_decl = b->get_entity ();
   if (a_kind == depset::EK_USING)
@@ -14087,7 +14262,7 @@ sort_cluster (depset::hash *original, depset *scc[], unsigned size)
 
   table.find_dependencies (nullptr);
 
-  vec<depset *> order = table.connect ();
+  auto_vec<depset *> order = table.connect ();
   gcc_checking_assert (order.length () == use_lwm);
 
   /* Now rewrite entries [0,lwm), in the dependency order we
@@ -14104,26 +14279,39 @@ sort_cluster (depset::hash *original, depset *scc[], unsigned size)
      from Foo's declaration, so we only need to treat Foo as mergable
      (We'll do structural comparison of TPL<decltype (arg)>).
 
-     Finding the single cluster entry dep is very tricky and
-     expensive.  Let's just not do that.  It's harmless in this case
-     anyway. */
-  unsigned pos = 0;
+     We approximate finding the single cluster entry dep by checking for
+     entities recursively depending on a dep first seen when streaming
+     its own merge key; the first dep we see in such a cluster should be
+     the first one streamed.  */
+  unsigned entry_pos = ~0u;
   unsigned cluster = ~0u;
   for (unsigned ix = 0; ix != order.length (); ix++)
     {
       gcc_checking_assert (order[ix]->is_special ());
+      bool tight = order[ix]->cluster == cluster;
       depset *dep = order[ix]->deps[0];
-      scc[pos++] = dep;
       dump (dumper::MERGE)
-	&& dump ("Mergeable %u is %N%s", ix, dep->get_entity (),
-		 order[ix]->cluster == cluster ? " (tight)" : "");
+	&& dump ("Mergeable %u is %N%s%s", ix, dep->get_entity (),
+		 tight ? " (tight)" : "", dep->is_entry () ? " (entry)" : "");
+      scc[ix] = dep;
+      if (tight)
+	{
+	  gcc_checking_assert (dep->is_maybe_recursive ());
+	  if (dep->is_entry ())
+	    {
+	      /* There should only be one entry dep in a cluster.  */
+	      gcc_checking_assert (!scc[entry_pos]->is_entry ());
+	      gcc_checking_assert (scc[entry_pos]->is_maybe_recursive ());
+	      scc[ix] = scc[entry_pos];
+	      scc[entry_pos] = dep;
+	    }
+	}
+      else
+	entry_pos = ix;
       cluster = order[ix]->cluster;
     }
 
-  gcc_checking_assert (pos == use_lwm);
-
-  order.release ();
-  dump (dumper::MERGE) && dump ("Ordered %u keys", pos);
+  dump (dumper::MERGE) && dump ("Ordered %u keys", order.length ());
   dump.outdent ();
 }
 
@@ -14196,7 +14384,7 @@ loc_spans::init (const line_maps *lmaps, const line_map_ordinary *map)
     = MAP_START_LOCATION (LINEMAPS_ORDINARY_MAP_AT (line_table, 0));
   interval.macro.first = interval.macro.second;
   dump (dumper::LOCATION)
-    && dump ("Fixed span %u ordinary:[%u,%u) macro:[%u,%u)", spans->length (),
+    && dump ("Fixed span %u ordinary:[%K,%K) macro:[%K,%K)", spans->length (),
 	     interval.ordinary.first, interval.ordinary.second,
 	     interval.macro.first, interval.macro.second);
   spans->quick_push (interval);
@@ -14210,16 +14398,16 @@ loc_spans::init (const line_maps *lmaps, const line_map_ordinary *map)
       interval.macro.first = LINEMAPS_MACRO_LOWEST_LOCATION (lmaps);
     }
   dump (dumper::LOCATION)
-    && dump ("Pre span %u ordinary:[%u,%u) macro:[%u,%u)", spans->length (),
+    && dump ("Pre span %u ordinary:[%K,%K) macro:[%K,%K)", spans->length (),
 	     interval.ordinary.first, interval.ordinary.second,
 	     interval.macro.first, interval.macro.second);
   spans->quick_push (interval);
-  
+
   /* Start an interval for the main file.  */
   interval.ordinary.first = interval.ordinary.second;
   interval.macro.second = interval.macro.first;
   dump (dumper::LOCATION)
-    && dump ("Main span %u ordinary:[%u,*) macro:[*,%u)", spans->length (),
+    && dump ("Main span %u ordinary:[%K,*) macro:[*,%K)", spans->length (),
 	     interval.ordinary.first, interval.macro.second);
   spans->quick_push (interval);
 }
@@ -14250,7 +14438,7 @@ loc_spans::open (location_t hwm)
     = LINEMAPS_MACRO_LOWEST_LOCATION (line_table);
   interval.ordinary_delta = interval.macro_delta = 0;
   dump (dumper::LOCATION)
-    && dump ("Opening span %u ordinary:[%u,... macro:...,%u)",
+    && dump ("Opening span %u ordinary:[%K,... macro:...,%K)",
 	     spans->length (), interval.ordinary.first,
 	     interval.macro.second);
   if (spans->length ())
@@ -14272,11 +14460,12 @@ loc_spans::close ()
   span &interval = spans->last ();
 
   interval.ordinary.second
-    = ((line_table->highest_location + (1 << line_table->default_range_bits))
-       & ~((1u << line_table->default_range_bits) - 1));
+    = ((line_table->highest_location
+	+ (loc_one << line_table->default_range_bits))
+       & ~((loc_one << line_table->default_range_bits) - 1));
   interval.macro.first = LINEMAPS_MACRO_LOWEST_LOCATION (line_table);
   dump (dumper::LOCATION)
-    && dump ("Closing span %u ordinary:[%u,%u) macro:[%u,%u)",
+    && dump ("Closing span %u ordinary:[%K,%K) macro:[%K,%K)",
 	     spans->length () - 1,
 	     interval.ordinary.first,interval.ordinary.second,
 	     interval.macro.first, interval.macro.second);
@@ -14518,7 +14707,7 @@ module_state::mangle (bool include_partition)
     {
       if (parent)
 	parent->mangle (include_partition);
-      if (include_partition || !is_partition ()) 
+      if (include_partition || !is_partition ())
 	{
 	  // Partitions are significant for global initializer
 	  // functions
@@ -14986,23 +15175,14 @@ module_state::read_partitions (unsigned count)
 
 /* Data for config reading and writing.  */
 struct module_state_config {
-  const char *dialect_str;
-  unsigned num_imports;
-  unsigned num_partitions;
-  unsigned num_entities;
-  unsigned ordinary_locs;
-  unsigned macro_locs;
-  unsigned loc_range_bits;
-  unsigned active_init;
-
-public:
-  module_state_config ()
-    :dialect_str (get_dialect ()),
-     num_imports (0), num_partitions (0), num_entities (0),
-     ordinary_locs (0), macro_locs (0), loc_range_bits (0),
-     active_init (0)
-  {
-  }
+  const char *dialect_str = get_dialect ();
+  line_map_uint_t ordinary_locs = 0;
+  line_map_uint_t macro_locs = 0;
+  unsigned num_imports = 0;
+  unsigned num_partitions = 0;
+  unsigned num_entities = 0;
+  unsigned loc_range_bits = 0;
+  unsigned active_init = 0;
 
   static void release ()
   {
@@ -15030,9 +15210,10 @@ module_state_config::get_dialect ()
 		      flag_exceptions ? "" : "/no-exceptions",
 		      flag_rtti ? "" : "/no-rtti",
 		      flag_new_inheriting_ctors ? "" : "/old-inheriting-ctors",
-		      /* C++ 20 implies concepts.  */
+		      /* C++ 20 implies concepts and coroutines.  */
 		      cxx_dialect < cxx20 && flag_concepts ? "/concepts" : "",
-		      flag_coroutines ? "/coroutines" : "",
+		      (cxx_dialect < cxx20 && flag_coroutines
+		       ? "/coroutines" : ""),
 		      flag_module_implicit_inline ? "/implicit-inline" : "",
 		      flag_contracts ? "/contracts" : "",
 		      NULL);
@@ -15527,7 +15708,7 @@ module_state::read_cluster (unsigned snum)
 
       if (abstract)
 	;
-      else if (DECL_ABSTRACT_P (decl))
+      else if (DECL_MAYBE_IN_CHARGE_CDTOR_P (decl))
 	vec_safe_push (post_load_decls, decl);
       else
 	{
@@ -15645,7 +15826,7 @@ module_state::write_namespaces (elf_out *to, vec<depset *> spaces,
 
       dump () && dump ("Writing namespace:%u %N%s%s%s%s",
 		       b->cluster, ns,
-		       flags & 1 ? ", public" : "", 
+		       flags & 1 ? ", public" : "",
 		       flags & 2 ? ", inline" : "",
 		       flags & 4 ? ", purview" : "",
 		       flags & 8 ? ", export" : "");
@@ -15721,7 +15902,7 @@ module_state::read_namespaces (unsigned num)
 
       dump () && dump ("Read namespace:%u %P%s%s%s%s",
 		       entity_index, parent, id,
-		       flags & 1 ? ", public" : "", 
+		       flags & 1 ? ", public" : "",
 		       flags & 2 ? ", inline" : "",
 		       flags & 4 ? ", purview" : "",
 		       flags & 8 ? ", export" : "");
@@ -15939,15 +16120,13 @@ module_state::read_entities (unsigned count, unsigned lwm, unsigned hwm)
    'instantiated' in one module, and it'd be nice to not have to
    reinstantiate it in another.
 
-   (c) A member classes completed elsewhere.  A member class could be
-   declared in one header and defined in another.  We need to know to
-   load the class definition before looking in it.  This turns out to
-   be a specific case of #b, so we can treat these the same.  But it
-   does highlight an issue -- there could be an intermediate import
-   between the outermost containing namespace-scope class and the
-   innermost being-defined member class.  This is actually possible
-   with all of these cases, so be aware -- we're not just talking of
-   one level of import to get to the innermost namespace.
+   (c) Classes completed elsewhere.  A class could be declared in one
+   header and defined in another.  We need to know to load the class
+   definition before looking in it.  It does highlight an issue --
+   there could be an intermediate import between the outermost containing
+   namespace-scope class and the innermost being-defined class.  This is
+   actually possible with all of these cases, so be aware -- we're not
+   just talking of one level of import to get to the innermost namespace.
 
    This gets complicated fast, it took me multiple attempts to even
    get something remotely working.  Partially because I focussed on
@@ -16067,9 +16246,7 @@ module_state::write_pendings (elf_out *to, vec<depset *> depsets,
       if (d->is_import ())
 	continue;
 
-      if (!(d->get_entity_kind () == depset::EK_SPECIALIZATION
-	    || d->get_entity_kind () == depset::EK_PARTIAL
-	    || (d->get_entity_kind () == depset::EK_DECL && d->is_member ())))
+      if (!d->is_pending_entity ())
 	continue;
 
       tree key_decl = nullptr;
@@ -16282,7 +16459,7 @@ module_state::note_location (location_t loc)
 		  }
 	      added = true;
 	    }
-	}				       
+	}
     }
   else if (IS_ORDINARY_LOC (loc))
     {
@@ -16292,7 +16469,7 @@ module_state::note_location (location_t loc)
 	  const line_map_ordinary *ord_map = linemap_check_ordinary (map);
 	  ord_loc_info lkup;
 	  lkup.src = ord_map;
-	  lkup.span = 1 << ord_map->m_column_and_range_bits;
+	  lkup.span = loc_one << ord_map->m_column_and_range_bits;
 	  lkup.offset = (loc - MAP_START_LOCATION (ord_map)) & ~(lkup.span - 1);
 	  lkup.remap = 0;
 	  ord_loc_info *slot = (ord_loc_table->find_slot_with_hash
@@ -16323,8 +16500,8 @@ module_state::write_location (bytes_out &sec, location_t loc)
 
   if (loc < RESERVED_LOCATION_COUNT)
     {
-      dump (dumper::LOCATION) && dump ("Reserved location %u", unsigned (loc));
-      sec.u (LK_RESERVED + loc);
+      dump (dumper::LOCATION) && dump ("Reserved location %K", loc);
+      sec.loc (LK_RESERVED + loc);
     }
   else if (IS_ADHOC_LOC (loc))
     {
@@ -16344,7 +16521,7 @@ module_state::write_location (bytes_out &sec, location_t loc)
   else if (loc >= LINEMAPS_MACRO_LOWEST_LOCATION (line_table))
     {
       const macro_loc_info *info = nullptr;
-      unsigned offset = 0;
+      line_map_uint_t offset = 0;
       if (unsigned hwm = macro_loc_remap->length ())
 	{
 	  info = macro_loc_remap->begin ();
@@ -16370,18 +16547,18 @@ module_state::write_location (bytes_out &sec, location_t loc)
 	{
 	  offset += info->remap;
 	  sec.u (LK_MACRO);
-	  sec.u (offset);
+	  sec.loc (offset);
 	  dump (dumper::LOCATION)
-	    && dump ("Macro location %u output %u", loc, offset);
+	    && dump ("Macro location %K output %K", loc, offset);
 	}
       else if (const module_state *import = module_for_macro_loc (loc))
 	{
-	  unsigned off = loc - import->macro_locs.first;
+	  auto off = loc - import->macro_locs.first;
 	  sec.u (LK_IMPORT_MACRO);
 	  sec.u (import->remap);
-	  sec.u (off);
+	  sec.loc (off);
 	  dump (dumper::LOCATION)
-	    && dump ("Imported macro location %u output %u:%u",
+	    && dump ("Imported macro location %K output %u:%K",
 		     loc, import->remap, off);
 	}
       else
@@ -16389,14 +16566,29 @@ module_state::write_location (bytes_out &sec, location_t loc)
     }
   else if (IS_ORDINARY_LOC (loc))
     {
+      /* If we ran out of locations for imported decls, this location could
+	 be a module unit's location.  In that case, remap the location
+	 to be where we imported the module from.  */
+      if (spans.locations_exhausted_p () || CHECKING_P)
+	{
+	  const line_map_ordinary *map
+	    = linemap_check_ordinary (linemap_lookup (line_table, loc));
+	  if (MAP_MODULE_P (map) && loc == MAP_START_LOCATION (map))
+	    {
+	      gcc_checking_assert (spans.locations_exhausted_p ());
+	      write_location (sec, linemap_included_from (map));
+	      return;
+	    }
+	}
+
       const ord_loc_info *info = nullptr;
-      unsigned offset = 0;
-      if (unsigned hwm = ord_loc_remap->length ())
+      line_map_uint_t offset = 0;
+      if (line_map_uint_t hwm = ord_loc_remap->length ())
 	{
 	  info = ord_loc_remap->begin ();
 	  while (hwm != 1)
 	    {
-	      unsigned mid = hwm / 2;
+	      auto mid = hwm / 2;
 	      if (MAP_START_LOCATION (info[mid].src) + info[mid].offset <= loc)
 		{
 		  info += mid;
@@ -16416,20 +16608,20 @@ module_state::write_location (bytes_out &sec, location_t loc)
 	{
 	  offset += info->remap;
 	  sec.u (LK_ORDINARY);
-	  sec.u (offset);
+	  sec.loc (offset);
 
 	  dump (dumper::LOCATION)
-	    && dump ("Ordinary location %u output %u", loc, offset);
+	    && dump ("Ordinary location %K output %K", loc, offset);
 	}
       else if (const module_state *import = module_for_ordinary_loc (loc))
 	{
-	  unsigned off = loc - import->ordinary_locs.first;
+	  auto off = loc - import->ordinary_locs.first;
 	  sec.u (LK_IMPORT_ORDINARY);
 	  sec.u (import->remap);
-	  sec.u (off);
+	  sec.loc (off);
 	  dump (dumper::LOCATION)
-	    && dump ("Imported ordinary location %u output %u:%u",
-		     import->remap, import->remap, off);
+	    && dump ("Imported ordinary location %K output %u:%K",
+		     loc, import->remap, off);
 	}
       else
 	gcc_unreachable ();
@@ -16452,7 +16644,7 @@ module_state::read_location (bytes_in &sec) const
 	else
 	  sec.set_overrun ();
 	dump (dumper::LOCATION)
-	  && dump ("Reserved location %u", unsigned (locus));
+	  && dump ("Reserved location %K", locus);
       }
       break;
 
@@ -16474,7 +16666,7 @@ module_state::read_location (bytes_in &sec) const
 
     case LK_MACRO:
       {
-	unsigned off = sec.u ();
+	auto off = sec.loc ();
 
 	if (macro_locs.second)
 	  {
@@ -16486,13 +16678,13 @@ module_state::read_location (bytes_in &sec) const
 	else
 	  locus = loc;
 	dump (dumper::LOCATION)
-	  && dump ("Macro %u becoming %u", off, locus);
+	  && dump ("Macro %K becoming %K", off, locus);
       }
       break;
 
     case LK_ORDINARY:
       {
-	unsigned off = sec.u ();
+	auto off = sec.loc ();
 	if (ordinary_locs.second)
 	  {
 	    if (off < ordinary_locs.second)
@@ -16504,7 +16696,7 @@ module_state::read_location (bytes_in &sec) const
 	  locus = loc;
 
 	dump (dumper::LOCATION)
-	  && dump ("Ordinary location %u becoming %u", off, locus);
+	  && dump ("Ordinary location %K becoming %K", off, locus);
       }
       break;
 
@@ -16512,7 +16704,7 @@ module_state::read_location (bytes_in &sec) const
      case LK_IMPORT_ORDINARY:
        {
 	 unsigned mod = sec.u ();
-	 unsigned off = sec.u ();
+	 location_t off = sec.loc ();
 	 const module_state *import = NULL;
 
 	 if (!mod && !slurp->remap)
@@ -16575,7 +16767,7 @@ module_state::write_prepare_maps (module_state_config *cfg, bool has_partitions)
   dump () && dump ("Preparing locations");
   dump.indent ();
 
-  dump () && dump ("Reserved locations [%u,%u) macro [%u,%u)",
+  dump () && dump ("Reserved locations [%K,%K) macro [%K,%K)",
 		   spans[loc_spans::SPAN_RESERVED].ordinary.first,
 		   spans[loc_spans::SPAN_RESERVED].ordinary.second,
 		   spans[loc_spans::SPAN_RESERVED].macro.first,
@@ -16631,13 +16823,14 @@ module_state::write_prepare_maps (module_state_config *cfg, bool has_partitions)
   ord_loc_table = nullptr;
 
   // Merge (sufficiently) adjacent spans, and calculate remapping.
-  constexpr unsigned adjacency = 2; // Allow 2 missing lines.
+  constexpr line_map_uint_t adjacency = 2; // Allow 2 missing lines.
   auto begin = ord_loc_remap->begin (), end = ord_loc_remap->end ();
   auto dst = begin;
-  unsigned offset = 0, range_bits = 0;
+  line_map_uint_t offset = 0;
+  unsigned range_bits = 0;
   ord_loc_info *base = nullptr;
   for (auto iter = begin; iter != end; ++iter)
-    {    
+    {
       if (base && iter->src == base->src)
 	{
 	  if (base->offset + base->span +
@@ -16656,8 +16849,8 @@ module_state::write_prepare_maps (module_state_config *cfg, bool has_partitions)
       else if (range_bits < iter->src->m_range_bits)
 	range_bits = iter->src->m_range_bits;
 
-      offset += ((1u << iter->src->m_range_bits) - 1);
-      offset &= ~((1u << iter->src->m_range_bits) - 1);
+      offset += ((loc_one << iter->src->m_range_bits) - 1);
+      offset &= ~((loc_one << iter->src->m_range_bits) - 1);
       iter->remap = offset;
       offset += iter->span;
       base = dst;
@@ -16668,8 +16861,9 @@ module_state::write_prepare_maps (module_state_config *cfg, bool has_partitions)
   info.first = ord_loc_remap->length ();
   cfg->ordinary_locs = offset;
   cfg->loc_range_bits = range_bits;
-  dump () && dump ("Ordinary maps:%u locs:%u range_bits:%u",
-		   info.first, cfg->ordinary_locs,
+  dump () && dump ("Ordinary maps:%K locs:%K range_bits:%u",
+		   info.first,
+		   cfg->ordinary_locs,
 		   cfg->loc_range_bits);
 
   // Remap the macro locations.
@@ -16692,7 +16886,7 @@ module_state::write_prepare_maps (module_state_config *cfg, bool has_partitions)
   info.second = macro_loc_remap->length ();
   cfg->macro_locs = offset;
 
-  dump () && dump ("Macro maps:%u locs:%u", info.second, cfg->macro_locs);
+  dump () && dump ("Macro maps:%K locs:%K", info.second, cfg->macro_locs);
 
   dump.outdent ();
 
@@ -16719,13 +16913,7 @@ module_state::read_prepare_maps (const module_state_config *cfg)
   ordinary_locs.first = ordinary_locs.second = 0;
   macro_locs.first = macro_locs.second = 0;
 
-  static bool informed = false;
-  if (!informed)
-    {
-      /* Just give the notice once.  */
-      informed = true;
-      inform (loc, "unable to represent further imported source locations");
-    }
+  spans.report_location_exhaustion (loc);
 
   return false;
 }
@@ -16789,20 +16977,21 @@ module_state::write_ordinary_maps (elf_out *to, range_t &info,
       sec.str (fname);
     }
 
-  sec.u (info.first);	/* Num maps.  */
+  sec.loc (info.first);	/* Num maps.  */
   const ord_loc_info *base = nullptr;
   for (auto iter = ord_loc_remap->begin (), end = ord_loc_remap->end ();
        iter != end; ++iter)
     {
       dump (dumper::LOCATION)
-	&& dump ("Span:%u ordinary [%u+%u,+%u)->[%u,+%u)",
-		 iter - ord_loc_remap->begin (),
-		 MAP_START_LOCATION (iter->src), iter->offset, iter->span,
-		 iter->remap, iter->span);
+	&& dump ("Span:%K ordinary [%K+%K,+%K)->[%K,+%K)",
+		 (location_t) (iter - ord_loc_remap->begin ()),
+		 MAP_START_LOCATION (iter->src),
+		 iter->offset, iter->span, iter->remap,
+		 iter->span);
 
       if (!base || iter->src != base->src)
 	base = iter;
-      sec.u (iter->offset - base->offset);
+      sec.loc (iter->offset - base->offset);
       if (base == iter)
 	{
 	  sec.u (iter->src->sysp);
@@ -16820,7 +17009,7 @@ module_state::write_ordinary_maps (elf_out *to, range_t &info,
 	  line += iter->offset >> iter->src->m_column_and_range_bits;
 	  sec.u (line);
 	}
-      sec.u (iter->remap);
+      sec.loc (iter->remap);
       if (base == iter)
 	{
 	  /* Write the included from location, which means reading it
@@ -16856,15 +17045,15 @@ module_state::write_macro_maps (elf_out *to, range_t &info, unsigned *crc_p)
   bytes_out sec (to);
   sec.begin ();
 
-  dump () && dump ("Macro maps:%u", info.second);
-  sec.u (info.second);
+  dump () && dump ("Macro maps:%K", info.second);
+  sec.loc (info.second);
 
-  unsigned macro_num = 0;
+  line_map_uint_t macro_num = 0;
   for (auto iter = macro_loc_remap->end (), begin = macro_loc_remap->begin ();
        iter-- != begin;)
     {
       auto mac = iter->src;
-      sec.u (iter->remap);
+      sec.loc (iter->remap);
       sec.u (mac->n_tokens);
       sec.cpp_node (mac->macro);
       write_location (sec, mac->m_expansion);
@@ -16889,7 +17078,7 @@ module_state::write_macro_maps (elf_out *to, range_t &info, unsigned *crc_p)
 	}
       sec.u (count);
       dump (dumper::LOCATION)
-	&& dump ("Macro:%u %I %u/%u*2 locations [%u,%u)->%u",
+	&& dump ("Macro:%K %I %u/%u*2 locations [%K,%K)->%K",
 		 macro_num, identifier (mac->macro),
 		 runs, mac->n_tokens,
 		 MAP_START_LOCATION (mac),
@@ -16930,12 +17119,13 @@ module_state::read_ordinary_maps (unsigned num_ord_locs, unsigned range_bits)
       filenames.quick_push (fname);
     }
 
-  unsigned num_ordinary = sec.u ();
-  dump () && dump ("Ordinary maps:%u, range_bits:%u", num_ordinary, range_bits);
+  line_map_uint_t num_ordinary = sec.loc ();
+  dump () && dump ("Ordinary maps:%K, range_bits:%u",
+		   num_ordinary, range_bits);
 
   location_t offset = line_table->highest_location + 1;
-  offset += ((1u << range_bits) - 1);
-  offset &= ~((1u << range_bits) - 1);
+  offset += ((loc_one << range_bits) - 1);
+  offset &= ~((loc_one << range_bits) - 1);
   ordinary_locs.first = offset;
 
   bool propagated = spans.maybe_propagate (this, offset);
@@ -16943,11 +17133,11 @@ module_state::read_ordinary_maps (unsigned num_ord_locs, unsigned range_bits)
     (line_map_new_raw (line_table, false, num_ordinary));
 
   const line_map_ordinary *base = nullptr;
-  for (unsigned ix = 0; ix != num_ordinary && !sec.get_overrun (); ix++)
+  for (line_map_uint_t ix = 0; ix != num_ordinary && !sec.get_overrun (); ix++)
     {
       line_map_ordinary *map = &maps[ix];
 
-      unsigned offset = sec.u ();
+      location_t offset = sec.loc ();
       if (!offset)
 	{
 	  map->reason = LC_RENAME;
@@ -16964,7 +17154,7 @@ module_state::read_ordinary_maps (unsigned num_ord_locs, unsigned range_bits)
 	  *map = *base;
 	  map->to_line += offset >> map->m_column_and_range_bits;
 	}
-      unsigned remap = sec.u ();
+      location_t remap = sec.loc ();
       map->start_location = remap + ordinary_locs.first;
       if (base == map)
 	{
@@ -16984,14 +17174,14 @@ module_state::read_ordinary_maps (unsigned num_ord_locs, unsigned range_bits)
     /* We shouldn't run out of locations, as we checked before
        starting.  */
     sec.set_overrun ();
-  dump () && dump ("Ordinary location [%u,+%u)",
+  dump () && dump ("Ordinary location [%K,+%K)",
 		   ordinary_locs.first, ordinary_locs.second);
 
   if (propagated)
     spans.close ();
 
   filenames.release ();
-  
+
   dump.outdent ();
   if (!sec.end (from ()))
     return false;
@@ -17000,7 +17190,7 @@ module_state::read_ordinary_maps (unsigned num_ord_locs, unsigned range_bits)
 }
 
 bool
-module_state::read_macro_maps (unsigned num_macro_locs)
+module_state::read_macro_maps (line_map_uint_t num_macro_locs)
 {
   bytes_in sec;
 
@@ -17009,8 +17199,9 @@ module_state::read_macro_maps (unsigned num_macro_locs)
   dump () && dump ("Reading macro location maps");
   dump.indent ();
 
-  unsigned num_macros = sec.u ();
-  dump () && dump ("Macro maps:%u locs:%u", num_macros, num_macro_locs);
+  line_map_uint_t num_macros = sec.loc ();
+  dump () && dump ("Macro maps:%K locs:%K",
+		   num_macros, num_macro_locs);
 
   bool propagated = spans.maybe_propagate (this,
 					   line_table->highest_location + 1);
@@ -17019,13 +17210,13 @@ module_state::read_macro_maps (unsigned num_macro_locs)
   macro_locs.second = num_macro_locs;
   macro_locs.first = offset - num_macro_locs;
 
-  dump () && dump ("Macro loc delta %d", offset);
-  dump () && dump ("Macro locations [%u,%u)",
+  dump () && dump ("Macro loc delta %K", offset);
+  dump () && dump ("Macro locations [%K,%K)",
 		   macro_locs.first, macro_locs.second);
 
-  for (unsigned ix = 0; ix != num_macros && !sec.get_overrun (); ix++)
+  for (line_map_uint_t ix = 0; ix != num_macros && !sec.get_overrun (); ix++)
     {
-      unsigned offset = sec.u ();
+      location_t offset = sec.loc ();
       unsigned n_tokens = sec.u ();
       cpp_hashnode *node = sec.cpp_node ();
       location_t exp_loc = read_location (sec);
@@ -17056,13 +17247,13 @@ module_state::read_macro_maps (unsigned num_macro_locs)
       if (count)
 	sec.set_overrun ();
       dump (dumper::LOCATION)
-	&& dump ("Macro:%u %I %u/%u*2 locations [%u,%u)",
+	&& dump ("Macro:%K %I %u/%u*2 locations [%K,%K)",
 		 ix, identifier (node), runs, n_tokens,
 		 MAP_START_LOCATION (macro),
 		 MAP_START_LOCATION (macro) + n_tokens);
     }
 
-  dump () && dump ("Macro location lwm:%u", macro_locs.first);
+  dump () && dump ("Macro location lwm:%K", macro_locs.first);
   if (propagated)
     spans.close ();
 
@@ -17922,7 +18113,7 @@ module_state::write_inits (elf_out *to, depset::hash &table, unsigned *crc_ptr)
 
       list = tls_aggregates;
     }
-  
+
   sec.end (to, to->name (MOD_SNAME_PFX ".ini"), crc_ptr);
   dump.outdent ();
 
@@ -17950,10 +18141,23 @@ post_load_processing ()
 
       dump () && dump ("Post-load processing of %N", decl);
 
-      gcc_checking_assert (DECL_ABSTRACT_P (decl));
-      /* Cloning can cause loading -- specifically operator delete for
-	 the deleting dtor.  */
-      maybe_clone_body (decl);
+      gcc_checking_assert (DECL_MAYBE_IN_CHARGE_CDTOR_P (decl));
+
+      if (DECL_COMDAT (decl))
+	comdat_linkage (decl);
+      if (!TREE_ASM_WRITTEN (decl))
+	{
+	  /* Cloning can cause loading -- specifically operator delete for
+	     the deleting dtor.  */
+	  if (maybe_clone_body (decl))
+	    TREE_ASM_WRITTEN (decl) = 1;
+	  else
+	    {
+	      /* We didn't clone the cdtor, make sure we emit it.  */
+	      note_vague_linkage_fn (decl);
+	      cgraph_node::finalize_function (decl, true);
+	    }
+	}
     }
 
   cfun = old_cfun;
@@ -17985,7 +18189,7 @@ module_state::read_inits (unsigned count)
   post_load_processing ();
   dump.outdent ();
   if (!sec.end (from ()))
-    return false;  
+    return false;
   return true;
 }
 
@@ -18090,8 +18294,8 @@ module_state::write_config (elf_out *to, module_state_config &config,
   cfg.u (config.num_partitions);
   cfg.u (config.num_entities);
 
-  cfg.u (config.ordinary_locs);
-  cfg.u (config.macro_locs);
+  cfg.loc (config.ordinary_locs);
+  cfg.loc (config.macro_locs);
   cfg.u (config.loc_range_bits);
 
   cfg.u (config.active_init);
@@ -18277,8 +18481,8 @@ module_state::read_config (module_state_config &config)
   config.num_partitions = cfg.u ();
   config.num_entities = cfg.u ();
 
-  config.ordinary_locs = cfg.u ();
-  config.macro_locs = cfg.u ();
+  config.ordinary_locs = cfg.loc ();
+  config.macro_locs = cfg.loc ();
   config.loc_range_bits = cfg.u ();
 
   config.active_init = cfg.u ();
@@ -18600,7 +18804,7 @@ module_state::write_begin (elf_out *to, cpp_reader *reader,
   return true;
 }
 
-// Finish module writing after we've emitted all dynamic initializers. 
+// Finish module writing after we've emitted all dynamic initializers.
 
 void
 module_state::write_end (elf_out *to, cpp_reader *reader,
@@ -18850,7 +19054,7 @@ module_state::read_language (bool outermost)
     ok = false;
 
   function_depth--;
-  
+
   announce (flag_module_lazy ? "lazy" : "imported");
   loadedness = ML_LANGUAGE;
 
@@ -18900,7 +19104,7 @@ module_state::load_section (unsigned snum, binding_slot *mslot)
       slurp->lru = ++lazy_lru;
       slurp->current = old_current;
     }
-  
+
   if (mslot && mslot->is_lazy ())
     {
       /* Oops, the section didn't set this slot.  */
@@ -19684,7 +19888,7 @@ module_state::lazy_load (unsigned index, binding_slot *mslot)
   dump () && dump ("Loading entity %M[%u] section:%u", this, index, snum);
 
   bool ok = load_section (snum, mslot);
- 
+
   dump.pop (n);
 
   return ok;
@@ -20177,7 +20381,7 @@ maybe_translate_include (cpp_reader *reader, line_maps *lmaps, location_t loc,
 
   if (translate != xlate_kind::import)
     return nullptr;
-  
+
   /* Create the translation text.  */
   loc = ordinary_loc_of (lmaps, loc);
   const line_map_ordinary *map
@@ -20383,7 +20587,7 @@ preprocess_module (module_state *module, location_t from_loc,
 	  name_pending_imports (reader);
 
 	  /* Preserve the state of the line-map.  */
-	  unsigned pre_hwm = LINEMAPS_ORDINARY_USED (line_table);
+	  auto pre_hwm = LINEMAPS_ORDINARY_USED (line_table);
 
 	  /* We only need to close the span, if we're going to emit a
 	     CMI.  But that's a little tricky -- our token scanner
@@ -21055,7 +21259,7 @@ module_preprocess_options (cpp_reader *reader)
   if (modules_p ())
     {
       auto *cb = cpp_get_callbacks (reader);
-      
+
       cb->translate_include = maybe_translate_include;
       cb->user_deferred_macro = module_state::deferred_macro;
       if (flag_header_unit)
@@ -21069,7 +21273,10 @@ module_preprocess_options (cpp_reader *reader)
 	}
       auto *opt = cpp_get_options (reader);
       opt->module_directives = true;
-      opt->main_search = cpp_main_search (flag_header_unit);
+      if (flag_no_output)
+	opt->directives_only = true;
+      if (opt->main_search == CMS_none)
+	opt->main_search = cpp_main_search (flag_header_unit);
     }
 }
 

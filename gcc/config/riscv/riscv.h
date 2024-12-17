@@ -119,8 +119,6 @@ ASM_MISA_SPEC
 "%{march=*:%:riscv_expand_arch(%*)} "				\
 "%{!march=*:%{mcpu=*:%:riscv_expand_arch_from_cpu(%*)}} "
 
-#define TARGET_DEFAULT_CMODEL CM_MEDLOW
-
 #define LOCAL_LABEL_PREFIX	"."
 #define USER_LABEL_PREFIX	""
 
@@ -1297,5 +1295,12 @@ extern void riscv_remove_unneeded_save_restore_calls (void);
     ? ROUND_UP (STACK_CLASH_MIN_BYTES_OUTGOING_ARGS,       \
 		STACK_BOUNDARY / BITS_PER_UNIT)		   \
     : (crtl->outgoing_args_size + STACK_POINTER_OFFSET))
+
+/* According to the RISC-V C API, the arch string may contains ','. To avoid
+   the conflict with the default separator, we choose '#' as the separator for
+   the target attribute.  */
+#define TARGET_CLONES_ATTR_SEPARATOR '#'
+
+#define TARGET_HAS_FMV_TARGET_ATTRIBUTE 0
 
 #endif /* ! GCC_RISCV_H */

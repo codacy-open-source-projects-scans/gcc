@@ -776,7 +776,12 @@
 #undef __glibcxx_want_shared_ptr_weak_type
 
 #if !defined(__cpp_lib_string_view)
-# if (__cplusplus >= 201703L) && _GLIBCXX_HOSTED
+# if (__cplusplus >  202302L) && _GLIBCXX_HOSTED
+#  define __glibcxx_string_view 202403L
+#  if defined(__glibcxx_want_all) || defined(__glibcxx_want_string_view)
+#   define __cpp_lib_string_view 202403L
+#  endif
+# elif (__cplusplus >= 201703L) && _GLIBCXX_HOSTED
 #  define __glibcxx_string_view 201803L
 #  if defined(__glibcxx_want_all) || defined(__glibcxx_want_string_view)
 #   define __cpp_lib_string_view 201803L
@@ -2069,5 +2074,15 @@
 # endif
 #endif /* !defined(__cpp_lib_to_string) && defined(__glibcxx_want_to_string) */
 #undef __glibcxx_want_to_string
+
+#if !defined(__cpp_lib_modules)
+# if (__cplusplus >= 202002L) && (__cpp_modules)
+#  define __glibcxx_modules 202207L
+#  if defined(__glibcxx_want_all) || defined(__glibcxx_want_modules)
+#   define __cpp_lib_modules 202207L
+#  endif
+# endif
+#endif /* !defined(__cpp_lib_modules) && defined(__glibcxx_want_modules) */
+#undef __glibcxx_want_modules
 
 #undef __glibcxx_want_all

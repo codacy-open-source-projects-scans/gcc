@@ -296,7 +296,7 @@ public:
      would bring it out of sync with libcpp linemap); point to current
      one.  */
   static lto_location_cache *current_cache;
-  
+
 private:
   static int cmp_loc (const void *pa, const void *pb);
 
@@ -443,12 +443,21 @@ struct lto_stats_d
 /* Entry of LTO symtab encoder.  */
 struct lto_encoder_entry
 {
+  /* Constructors.  */
+  lto_encoder_entry () {}
+  lto_encoder_entry (symtab_node* n)
+    : node (n), in_partition (false), body (false), only_for_inlining (true),
+      initializer (false)
+  {}
+
   symtab_node *node;
   /* Is the node in this partition (i.e. ltrans of this partition will
      be responsible for outputting it)? */
   unsigned int in_partition:1;
   /* Do we encode body in this partition?  */
   unsigned int body:1;
+  /* Do we stream this node only for inlining?  */
+  unsigned int only_for_inlining:1;
   /* Do we encode initializer in this partition?
      For example the readonly variable initializers are encoded to aid
      constant folding even if they are not in the partition.  */
@@ -539,9 +548,9 @@ struct lto_out_decl_state
 typedef struct lto_out_decl_state *lto_out_decl_state_ptr;
 
 
-/* Compact representation of a index <-> resolution pair. Unpacked to an 
+/* Compact representation of a index <-> resolution pair. Unpacked to an
    vector later. */
-struct res_pair 
+struct res_pair
 {
   ld_plugin_symbol_resolution_t res;
   unsigned index;
@@ -911,6 +920,8 @@ void lto_symtab_encoder_delete (lto_symtab_encoder_t);
 bool lto_symtab_encoder_delete_node (lto_symtab_encoder_t, symtab_node *);
 bool lto_symtab_encoder_encode_body_p (lto_symtab_encoder_t,
 				       struct cgraph_node *);
+bool lto_symtab_encoder_only_for_inlining_p (lto_symtab_encoder_t,
+					     struct cgraph_node *);
 bool lto_symtab_encoder_in_partition_p (lto_symtab_encoder_t,
 					symtab_node *);
 void lto_set_symtab_encoder_in_partition (lto_symtab_encoder_t,

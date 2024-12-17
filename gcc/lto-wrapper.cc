@@ -52,6 +52,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "opts-diagnostic.h"
 #include "opt-suggestions.h"
 #include "opts-jobserver.h"
+#include "make-unique.h"
 
 /* Environment variable, used for passing the names of offload targets from GCC
    driver to lto-wrapper.  */
@@ -288,7 +289,7 @@ merge_and_complain (vec<cl_decoded_option> &decoded_options,
 	  cf_protection_option = foption;
 	}
     }
-  
+
   /* The following does what the old LTO option code did,
      union all target and a selected set of common options.  */
   for (i = 0; i < fdecoded_options.length (); ++i)
@@ -481,7 +482,7 @@ merge_and_complain (vec<cl_decoded_option> &decoded_options,
 	      decoded_options[existing_opt].value = 1;
 	    }
 	  break;
- 
+
 
 	case OPT_foffload_abi_:
 	case OPT_foffload_abi_host_opts_:
@@ -518,7 +519,7 @@ merge_and_complain (vec<cl_decoded_option> &decoded_options,
 
      It would be good to warn on mismatches, but it is bit hard to do as
      we do not know what nothing translates to.  */
-    
+
   for (unsigned int j = 0; j < decoded_options.length ();)
     if (decoded_options[j].opt_index == OPT_fPIC
 	|| decoded_options[j].opt_index == OPT_fpic)
@@ -1091,13 +1092,16 @@ copy_file (const char *dest, const char *src)
    the copy to the linker.  */
 
 static void
-find_crtoffloadtable (int save_temps, const char *dumppfx)
+find_crtoffloadtable (int save_temps, bool pie_or_shared, const char *dumppfx)
 {
   char **paths = NULL;
   const char *library_path = getenv ("LIBRARY_PATH");
   if (!library_path)
     return;
-  unsigned n_paths = parse_env_var (library_path, &paths, "/crtoffloadtable.o");
+  unsigned n_paths = parse_env_var (library_path, &paths,
+				    pie_or_shared
+				    ? "/crtoffloadtableS.o"
+				    : "/crtoffloadtable.o");
 
   unsigned i;
   for (i = 0; i < n_paths; i++)
@@ -1116,7 +1120,8 @@ find_crtoffloadtable (int save_temps, const char *dumppfx)
       }
   if (i == n_paths)
     fatal_error (input_location,
-		 "installation error, cannot find %<crtoffloadtable.o%>");
+		 "installation error, cannot find %<crtoffloadtable%s.o%>",
+		 pie_or_shared ? "S" : "");
 
   free_array_of_ptrs ((void **) paths, n_paths);
 }
@@ -1422,6 +1427,11 @@ run_gcc (unsigned argc, char *argv[])
   char **lto_argv, **ltoobj_argv;
   bool linker_output_rel = false;
   bool skip_debug = false;
+#ifdef ENABLE_DEFAULT_PIE
+  bool pie_or_shared = true;
+#else
+  bool pie_or_shared = false;
+#endif
   const char *incoming_dumppfx = dumppfx = NULL;
   static char current_dir[] = { '.', DIR_SEPARATOR, '\0' };
 
@@ -1481,7 +1491,7 @@ run_gcc (unsigned argc, char *argv[])
 	}
 
       if ((p = strrchr (argv[i], '@'))
-	  && p != argv[i] 
+	  && p != argv[i]
 	  && sscanf (p, "@%li%n", &loffset, &consumed) >= 1
 	  && strlen (p) == (unsigned int) consumed)
 	{
@@ -1591,6 +1601,16 @@ run_gcc (unsigned argc, char *argv[])
 
 	case OPT_fdiagnostics_show_highlight_colors:
 	  global_dc->set_show_highlight_colors (option->value);
+	  break;
+
+	case OPT_pie:
+	case OPT_shared:
+	case OPT_static_pie:
+	  pie_or_shared = true;
+	  break;
+
+	case OPT_no_pie:
+	  pie_or_shared = false;
 	  break;
 
 	default:
@@ -1801,7 +1821,7 @@ cont1:
 
       if (offload_names)
 	{
-	  find_crtoffloadtable (save_temps, dumppfx);
+	  find_crtoffloadtable (save_temps, pie_or_shared, dumppfx);
 	  for (i = 0; offload_names[i]; i++)
 	    printf ("%s\n", offload_names[i]);
 	  free_array_of_ptrs ((void **) offload_names, i);
@@ -1826,7 +1846,7 @@ cont1:
       obstack_ptr_grow (&argv_obstack, "-o");
       obstack_ptr_grow (&argv_obstack, flto_out);
     }
-  else 
+  else
     {
       const char *list_option = "-fltrans-output-list=";
 
@@ -1904,7 +1924,7 @@ cont1:
 	{
 	  for (i = 0; i < ltoobj_argc; ++i)
 	    if (early_debug_object_names[i] != NULL)
-	      printf ("%s\n", early_debug_object_names[i]);	      
+	      printf ("%s\n", early_debug_object_names[i]);
 	}
       /* These now belong to collect2.  */
       free (flto_out);
@@ -2068,7 +2088,7 @@ cont:
 	  fclose (mstream);
 	  if (!jobserver)
 	    {
-	      /* Avoid passing --jobserver-fd= and similar flags 
+	      /* Avoid passing --jobserver-fd= and similar flags
 		 unless jobserver mode is explicitly enabled.  */
 	      putenv (xstrdup ("MAKEFLAGS="));
 	      putenv (xstrdup ("MFLAGS="));
@@ -2114,7 +2134,7 @@ cont:
 	{
 	  for (i = 0; i < ltoobj_argc; ++i)
 	    if (early_debug_object_names[i] != NULL)
-	      printf ("%s\n", early_debug_object_names[i]);	      
+	      printf ("%s\n", early_debug_object_names[i]);
 	}
       nr = 0;
       free (ltrans_priorities);
@@ -2174,7 +2194,8 @@ main (int argc, char *argv[])
   diagnostic_initialize (global_dc, 0);
   diagnostic_color_init (global_dc);
   diagnostic_urls_init (global_dc);
-  global_dc->set_option_manager (new lto_diagnostic_option_manager (), 0);
+  global_dc->set_option_manager
+    (::make_unique<lto_diagnostic_option_manager> (), 0);
 
   if (atexit (lto_wrapper_cleanup) != 0)
     fatal_error (input_location, "%<atexit%> failed");

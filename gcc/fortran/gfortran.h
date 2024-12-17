@@ -699,6 +699,8 @@ enum gfc_isym_id
   GFC_ISYM_UBOUND,
   GFC_ISYM_UCOBOUND,
   GFC_ISYM_UMASK,
+  GFC_ISYM_UMASKL,
+  GFC_ISYM_UMASKR,
   GFC_ISYM_UNLINK,
   GFC_ISYM_UNPACK,
   GFC_ISYM_VERIFY,
@@ -1401,7 +1403,6 @@ typedef struct gfc_omp_namelist
       bool present_modifier;
       struct
 	{
-	  char *attr;
 	  int len;
 	  bool target;
 	  bool targetsync;
@@ -1414,7 +1415,7 @@ typedef struct gfc_omp_namelist
       gfc_expr *allocator;
       struct gfc_symbol *traits_sym;
       struct gfc_omp_namelist *duplicate_of;
-      char *init_interop_fr;
+      char *init_interop;
     } u2;
   struct gfc_omp_namelist *next;
   locus where;
@@ -3034,6 +3035,8 @@ typedef struct gfc_association_list
 
   gfc_expr *target;
 
+  gfc_array_ref *ar;
+
   /* Used for inferring the derived type of an associate name, whose selector
      is a sibling derived type function that has not yet been parsed.  */
   gfc_symbol *derived_types;
@@ -3488,12 +3491,13 @@ bool gfc_notify_std (int, const char *, ...) ATTRIBUTE_GCC_GFC(2,3);
 #define gfc_syntax_error(ST)	\
   gfc_error ("Syntax error in %s statement at %C", gfc_ascii_statement (ST));
 
-#include "pretty-print.h"  /* For output_buffer.  */
+#include "diagnostic-buffer.h"  /* For diagnostic_buffer.  */
 struct gfc_error_buffer
 {
   bool flag;
-  output_buffer buffer;
-  gfc_error_buffer(void) : flag(false), buffer() {}
+  diagnostic_buffer buffer;
+
+  gfc_error_buffer();
 };
 
 void gfc_push_error (gfc_error_buffer *);

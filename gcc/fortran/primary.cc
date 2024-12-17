@@ -2276,6 +2276,7 @@ gfc_match_varspec (gfc_expr *primary, int equiv_flag, bool sub_flag,
 	}
     }
   else if (sym->ts.type == BT_CLASS
+	   && !(sym->assoc && sym->assoc->ar)
 	   && tgt_expr
 	   && tgt_expr->expr_type == EXPR_VARIABLE
 	   && sym->ts.u.derived != tgt_expr->ts.u.derived)
@@ -3646,18 +3647,16 @@ gfc_convert_to_structure_constructor (gfc_expr *e, gfc_symbol *sym, gfc_expr **c
 
 
 match
-gfc_match_structure_constructor (gfc_symbol *sym, gfc_expr **result)
+gfc_match_structure_constructor (gfc_symbol *sym, gfc_symtree *symtree,
+				 gfc_expr **result)
 {
   match m;
   gfc_expr *e;
-  gfc_symtree *symtree;
   bool t = true;
 
-  gfc_get_ha_sym_tree (sym->name, &symtree);
-
   e = gfc_get_expr ();
-  e->symtree = symtree;
   e->expr_type = EXPR_FUNCTION;
+  e->symtree = symtree;
   e->where = gfc_current_locus;
 
   gcc_assert (gfc_fl_struct (sym->attr.flavor)

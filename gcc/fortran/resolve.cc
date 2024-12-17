@@ -3227,6 +3227,24 @@ pure_stmt_function (gfc_expr *e, gfc_symbol *sym)
 static bool check_pure_function (gfc_expr *e)
 {
   const char *name = NULL;
+  code_stack *stack;
+  bool saw_block = false;
+
+  /* A BLOCK construct within a DO CONCURRENT construct leads to
+     gfc_do_concurrent_flag = 0 when the check for an impure function
+     occurs.  Check the stack to see if the source code has a nested
+     BLOCK construct.  */
+  for (stack = cs_base; stack; stack = stack->prev)
+    {
+      if (stack->current->op == EXEC_BLOCK) saw_block = true;
+      if (saw_block && stack->current->op == EXEC_DO_CONCURRENT)
+	{
+	  gfc_error ("Reference to impure function at %L inside a "
+		     "DO CONCURRENT", &e->where);
+	  return false;
+	}
+    }
+
   if (!gfc_pure_function (e, &name) && name)
     {
       if (forall_flag)
@@ -3585,8 +3603,26 @@ resolve_function (gfc_expr *expr)
 static bool
 pure_subroutine (gfc_symbol *sym, const char *name, locus *loc)
 {
+  code_stack *stack;
+  bool saw_block = false;
+
   if (gfc_pure (sym))
     return true;
+
+  /* A BLOCK construct within a DO CONCURRENT construct leads to
+     gfc_do_concurrent_flag = 0 when the check for an impure subroutine
+     occurs.  Check the stack to see if the source code has a nested
+     BLOCK construct.  */
+  for (stack = cs_base; stack; stack = stack->prev)
+    {
+      if (stack->current->op == EXEC_BLOCK) saw_block = true;
+      if (saw_block && stack->current->op == EXEC_DO_CONCURRENT)
+	{
+	  gfc_error ("Subroutine call at %L in a DO CONCURRENT block "
+		     "is not PURE", loc);
+	  return false;
+	}
+    }
 
   if (forall_flag)
     {
@@ -4252,14 +4288,15 @@ resolve_operator (gfc_expr *e)
     case INTRINSIC_UMINUS:
       if (op1->ts.type == BT_INTEGER
 	  || op1->ts.type == BT_REAL
-	  || op1->ts.type == BT_COMPLEX)
+	  || op1->ts.type == BT_COMPLEX
+	  || op1->ts.type == BT_UNSIGNED)
 	{
 	  e->ts = op1->ts;
 	  break;
 	}
 
       CHECK_INTERFACES
-      gfc_error ("Operand of unary numeric operator %<%s%> at %L is %s",
+      gfc_error ("Operand of unary numeric operator %qs at %L is %s",
 		 gfc_op2string (e->value.op.op), &e->where, gfc_typename (e));
       return false;
 
@@ -4287,7 +4324,7 @@ resolve_operator (gfc_expr *e)
       if (flag_unsigned &&  gfc_invalid_unsigned_ops (op1, op2))
 	{
 	  CHECK_INTERFACES
-	  gfc_error ("Operands of binary numeric operator %<%s%> at %L are "
+	  gfc_error ("Operands of binary numeric operator %qs at %L are "
 		     "%s/%s", gfc_op2string (e->value.op.op), &e->where,
 		     gfc_typename (op1), gfc_typename (op2));
 	  return false;
@@ -4314,14 +4351,14 @@ resolve_operator (gfc_expr *e)
 	{
 	  CHECK_INTERFACES
 	  gfc_error ("Unexpected derived-type entities in binary intrinsic "
-		     "numeric operator %<%s%> at %L",
+		     "numeric operator %qs at %L",
 		     gfc_op2string (e->value.op.op), &e->where);
 	  return false;
 	}
       else
 	{
 	  CHECK_INTERFACES
-	  gfc_error ("Operands of binary numeric operator %<%s%> at %L are %s/%s",
+	  gfc_error ("Operands of binary numeric operator %qs at %L are %s/%s",
 		     gfc_op2string (e->value.op.op), &e->where, gfc_typename (op1),
 		     gfc_typename (op2));
 	  return false;
@@ -4380,7 +4417,7 @@ resolve_operator (gfc_expr *e)
 	}
 
       CHECK_INTERFACES
-      gfc_error ("Operands of logical operator %<%s%> at %L are %s/%s",
+      gfc_error ("Operands of logical operator %qs at %L are %s/%s",
 		 gfc_op2string (e->value.op.op), &e->where, gfc_typename (op1),
 		 gfc_typename (op2));
       return false;
@@ -4545,7 +4582,7 @@ resolve_operator (gfc_expr *e)
       else
 	{
 	  CHECK_INTERFACES
-	  gfc_error ("Operands of comparison operator %<%s%> at %L are %s/%s",
+	  gfc_error ("Operands of comparison operator %qs at %L are %s/%s",
 		     gfc_op2string (e->value.op.op), &e->where, gfc_typename (op1),
 		     gfc_typename (op2));
 	}
@@ -4560,22 +4597,22 @@ resolve_operator (gfc_expr *e)
 	  guessed = lookup_uop_fuzzy (name, e->value.op.uop->ns->uop_root);
 	  CHECK_INTERFACES
 	  if (guessed)
-	    gfc_error ("Unknown operator %<%s%> at %L; did you mean "
-			"%<%s%>?", name, &e->where, guessed);
+	    gfc_error ("Unknown operator %qs at %L; did you mean "
+			"%qs?", name, &e->where, guessed);
 	  else
-	    gfc_error ("Unknown operator %<%s%> at %L", name, &e->where);
+	    gfc_error ("Unknown operator %qs at %L", name, &e->where);
 	}
       else if (op2 == NULL)
 	{
 	  CHECK_INTERFACES
-	  gfc_error ("Operand of user operator %<%s%> at %L is %s",
+	  gfc_error ("Operand of user operator %qs at %L is %s",
 		  e->value.op.uop->name, &e->where, gfc_typename (op1));
 	}
       else
 	{
 	  e->value.op.uop->op->sym->attr.referenced = 1;
 	  CHECK_INTERFACES
-	  gfc_error ("Operands of user operator %<%s%> at %L are %s/%s",
+	  gfc_error ("Operands of user operator %qs at %L are %s/%s",
 		    e->value.op.uop->name, &e->where, gfc_typename (op1),
 		    gfc_typename (op2));
 	}
@@ -5204,6 +5241,7 @@ find_array_spec (gfc_expr *e)
 	  }
 
 	ref->u.ar.as = as;
+	if (ref->u.ar.dimen == -1) ref->u.ar.dimen = as->rank;
 	as = NULL;
 	break;
 
@@ -5808,7 +5846,8 @@ gfc_expression_rank (gfc_expr *e)
 	  break;
 	}
     }
-  if (last_arr_ref && last_arr_ref->u.ar.as)
+  if (last_arr_ref && last_arr_ref->u.ar.as
+      && last_arr_ref->u.ar.as->rank != -1)
     {
       for (i = last_arr_ref->u.ar.as->rank;
 	   i < last_arr_ref->u.ar.as->rank + last_arr_ref->u.ar.as->corank; ++i)
@@ -5952,12 +5991,14 @@ resolve_variable (gfc_expr *e)
 	     && CLASS_DATA (sym)->as
 	     && CLASS_DATA (sym)->as->type == AS_ASSUMED_RANK)
 	    || (sym->ts.type != BT_CLASS && sym->as
-	        && sym->as->type == AS_ASSUMED_RANK))
-	   && !sym->attr.select_rank_temporary)
+		&& sym->as->type == AS_ASSUMED_RANK))
+	   && !sym->attr.select_rank_temporary
+	   && !(sym->assoc && sym->assoc->ar))
     {
       if (!actual_arg
 	  && !(cs_base && cs_base->current
-	       && cs_base->current->op == EXEC_SELECT_RANK))
+	       && (cs_base->current->op == EXEC_SELECT_RANK
+		   || sym->attr.target)))
 	{
 	  gfc_error ("Assumed-rank variable %s at %L may only be used as "
 		     "actual argument", sym->name, &e->where);
@@ -6001,6 +6042,7 @@ resolve_variable (gfc_expr *e)
 	&& CLASS_DATA (sym)->as->type == AS_ASSUMED_RANK)
        || (sym->ts.type != BT_CLASS && sym->as
 	   && sym->as->type == AS_ASSUMED_RANK))
+      && !(sym->assoc && sym->assoc->ar)
       && e->ref
       && !(e->ref->type == REF_ARRAY && e->ref->u.ar.type == AR_FULL
 	   && e->ref->next == NULL))
@@ -6117,6 +6159,7 @@ resolve_variable (gfc_expr *e)
       newref->type = REF_ARRAY;
       newref->u.ar.type = AR_FULL;
       newref->u.ar.dimen = 0;
+
       /* Because this is an associate var and the first ref either is a ref to
 	 the _data component or not, no traversal of the ref chain is
 	 needed.  The array ref needs to be inserted after the _data ref,
@@ -6145,6 +6188,15 @@ resolve_variable (gfc_expr *e)
 	  newref->next = ref;
 	  e->ref = newref;
 	}
+    }
+  else if (sym->assoc && sym->ts.type == BT_CHARACTER && sym->ts.deferred)
+    {
+      gfc_ref *ref;
+      for (ref = e->ref; ref; ref = ref->next)
+	if (ref->type == REF_SUBSTRING)
+	  break;
+      if (ref == NULL)
+	e->ts = sym->ts;
     }
 
   if (e->ref && !gfc_resolve_ref (e))
@@ -9558,6 +9610,22 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
   if (resolve_target && !gfc_resolve_expr (target))
     return;
 
+  if (sym->assoc->ar)
+    {
+      int dim;
+      gfc_array_ref *ar = sym->assoc->ar;
+      for (dim = 0; dim < sym->assoc->ar->dimen; dim++)
+	{
+	  if (!(ar->start[dim] && gfc_resolve_expr (ar->start[dim])
+		&& ar->start[dim]->ts.type == BT_INTEGER)
+	      || !(ar->end[dim] && gfc_resolve_expr (ar->end[dim])
+		   && ar->end[dim]->ts.type == BT_INTEGER))
+	    gfc_error ("(F202y)Missing or invalid bound in ASSOCIATE rank "
+		       "remapping of associate name %s at %L",
+		       sym->name, &sym->declared_at);
+	}
+    }
+
   /* For variable targets, we get some attributes from the target.  */
   if (target->expr_type == EXPR_VARIABLE)
     {
@@ -9747,7 +9815,7 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
   if (target->ts.type == BT_CLASS)
     gfc_fix_class_refs (target);
 
-  if ((target->rank != 0 || target->corank != 0)
+  if ((target->rank > 0 || target->corank > 0)
       && !sym->attr.select_rank_temporary)
     {
       gfc_array_spec *as;
@@ -9848,6 +9916,15 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
   /* Fix up the type-spec for CHARACTER types.  */
   if (sym->ts.type == BT_CHARACTER && !sym->attr.select_type_temporary)
     {
+      gfc_ref *ref;
+      for (ref = target->ref; ref; ref = ref->next)
+	if (ref->type == REF_SUBSTRING
+	    && (ref->u.ss.start == NULL
+		|| ref->u.ss.start->expr_type != EXPR_CONSTANT
+		|| ref->u.ss.end == NULL
+		|| ref->u.ss.end->expr_type != EXPR_CONSTANT))
+	  break;
+
       if (!sym->ts.u.cl)
 	sym->ts.u.cl = target->ts.u.cl;
 
@@ -9866,9 +9943,10 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
 		gfc_get_int_expr (gfc_charlen_int_kind, NULL,
 				  target->value.character.length);
 	}
-      else if ((!sym->ts.u.cl->length
-		|| sym->ts.u.cl->length->expr_type != EXPR_CONSTANT)
+      else if (((!sym->ts.u.cl->length
+		 || sym->ts.u.cl->length->expr_type != EXPR_CONSTANT)
 		&& target->expr_type != EXPR_VARIABLE)
+	       || ref)
 	{
 	  if (!sym->ts.deferred)
 	    {
@@ -9878,7 +9956,10 @@ resolve_assoc_var (gfc_symbol* sym, bool resolve_target)
 
 	  /* This is reset in trans-stmt.cc after the assignment
 	     of the target expression to the associate name.  */
-	  sym->attr.allocatable = 1;
+	  if (ref && sym->as)
+	    sym->attr.pointer = 1;
+	  else
+	    sym->attr.allocatable = 1;
 	}
     }
 
@@ -11485,8 +11566,9 @@ resolve_block_construct (gfc_code* code)
 {
   gfc_namespace *ns = code->ext.block.ns;
 
-  /* For an ASSOCIATE block, the associations (and their targets) are already
-     resolved during resolve_symbol. Resolve the BLOCK's namespace.  */
+  /* For an ASSOCIATE block, the associations (and their targets) will be
+     resolved by gfc_resolve_symbol, during resolution of the BLOCK's
+     namespace.  */
   gfc_resolve (ns);
 }
 
@@ -12357,6 +12439,11 @@ generate_component_assignments (gfc_code **code, gfc_namespace *ns)
     {
       /* Assign the rhs to the temporary.  */
       tmp_expr = get_temp_from_expr ((*code)->expr1, ns);
+      if (tmp_expr->symtree->n.sym->attr.pointer)
+	{
+	  tmp_expr->symtree->n.sym->attr.pointer = 0;
+	  tmp_expr->symtree->n.sym->attr.allocatable = 1;
+	}
       this_code = build_assignment (EXEC_ASSIGN,
 				    tmp_expr, (*code)->expr2,
 				    NULL, NULL, (*code)->loc);
@@ -12653,6 +12740,17 @@ resolve_ptr_fcn_assign (gfc_code **code, gfc_namespace *ns)
   tmp_ptr_expr->symtree->n.sym->attr.pointer = 1;
   tmp_ptr_expr->symtree->n.sym->attr.allocatable = 0;
   tmp_ptr_expr->where = (*code)->loc;
+
+  /* A new charlen is required to ensure that the variable string length
+     is different to that of the original lhs for deferred results.  */
+  if (s->result->ts.deferred && tmp_ptr_expr->ts.type == BT_CHARACTER)
+    {
+      tmp_ptr_expr->ts.u.cl = gfc_get_charlen();
+      tmp_ptr_expr->ts.deferred = 1;
+      tmp_ptr_expr->ts.u.cl->next = gfc_current_ns->cl_list;
+      gfc_current_ns->cl_list = tmp_ptr_expr->ts.u.cl;
+      tmp_ptr_expr->symtree->n.sym->ts.u.cl = tmp_ptr_expr->ts.u.cl;
+    }
 
   this_code = build_assignment (EXEC_ASSIGN,
 				tmp_ptr_expr, (*code)->expr2,
@@ -16746,7 +16844,9 @@ resolve_symbol (gfc_symbol *sym)
       if (as->type == AS_ASSUMED_RANK && !sym->attr.dummy
 	  && !sym->attr.select_type_temporary
 	  && !(cs_base && cs_base->current
-	       && cs_base->current->op == EXEC_SELECT_RANK))
+	       && (cs_base->current->op == EXEC_SELECT_RANK
+		   || ((gfc_option.allow_std & GFC_STD_F202Y)
+			&& cs_base->current->op == EXEC_BLOCK))))
 	{
 	  gfc_error ("Assumed-rank array at %L must be a dummy argument",
 		     &sym->declared_at);

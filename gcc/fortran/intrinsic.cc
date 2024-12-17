@@ -293,11 +293,15 @@ do_ts29113_check (gfc_intrinsic_sym *specific, gfc_actual_arglist *arg)
 		     &a->expr->where, gfc_current_intrinsic);
 	  ok = false;
 	}
-      else if (a->expr->rank == -1 && !specific->inquiry)
+      else if (a->expr->rank == -1
+	       && !(specific->inquiry
+		    || (specific->id == GFC_ISYM_RESHAPE
+			&& (gfc_option.allow_std & GFC_STD_F202Y))))
 	{
 	  gfc_error ("Assumed-rank argument at %L is only permitted as actual "
-		     "argument to intrinsic inquiry functions",
-		     &a->expr->where);
+		     "argument to intrinsic inquiry functions or to RESHAPE. "
+		     "The latter is an experimental F202y feature. Use "
+		     "-std=f202y to enable", &a->expr->where);
 	  ok = false;
 	}
       else if (a->expr->rank == -1 && arg != a)
@@ -305,6 +309,13 @@ do_ts29113_check (gfc_intrinsic_sym *specific, gfc_actual_arglist *arg)
 	  gfc_error ("Assumed-rank argument at %L is only permitted as first "
 		     "actual argument to the intrinsic inquiry function %s",
 		     &a->expr->where, gfc_current_intrinsic);
+	  ok = false;
+	}
+      else if (a->expr->rank == -1 && specific->id == GFC_ISYM_RESHAPE
+	       && !gfc_is_simply_contiguous (a->expr, true, false))
+	{
+	  gfc_error ("Assumed rank argument to the RESHAPE intrinsic at %L "
+		     "must be contiguous", &a->expr->where);
 	  ok = false;
 	}
     }
@@ -2555,6 +2566,22 @@ add_functions (void)
 	     kind, BT_INTEGER, di, OPTIONAL);
 
   make_generic ("maskr", GFC_ISYM_MASKR, GFC_STD_F2008);
+
+  add_sym_2 ("umaskl", GFC_ISYM_UMASKL, CLASS_ELEMENTAL, ACTUAL_NO,
+	     BT_INTEGER, di, GFC_STD_F2008,
+	     gfc_check_mask, gfc_simplify_umaskl, gfc_resolve_umasklr,
+	     i, BT_INTEGER, di, REQUIRED,
+	     kind, BT_INTEGER, di, OPTIONAL);
+
+  make_generic ("umaskl", GFC_ISYM_UMASKL, GFC_STD_F2008);
+
+  add_sym_2 ("umaskr", GFC_ISYM_UMASKR, CLASS_ELEMENTAL, ACTUAL_NO,
+	     BT_INTEGER, di, GFC_STD_F2008,
+	     gfc_check_mask, gfc_simplify_umaskr, gfc_resolve_umasklr,
+	     i, BT_INTEGER, di, REQUIRED,
+	     kind, BT_INTEGER, di, OPTIONAL);
+
+  make_generic ("umaskr", GFC_ISYM_UMASKR, GFC_STD_F2008);
 
   add_sym_2 ("matmul", GFC_ISYM_MATMUL, CLASS_TRANSFORMATIONAL, ACTUAL_NO, BT_REAL, dr, GFC_STD_F95,
 	     gfc_check_matmul, gfc_simplify_matmul, gfc_resolve_matmul,

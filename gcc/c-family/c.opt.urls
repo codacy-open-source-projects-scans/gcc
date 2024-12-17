@@ -307,6 +307,12 @@ UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-Wdeprecated-enum-float-conv
 Wdeprecated-literal-operator
 UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-Wdeprecated-literal-operator)
 
+Wdeprecated-non-prototype
+UrlSuffix(gcc/Warning-Options.html#index-Wdeprecated-non-prototype)
+
+Wdeprecated-variadic-comma-omission
+UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-Wdeprecated-variadic-comma-omission)
+
 Wdesignated-init
 UrlSuffix(gcc/Warning-Options.html#index-Wdesignated-init)
 
@@ -418,6 +424,9 @@ UrlSuffix(gcc/Warning-Options.html#index-Wformat)
 Wframe-address
 UrlSuffix(gcc/Warning-Options.html#index-Wframe-address)
 
+Wfree-labels
+UrlSuffix(gcc/Warning-Options.html#index-Wfree-labels)
+
 Wglobal-module
 UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-Wglobal-module)
 
@@ -490,6 +499,9 @@ UrlSuffix(gcc/Warning-Options.html#index-Winvalid-utf8)
 Wjump-misses-init
 UrlSuffix(gcc/Warning-Options.html#index-Wjump-misses-init)
 
+Wleading-whitespace=
+UrlSuffix(gcc/Warning-Options.html#index-Wleading-whitespace_003d)
+
 Wliteral-suffix
 UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-Wliteral-suffix)
 
@@ -546,6 +558,9 @@ UrlSuffix(gcc/Warning-Options.html#index-Wmissing-format-attribute)
 
 Wmissing-include-dirs
 UrlSuffix(gcc/Warning-Options.html#index-Wmissing-include-dirs)
+
+Wmissing-parameter-name
+UrlSuffix(gcc/Warning-Options.html#index-Wmissing-parameter-name)
 
 Wmissing-parameter-type
 UrlSuffix(gcc/Warning-Options.html#index-Wmissing-parameter-type)
@@ -849,9 +864,6 @@ UrlSuffix(gcc/Warning-Options.html#index-Wno-system-headers)
 Wtemplates
 UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-Wno-templates)
 
-Wtautological-compare
-UrlSuffix(gcc/Warning-Options.html#index-Wno-tautological-compare)
-
 Wtemplate-body
 UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-Wno-template-body)
 
@@ -993,6 +1005,9 @@ UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-faligned-new)
 
 fasm
 UrlSuffix(gcc/C-Dialect-Options.html#index-fasm)
+
+fassume-sane-operators-new-delete
+UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-fassume-sane-operators-new-delete)
 
 ; skipping UrlSuffix for 'fbuiltin' due to multiple URLs:
 ;   duplicate: 'gcc/C-Dialect-Options.html#index-fbuiltin'
@@ -1151,8 +1166,8 @@ UrlSuffix(gcc/Optimize-Options.html#index-fkeep-inline-dllexport)
 flax-vector-conversions
 UrlSuffix(gcc/C-Dialect-Options.html#index-flax-vector-conversions)
 
-fmodules-ts
-UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-fmodules-ts)
+fmodules
+UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-fmodules)
 
 fmodule-header
 UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-fmodule-header)
@@ -1294,6 +1309,12 @@ UrlSuffix(gcc/Objective-C-and-Objective-C_002b_002b-Dialect-Options.html#index-f
 
 frtti
 UrlSuffix(gcc/C_002b_002b-Dialect-Options.html#index-fno-rtti) LangUrlSuffix_D(gdc/Runtime-Options.html#index-fno-rtti)
+
+fsearch-include-path
+UrlSuffix(gcc/Preprocessor-Options.html#index-fsearch-include-path)
+
+fsearch-include-path=
+UrlSuffix(gcc/Preprocessor-Options.html#index-fsearch-include-path)
 
 ; skipping UrlSuffix for 'fshort-enums' due to multiple URLs:
 ;   duplicate: 'gcc/Code-Gen-Options.html#index-fshort-enums'

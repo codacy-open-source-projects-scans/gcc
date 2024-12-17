@@ -50,7 +50,7 @@ FROM SymbolTable IMPORT NulSym,
                         IsDefImp, IsModule, IsInnerModule,
                         IsUnknown, IsType, IsProcedure, IsParameter,
                         IsParameterUnbounded, IsParameterVar, IsVarParam,
-                        IsUnboundedParam, IsPointer, IsRecord, IsVarient,
+                        IsUnboundedParamAny, IsPointer, IsRecord, IsVarient,
                         IsFieldVarient, IsEnumeration, IsFieldEnumeration,
                         IsUnbounded, IsArray, IsRecordField, IsProcType,
                         IsVar, IsConst, IsConstString, IsConstLit, IsConstSet,
@@ -1684,7 +1684,7 @@ END copySym ;
 
 
 (*
-   op := {'!'|'a'|'c'|'d'|'k'|'q'|'t'|'p'|'n'|'s'|'u'|
+   op := {'!'|'a'|'c'|'d'|'k'|'n'|'p'|'q'|'s'|'t'|'u'|
           'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'K'|'M'|'N'|
           'O'|'P'|'Q'|'R'|'S'|'T'|'U'|'V'|'W'|'X'|'Y'|'Z'} then =:
 *)
@@ -1707,11 +1707,11 @@ BEGIN
       'd':  doDesc (eb, sym, bol) |
       'k':  unquotedKeyword (eb) ;
             DEC (eb.ini) |
-      'q':  doQualified (eb, sym, bol) |
-      't':  doType (eb, sym, bol) |
-      'p':  popColor (eb) |
       'n':  doNumber (eb, sym, bol) |
+      'p':  popColor (eb) |
+      'q':  doQualified (eb, sym, bol) |
       's':  doSkipType (eb, sym, bol) |
+      't':  doType (eb, sym, bol) |
       'u':  eb.quotes := FALSE |
       'A':  eb.type := aborta ;
             seenAbort := TRUE |
@@ -2680,6 +2680,36 @@ BEGIN
    sym[3] := s4 ;
    RETURN wrapString (m, sym)
 END MetaString4 ;
+
+
+(*
+   MetaErrorDecl - if sym is a variable or parameter then generate a
+                   declaration error or warning message.  If error is
+                   FALSE then a warning is issued.
+*)
+
+PROCEDURE MetaErrorDecl (sym: CARDINAL; error: BOOLEAN) ;
+BEGIN
+   IF (sym # NulSym) AND IsVar (sym)
+   THEN
+      IF error
+      THEN
+         IF IsVarAParam (sym)
+         THEN
+            MetaErrorT1 (GetVarDeclFullTok (sym), 'parameter declaration for {%1ad}', sym)
+         ELSE
+            MetaErrorT1 (GetVarDeclFullTok (sym), 'variable declaration for {%1ad}', sym)
+         END
+      ELSE
+         IF IsVarAParam (sym)
+         THEN
+            MetaErrorT1 (GetVarDeclFullTok (sym), 'parameter declaration for {%1Wad}', sym)
+         ELSE
+            MetaErrorT1 (GetVarDeclFullTok (sym), 'variable declaration for {%1Wad}', sym)
+         END
+      END
+   END
+END MetaErrorDecl ;
 
 
 BEGIN

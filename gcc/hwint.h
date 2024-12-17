@@ -51,7 +51,7 @@ extern char sizeof_long_long_must_be_8[sizeof (long long) == 8 ? 1 : -1];
    to be either long or long long.  */
 
 #define HOST_BITS_PER_WIDE_INT 64
-#if INT64_T_IS_LONG   
+#if INT64_T_IS_LONG
 #   define HOST_WIDE_INT long
 #   define HOST_WIDE_INT_C(X) X ## L
 #else
@@ -284,6 +284,7 @@ extern HOST_WIDE_INT gcd (HOST_WIDE_INT, HOST_WIDE_INT);
 extern HOST_WIDE_INT pos_mul_hwi (HOST_WIDE_INT, HOST_WIDE_INT);
 extern HOST_WIDE_INT mul_hwi (HOST_WIDE_INT, HOST_WIDE_INT);
 extern HOST_WIDE_INT least_common_multiple (HOST_WIDE_INT, HOST_WIDE_INT);
+extern unsigned HOST_WIDE_INT reflect_hwi (unsigned HOST_WIDE_INT, unsigned);
 
 /* Like ctz_hwi, except 0 when x == 0.  */
 
