@@ -1,5 +1,5 @@
 ;; GCC machine description for CRIS cpu cores.
-;; Copyright (C) 1998-2024 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2025 Free Software Foundation, Inc.
 ;; Contributed by Axis Communications.
 
 ;; This file is part of GCC.
@@ -539,8 +539,7 @@
 		      operand_subword (op1, 0, 1, DImode));
       emit_move_insn (operand_subword (op0, 1, 1, DImode),
 		      operand_subword (op1, 1, 1, DImode));
-      insns = get_insns ();
-      end_sequence ();
+      insns = end_sequence ();
 
       emit_insn (insns);
       DONE;

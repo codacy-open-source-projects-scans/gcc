@@ -1,5 +1,5 @@
 /* Integrated Register Allocator (IRA) entry point.
-   Copyright (C) 2006-2024 Free Software Foundation, Inc.
+   Copyright (C) 2006-2025 Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
 This file is part of GCC.
@@ -1416,7 +1416,7 @@ find_reg_classes (void)
 
 
 
-/* Set up the array above.  */
+/* Set up array ira_hard_regno_allocno_class.  */
 static void
 setup_hard_regno_aclass (void)
 {
@@ -1424,25 +1424,10 @@ setup_hard_regno_aclass (void)
 
   for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
     {
-#if 1
       ira_hard_regno_allocno_class[i]
 	= (TEST_HARD_REG_BIT (no_unit_alloc_regs, i)
 	   ? NO_REGS
 	   : ira_allocno_class_translate[REGNO_REG_CLASS (i)]);
-#else
-      int j;
-      enum reg_class cl;
-      ira_hard_regno_allocno_class[i] = NO_REGS;
-      for (j = 0; j < ira_allocno_classes_num; j++)
- 	{
-	  cl = ira_allocno_classes[j];
- 	  if (ira_class_hard_reg_index[cl][i] >= 0)
- 	    {
-	      ira_hard_regno_allocno_class[i] = cl;
- 	      break;
- 	    }
- 	}
-#endif
     }
 }
 
@@ -2128,6 +2113,87 @@ ira_get_dup_out_num (int op_num, alternative_mask alts,
 
 
 
+/* Return true if a replacement of SRC by DEST does not lead to unsatisfiable
+   asm.  A replacement is valid if SRC or DEST are not constrained in asm
+   inputs of a single asm statement.  See match_asm_constraints_2() for more
+   details.  TODO: As in match_asm_constraints_2() consider alternatives more
+   precisely.  */
+
+static bool
+valid_replacement_for_asm_input_p_1 (const_rtx asmops, const_rtx src, const_rtx dest)
+{
+  int ninputs = ASM_OPERANDS_INPUT_LENGTH (asmops);
+  rtvec inputs = ASM_OPERANDS_INPUT_VEC (asmops);
+  for (int i = 0; i < ninputs; ++i)
+    {
+      rtx input_src = RTVEC_ELT (inputs, i);
+      const char *constraint_src
+	= ASM_OPERANDS_INPUT_CONSTRAINT (asmops, i);
+      if (rtx_equal_p (input_src, src)
+	  && strchr (constraint_src, '{') != nullptr)
+	for (int j = 0; j < ninputs; ++j)
+	  {
+	    rtx input_dest = RTVEC_ELT (inputs, j);
+	    const char *constraint_dest
+	      = ASM_OPERANDS_INPUT_CONSTRAINT (asmops, j);
+	    if (rtx_equal_p (input_dest, dest)
+		&& strchr (constraint_dest, '{') != nullptr)
+	      return false;
+	  }
+    }
+  return true;
+}
+
+/* Return true if a replacement of SRC by DEST does not lead to unsatisfiable
+   asm.  A replacement is valid if SRC or DEST are not constrained in asm
+   inputs of a single asm statement.  The final check is done in function
+   valid_replacement_for_asm_input_p_1.  */
+
+static bool
+valid_replacement_for_asm_input_p (const_rtx src, const_rtx dest)
+{
+  /* Bail out early if there is no asm statement.  */
+  if (!crtl->has_asm_statement)
+    return true;
+  for (df_ref use = DF_REG_USE_CHAIN (REGNO (src));
+       use;
+       use = DF_REF_NEXT_REG (use))
+    {
+      struct df_insn_info *use_info = DF_REF_INSN_INFO (use);
+      /* Only check real uses, not artificial ones.  */
+      if (use_info)
+	{
+	  rtx_insn *insn = DF_REF_INSN (use);
+	  rtx pat = PATTERN (insn);
+	  if (asm_noperands (pat) <= 0)
+	    continue;
+	  if (GET_CODE (pat) == SET)
+	    {
+	      if (!valid_replacement_for_asm_input_p_1 (SET_SRC (pat), src, dest))
+		return false;
+	    }
+	  else if (GET_CODE (pat) == PARALLEL)
+	    for (int i = 0, len = XVECLEN (pat, 0); i < len; ++i)
+	      {
+		rtx asmops = XVECEXP (pat, 0, i);
+		if (GET_CODE (asmops) == SET)
+		  asmops = SET_SRC (asmops);
+		if (GET_CODE (asmops) == ASM_OPERANDS
+		    && !valid_replacement_for_asm_input_p_1 (asmops, src, dest))
+		  return false;
+	      }
+	  else if (GET_CODE (pat) == ASM_OPERANDS)
+	    {
+	      if (!valid_replacement_for_asm_input_p_1 (pat, src, dest))
+		return false;
+	    }
+	  else
+	    gcc_unreachable ();
+	}
+    }
+  return true;
+}
+
 /* Search forward to see if the source register of a copy insn dies
    before either it or the destination register is modified, but don't
    scan past the end of the basic block.  If so, we can replace the
@@ -2177,7 +2243,8 @@ decrease_live_ranges_number (void)
 	       auto-inc memory reference, so we must disallow this
 	       optimization on them.  */
 	    || sregno == STACK_POINTER_REGNUM
-	    || dregno == STACK_POINTER_REGNUM)
+	    || dregno == STACK_POINTER_REGNUM
+	    || !valid_replacement_for_asm_input_p (src, dest))
 	  continue;
 
 	dest_death = NULL_RTX;
@@ -4166,12 +4233,14 @@ setup_reg_equiv (void)
 			    && REGNO (SET_SRC (set)) == (unsigned int) i);
 		x = SET_DEST (set);
 	      }
-	    if (! function_invariant_p (x)
+	    /* If PIC is enabled and the equiv is not a LEGITIMATE_PIC_OPERAND,
+	       we can't use it.  */
+	    if (! CONSTANT_P (x)
 		|| ! flag_pic
 		/* A function invariant is often CONSTANT_P but may
 		   include a register.  We promise to only pass
 		   CONSTANT_P objects to LEGITIMATE_PIC_OPERAND_P.  */
-		|| (CONSTANT_P (x) && LEGITIMATE_PIC_OPERAND_P (x)))
+		|| LEGITIMATE_PIC_OPERAND_P (x))
 	      {
 		/* It can happen that a REG_EQUIV note contains a MEM
 		   that is not a legitimate memory operand.  As later
@@ -5549,6 +5618,30 @@ static int saved_flag_ira_share_spill_slots;
 /* Set to true while in IRA.  */
 bool ira_in_progress = false;
 
+/* Set up array ira_hard_regno_nrefs.  */
+static void
+setup_hard_regno_nrefs (void)
+{
+  int i;
+
+  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
+    {
+      ira_hard_regno_nrefs[i] = 0;
+      for (df_ref use = DF_REG_USE_CHAIN (i);
+	   use != NULL;
+	   use = DF_REF_NEXT_REG (use))
+	if (DF_REF_CLASS (use) != DF_REF_ARTIFICIAL
+	    && !(DF_REF_INSN_INFO (use) && DEBUG_INSN_P (DF_REF_INSN (use))))
+	  ira_hard_regno_nrefs[i]++;
+      for (df_ref def = DF_REG_DEF_CHAIN (i);
+	   def != NULL;
+	   def = DF_REF_NEXT_REG (def))
+	if (DF_REF_CLASS (def) != DF_REF_ARTIFICIAL
+	    && !(DF_REF_INSN_INFO (def) && DEBUG_INSN_P (DF_REF_INSN (def))))
+	  ira_hard_regno_nrefs[i]++;
+    }
+}
+
 /* This is the main entry of IRA.  */
 static void
 ira (FILE *f)
@@ -5562,6 +5655,7 @@ ira (FILE *f)
   edge e;
   bool output_jump_reload_p = false;
 
+  setup_hard_regno_nrefs ();
   if (ira_use_lra_p)
     {
       /* First put potential jump output reloads on the output edges
@@ -5599,8 +5693,7 @@ ira (FILE *f)
 			 not put a note as commit_edges insertion will
 			 fail.  */
 		      emit_insn (gen_rtx_USE (VOIDmode, const1_rtx));
-		      rtx_insn *insns = get_insns ();
-		      end_sequence ();
+		      rtx_insn *insns = end_sequence ();
 		      insert_insn_on_edge (insns, e);
 		    }
 		break;

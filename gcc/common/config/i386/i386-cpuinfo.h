@@ -1,5 +1,5 @@
 /* Get CPU type and Features for x86 processors.
-   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+   Copyright (C) 2012-2025 Free Software Foundation, Inc.
    Contributed by Sriraman Tallam (tmsriram@google.com)
 
 This file is part of GCC.
@@ -106,6 +106,7 @@ enum processor_subtypes
   AMDFAM1AH_ZNVER5,
   ZHAOXIN_FAM7H_SHIJIDADAO,
   INTEL_COREI7_DIAMONDRAPIDS,
+  INTEL_COREI7_NOVALAKE,
   CPU_SUBTYPE_MAX
 };
 
@@ -148,9 +149,8 @@ enum feature_priority
   P_AVX512F,
   P_PROC_AVX512F,
   P_X86_64_V4,
-  P_AVX10_1_256,
-  P_AVX10_1_512,
-  P_PROC_AVX10_1_512,
+  P_AVX10_1 = 34,
+  P_PROC_AVX10_1,
   P_PROC_DYNAMIC
 };
 
@@ -266,14 +266,11 @@ enum processor_features
   FEATURE_SM4,
   FEATURE_APX_F,
   FEATURE_USER_MSR,
-  FEATURE_AVX10_1_256,
-  FEATURE_AVX10_1_512,
-  FEATURE_AVX10_2_256,
-  FEATURE_AVX10_2_512,
+  FEATURE_AVX10_1 = 114,
+  FEATURE_AVX10_2 = 116,
   FEATURE_AMX_AVX512,
   FEATURE_AMX_TF32,
-  FEATURE_AMX_TRANSPOSE,
-  FEATURE_AMX_FP8, 
+  FEATURE_AMX_FP8 = 120,
   FEATURE_MOVRS,
   FEATURE_AMX_MOVRS,
   CPU_FEATURE_MAX

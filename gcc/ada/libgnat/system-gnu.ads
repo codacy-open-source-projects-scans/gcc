@@ -64,8 +64,8 @@ package System is
 
    --  Storage-related Declarations
 
-   type Address is private;
-   pragma Preelaborable_Initialization (Address);
+   type Address is private
+   with Preelaborable_Initialization;
    Null_Address : constant Address;
 
    Storage_Unit : constant := 8;
@@ -95,7 +95,7 @@ package System is
 
    --  Priority-related Declarations (RM D.1)
 
-   Max_Priority           : constant Positive := 0;
+   Max_Priority           : constant Positive := 60;
    Max_Interrupt_Priority : constant Positive := 63;
 
    subtype Any_Priority       is Integer      range  0 .. 63;

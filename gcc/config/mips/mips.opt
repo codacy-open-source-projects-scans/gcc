@@ -1,6 +1,6 @@
 ; Options for the MIPS port of the compiler
 ;
-; Copyright (C) 2005-2024 Free Software Foundation, Inc.
+; Copyright (C) 2005-2025 Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
 ;
@@ -472,6 +472,10 @@ Enable use of odd-numbered single-precision registers.
 mframe-header-opt
 Target Var(flag_frame_header_optimization) Optimization
 Optimize frame header.
+
+mgrow-frame-downwards
+Target Var(TARGET_FRAME_GROWS_DOWNWARDS) Init(1) Undocumented
+Change the behaviour to grow the frame downwards.
 
 noasmopt
 Driver

@@ -1,4 +1,4 @@
-# Copyright (C) 2001-2024 Free Software Foundation, Inc.
+# Copyright (C) 2001-2025 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -382,6 +382,7 @@ proc profopt-execute { src } {
 	    unsupported "$testcase"
 	    unset testname_with_flags
 	    verbose "$src not supported on this target, skipping it" 3
+	    cleanup-after-saved-dg-test
 	    return
 	}
 
@@ -458,6 +459,7 @@ proc profopt-execute { src } {
 		    unsupported "$testcase -fauto-profile: cannot run create_gcov"
 		    unset testname_with_flags
 		    set status "fail"
+		    cleanup-after-saved-dg-test
 		    return
 		}
 		set status [remote_wait "" 300]

@@ -1,5 +1,5 @@
 /* Hooks for cfg representation specific functions.
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
    Contributed by Sebastian Pop <s.pop@laposte.net>
 
 This file is part of GCC.
@@ -816,6 +816,15 @@ merge_blocks (basic_block a, basic_block b)
 
   if (!cfg_hooks->merge_blocks)
     internal_error ("%s does not support merge_blocks", cfg_hooks->name);
+
+  /* Pick the more reliable count.  If both qualities agrees, pick the larger
+     one since turning mistakely hot code to cold is more harmful.  */
+  if (!a->count.initialized_p ())
+    a->count = b->count;
+  else if (a->count.quality () < b->count.quality ())
+    a->count = b->count;
+  else if (a->count.quality () == b->count.quality ())
+    a->count = profile_count::max_prefer_initialized (a->count, b->count);
 
   cfg_hooks->merge_blocks (a, b);
 

@@ -1,5 +1,5 @@
 /* Local Register Allocator (LRA) intercommunication header file.
-   Copyright (C) 2010-2024 Free Software Foundation, Inc.
+   Copyright (C) 2010-2025 Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
 This file is part of GCC.
@@ -252,6 +252,18 @@ typedef class lra_insn_recog_data *lra_insn_recog_data_t;
    for preventing LRA cycling in a bug case.  */
 #define LRA_MAX_ASSIGNMENT_ITERATION_NUMBER 30
 
+/* Maximum allowed number of tries to split hard reg live ranges after failure
+   in assignment of reload pseudos.  Theoretical bound for the value is the
+   number of the insn reload pseudos plus the number of inheritance pseudos
+   generated from the reload pseudos.  This bound can be achieved when all the
+   reload pseudos and the inheritance pseudos require hard reg splitting for
+   their assignment.  This is extremely unlikely event.  */
+#define LRA_MAX_FAILED_SPLITS 10
+
+#if LRA_MAX_FAILED_SPLITS >= LRA_MAX_ASSIGNMENT_ITERATION_NUMBER
+#error wrong LRA_MAX_FAILED_SPLITS value
+#endif
+
 /* The maximal number of inheritance/split passes in LRA.  It should
    be more 1 in order to perform caller saves transformations and much
    less MAX_CONSTRAINT_ITERATION_NUMBER to prevent LRA to do as many
@@ -369,7 +381,9 @@ extern int *lra_point_freq;
 extern int lra_hard_reg_usage[FIRST_PSEUDO_REGISTER];
 
 extern int lra_live_range_iter;
+extern void lra_reset_live_range_list (lra_live_range_t &);
 extern void lra_create_live_ranges (bool, bool);
+extern bool lra_complete_live_ranges (void);
 extern lra_live_range_t lra_copy_live_range_list (lra_live_range_t);
 extern lra_live_range_t lra_merge_live_ranges (lra_live_range_t,
 					       lra_live_range_t);
@@ -392,7 +406,7 @@ extern int lra_assignment_iter;
 extern int lra_assignment_iter_after_spill;
 extern void lra_setup_reg_renumber (int, int, bool);
 extern bool lra_assign (bool &);
-extern bool lra_split_hard_reg_for (void);
+extern bool lra_split_hard_reg_for (bool fail_p);
 
 /* lra-coalesce.cc: */
 
@@ -405,6 +419,7 @@ extern bool lra_need_for_scratch_reg_p (void);
 extern bool lra_need_for_spills_p (void);
 extern void lra_spill (void);
 extern void lra_final_code_change (void);
+extern void lra_recompute_slots_live_ranges (void);
 
 /* lra-remat.cc:  */
 

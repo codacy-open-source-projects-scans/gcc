@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -1031,7 +1031,7 @@ package body Exp_Ch11 is
       --  "hoisted" (i.e., Is_Statically_Allocated and not Is_Library_Level)
       --  entity must also be either Library_Level or hoisted. It turns out
       --  that this would be incompatible with the current treatment of an
-      --  object which is local to a subprogram, subject to an Export pragma,
+      --  object that is local to a subprogram, subject to an Export pragma,
       --  not subject to an address clause, and whose declaration contains
       --  references to other local (non-hoisted) objects (e.g., in the initial
       --  value expression).
@@ -1194,8 +1194,6 @@ package body Exp_Ch11 is
                    Prefix         => New_Occurrence_Of (Id, Loc),
                    Attribute_Name => Name_Unrestricted_Access)))));
 
-         Set_Register_Exception_Call (Id, First (L));
-
          if not Is_Library_Level_Entity (Id) then
             Flag_Id :=
               Make_Defining_Identifier (Loc,
@@ -1300,6 +1298,29 @@ package body Exp_Ch11 is
       then
          pragma Assert (not Is_Thunk (Current_Scope));
          Expand_Cleanup_Actions (Parent (N));
+      end if;
+
+      if Present (Finally_Statements (N)) and then Abort_Allowed then
+         if Exceptions_OK then
+            Set_Finally_Statements
+              (N,
+               New_List
+                 (Build_Runtime_Call (Sloc (N), RE_Abort_Defer),
+                  Build_Abort_Undefer_Block
+                    (Sloc (N),
+                     Stmts   => Finally_Statements (N),
+                     Context => N)));
+         else
+            Prepend_To
+              (Finally_Statements (N),
+               Build_Runtime_Call (Sloc (N), RE_Abort_Defer));
+
+            Append_To
+              (Finally_Statements (N),
+               Build_Runtime_Call (Sloc (N), RE_Abort_Undefer));
+         end if;
+
+         Analyze_List (Finally_Statements (N));
       end if;
    end Expand_N_Handled_Sequence_Of_Statements;
 
@@ -1537,7 +1558,7 @@ package body Exp_Ch11 is
             Build_Location_String (Buf, Loc);
 
             --  If the exception is a renaming, use the exception that it
-            --  renames (which might be a predefined exception, e.g.).
+            --  renames (which might be a predefined exception).
 
             if Present (Renamed_Entity (Id)) then
                Id := Renamed_Entity (Id);
@@ -1949,6 +1970,8 @@ package body Exp_Ch11 is
          when CE_Tag_Check_Failed =>
             Add_Str_To_Name_Buffer ("CE_Tag_Check");
 
+         when PE_Abstract_Type_Component =>
+            Add_Str_To_Name_Buffer ("PE_Abstract_Type_Component");
          when PE_Access_Before_Elaboration =>
             Add_Str_To_Name_Buffer ("PE_Access_Before_Elaboration");
          when PE_Accessibility_Check_Failed =>

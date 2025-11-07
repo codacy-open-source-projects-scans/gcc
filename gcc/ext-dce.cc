@@ -1,5 +1,5 @@
 /* RTL dead zero/sign extension (code) elimination.
-   Copyright (C) 2000-2022 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -34,6 +34,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "df.h"
 #include "print-rtl.h"
 #include "dbgcnt.h"
+#include "diagnostic-core.h"
+#include "target.h"
 
 /* These should probably move into a C++ class.  */
 static vec<bitmap_head> livein;
@@ -205,8 +207,8 @@ ext_dce_process_sets (rtx_insn *insn, rtx obj, bitmap live_tmp)
 
 	  /* We don't support vector destinations or destinations
 	     wider than DImode.  */
-	  scalar_int_mode outer_mode;
-	  if (!is_a <scalar_int_mode> (GET_MODE (x), &outer_mode)
+	  scalar_mode outer_mode;
+	  if (!is_a <scalar_mode> (GET_MODE (x), &outer_mode)
 	      || GET_MODE_BITSIZE (outer_mode) > HOST_BITS_PER_WIDE_INT)
 	    {
 	      /* Skip the subrtxs of this destination.  There is
@@ -238,7 +240,7 @@ ext_dce_process_sets (rtx_insn *insn, rtx obj, bitmap live_tmp)
 	      /* The inner mode might be larger, just punt for
 		 that case.  Remember, we can not just continue to process
 		 the inner RTXs due to the STRICT_LOW_PART.  */
-	      if (!is_a <scalar_int_mode> (GET_MODE (SUBREG_REG (x)), &outer_mode)
+	      if (!is_a <scalar_mode> (GET_MODE (SUBREG_REG (x)), &outer_mode)
 		  || GET_MODE_BITSIZE (outer_mode) > HOST_BITS_PER_WIDE_INT)
 		{
 		  /* Skip the subrtxs of the STRICT_LOW_PART.  We can't
@@ -292,7 +294,7 @@ ext_dce_process_sets (rtx_insn *insn, rtx obj, bitmap live_tmp)
 		 subreg and restart within the SET processing rather than
 		 the top of the loop which just complicates the flow even
 		 more.  */
-	      if (!is_a <scalar_int_mode> (GET_MODE (SUBREG_REG (x)), &outer_mode)
+	      if (!is_a <scalar_mode> (GET_MODE (SUBREG_REG (x)), &outer_mode)
 		  || GET_MODE_BITSIZE (outer_mode) > HOST_BITS_PER_WIDE_INT)
 		{
 		  skipped_dest = true;
@@ -440,6 +442,11 @@ ext_dce_try_optimize_insn (rtx_insn *insn, rtx set)
 	  print_rtl_single (dump_file, new_pattern);
 	  fprintf (dump_file, "\n");
 	}
+
+      /* INSN may have a REG_EQUAL note indicating that the value was
+	 sign or zero extended.  That note is no longer valid since we've
+	 just removed the extension.  Just wipe the notes.  */
+      remove_reg_equal_equiv_notes (insn, false);
     }
   else
     {
@@ -644,9 +651,8 @@ ext_dce_process_uses (rtx_insn *insn, rtx obj,
 
 	  /* ?!? How much of this should mirror SET handling, potentially
 	     being shared?   */
-	  if (SUBREG_P (dst) && SUBREG_BYTE (dst).is_constant ())
+	  if (SUBREG_P (dst) && subreg_lsb (dst).is_constant (&bit))
 	    {
-	      bit = subreg_lsb (dst).to_constant ();
 	      if (bit >= HOST_BITS_PER_WIDE_INT)
 		bit = HOST_BITS_PER_WIDE_INT - 1;
 	      dst = SUBREG_REG (dst);
@@ -751,28 +757,22 @@ ext_dce_process_uses (rtx_insn *insn, rtx obj,
 		     and process the inner object.  */
 		  if (paradoxical_subreg_p (y))
 		    y = XEXP (y, 0);
-		  else if (SUBREG_P (y) && SUBREG_BYTE (y).is_constant ())
+		  else if (SUBREG_P (y) && subreg_lsb (y).is_constant (&bit))
 		    {
-		      /* We really want to know the outer code here, ie do we
-			 have (ANY_EXTEND (SUBREG ...)) as we need to know if
-			 the extension matches the SUBREG_PROMOTED state.  In
-			 that case optimizers can turn the extension into a
-			 simple copy.  Which means that bits outside the
-			 SUBREG's mode are actually live.
-
-			 We don't want to mark those bits live unnecessarily
-			 as that inhibits extension elimination in important
-			 cases such as those in Coremark.  So we need that
-			 outer code.  */
+		      /* If !TRULY_NOOP_TRUNCATION_MODES_P, the mode
+			 change performed by Y would normally need to be a
+			 TRUNCATE rather than a SUBREG.  It is probably the
+			 guarantee provided by SUBREG_PROMOTED_VAR_P that
+			 allows the SUBREG in Y as an exception.  We must
+			 therefore preserve that guarantee and treat the
+			 upper bits of the inner register as live
+			 regardless of the outer code.  See PR 120050.  */
 		      if (!REG_P (SUBREG_REG (y))
 			  || (SUBREG_PROMOTED_VAR_P (y)
-			      && ((GET_CODE (SET_SRC (x)) == SIGN_EXTEND
-				   && SUBREG_PROMOTED_SIGNED_P (y))
-				  || (GET_CODE (SET_SRC (x)) == ZERO_EXTEND
-				      && SUBREG_PROMOTED_UNSIGNED_P (y)))))
+			      && (!TRULY_NOOP_TRUNCATION_MODES_P (
+				    GET_MODE (y),
+				    GET_MODE (SUBREG_REG (y))))))
 			break;
-
-		      bit = subreg_lsb (y).to_constant ();
 
 		      /* If this is a wide object (more bits than we can fit
 			 in a HOST_WIDE_INT), then just break from the SET
@@ -973,6 +973,81 @@ maybe_clear_subreg_promoted_p (void)
     }
 }
 
+/* Walk the IL and build the transitive closure of all the REGs tied
+   together by copies where either the source or destination is
+   marked in CHANGED_PSEUDOS.  */
+
+static void
+expand_changed_pseudos (void)
+{
+  /* Build a vector of registers related by a copy.  This is meant to
+     speed up the next step by avoiding full IL walks.  */
+  struct copy_pair { rtx first; rtx second; };
+  auto_vec<copy_pair> pairs;
+  for (rtx_insn *insn = get_insns(); insn; insn = NEXT_INSN (insn))
+    {
+      if (!NONDEBUG_INSN_P (insn))
+	continue;
+
+      rtx pat = PATTERN (insn);
+
+      /* Simple copies to a REG from another REG or SUBREG of a REG.  */
+      if (GET_CODE (pat) == SET
+	  && REG_P (SET_DEST (pat))
+	  && (REG_P (SET_SRC (pat))
+	      || (SUBREG_P (SET_SRC (pat))
+		  && REG_P (SUBREG_REG (SET_SRC (pat))))))
+	{
+	  rtx src = (REG_P (SET_SRC (pat))
+		     ? SET_SRC (pat)
+		     : SUBREG_REG (SET_SRC (pat)));
+	  pairs.safe_push ({ SET_DEST (pat), src });
+	}
+
+      /* Simple copies to a REG from another REG or SUBREG of a REG
+	 held inside a PARALLEL.  */
+      if (GET_CODE (pat) == PARALLEL)
+	{
+	  for (int i = XVECLEN (pat, 0) - 1; i >= 0; i--)
+	    {
+	      rtx elem = XVECEXP (pat, 0, i);
+
+	      if (GET_CODE (elem) == SET
+		  && REG_P (SET_DEST (elem))
+		  && (REG_P (SET_SRC (elem))
+		      || (SUBREG_P (SET_SRC (elem))
+			  && REG_P (SUBREG_REG (SET_SRC (elem))))))
+		{
+		  rtx src = (REG_P (SET_SRC (elem))
+			     ? SET_SRC (elem)
+			     : SUBREG_REG (SET_SRC (elem)));
+		  pairs.safe_push ({ SET_DEST (elem), src });
+		}
+	    }
+	  continue;
+	}
+    }
+
+  /* Now we have a vector with copy pairs.  Iterate over that list
+     updating CHANGED_PSEUDOS as we go.  Eliminate copies from the
+     list as we go as they don't need further processing.  */
+  bool changed = true;
+  while (changed)
+    {
+      changed = false;
+      unsigned int i;
+      copy_pair *p;
+      FOR_EACH_VEC_ELT (pairs, i, p)
+	{
+	  if (bitmap_bit_p (changed_pseudos, REGNO (p->second))
+	      && bitmap_set_bit (changed_pseudos, REGNO (p->first)))
+	    {
+	      pairs.unordered_remove (i);
+	      changed = true;
+	    }
+	}
+    }
+}
 
 /* We optimize away sign/zero extensions in this pass and replace
    them with SUBREGs indicating certain bits are don't cares.
@@ -985,6 +1060,19 @@ maybe_clear_subreg_promoted_p (void)
 static void
 reset_subreg_promoted_p (void)
 {
+  /* This pass eliminates zero/sign extensions on pseudo regs found
+     in CHANGED_PSEUDOS.  Elimination of those extensions changes if
+     the pseudos are known to hold values extended to wider modes
+     via SUBREG_PROMOTED_VAR.  So we wipe the SUBREG_PROMOTED_VAR
+     state on all affected pseudos.
+
+     But that is insufficient.  We might have a copy from one REG
+     to another (possibly with the source register wrapped with a
+     SUBREG).  We need to wipe SUBREG_PROMOTED_VAR on the transitive
+     closure of the original CHANGED_PSEUDOS and registers they're
+     connected to via copies.  So expand the set.  */
+  expand_changed_pseudos ();
+    
   /* If we removed an extension, that changed the promoted state
      of the destination of that extension.  Thus we need to go
      find any SUBREGs that reference that pseudo and adjust their
@@ -1088,16 +1176,9 @@ ext_dce_rd_transfer_n (int bb_index)
 
   ext_dce_process_bb (bb);
 
-  /* We may have narrowed the set of live objects at the start
-     of this block.  If so, update the bitmaps and indicate to
-     the generic dataflow code that something changed.  */
-  if (!bitmap_equal_p (&livein[bb_index], livenow))
-    {
-      bitmap_copy (&livein[bb_index], livenow);
-      return true;
-    }
-
-  return false;
+  /* We only allow widening the set of objects live at the start
+     of a block.  Otherwise we run the risk of not converging.  */
+  return bitmap_ior_into (&livein[bb_index], livenow);
 }
 
 /* Dummy function for the df_simple_dataflow API.  */
@@ -1110,6 +1191,21 @@ static bool ext_dce_rd_confluence_n (edge) { return true; }
 void
 ext_dce_execute (void)
 {
+  /* Limit the amount of memory we use for livein, with 4 bits per
+     reg per basic-block including overhead that maps to one byte
+     per reg per basic-block.  */
+  uint64_t memory_request
+    = (uint64_t)n_basic_blocks_for_fn (cfun) * max_reg_num ();
+  if (memory_request / 1024 > (uint64_t)param_max_gcse_memory)
+    {
+      warning (OPT_Wdisabled_optimization,
+	       "ext-dce disabled: %d basic blocks and %d registers; "
+	       "increase %<--param max-gcse-memory%> above %wu",
+	       n_basic_blocks_for_fn (cfun), max_reg_num (),
+	       memory_request / 1024);
+      return;
+    }
+
   /* Some settings of SUBREG_PROMOTED_VAR_P are actively harmful
      to this pass.  Clear it for those cases.  */
   maybe_clear_subreg_promoted_p ();

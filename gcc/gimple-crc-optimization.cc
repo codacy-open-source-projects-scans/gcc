@@ -1,5 +1,5 @@
 /* CRC optimization.
-   Copyright (C) 2022-2024 Free Software Foundation, Inc.
+   Copyright (C) 2022-2025 Free Software Foundation, Inc.
    Contributed by Mariam Arutunian <mariamarutunian@gmail.com>
 
 This file is part of GCC.
@@ -947,6 +947,7 @@ crc_optimization::loop_may_calculate_crc (class loop *loop)
 	fprintf (dump_file,
 		 "The number of conditional "
 		 "branches in the loop isn't 2.\n");
+      free (loop_bbs);
       return false;
     }
 
@@ -977,8 +978,11 @@ crc_optimization::loop_may_calculate_crc (class loop *loop)
 		  return true;
 		}
 
-		if (++checked_xor_count == 2)
+	      if (++checked_xor_count == 2)
+		{
+		  free (loop_bbs);
 		  return false;
+		}
 	    }
 	}
     }
@@ -1257,15 +1261,12 @@ crc_optimization::optimize_crc_loop (gphi *output_crc)
   loc = EXPR_LOCATION (phi_result);
 
   /* Add IFN call and write the return value in the phi_result.  */
-  gcall *call
-      = gimple_build_call_internal (ifn, 3,
-				    m_crc_arg,
-				    m_data_arg,
-				    polynomial_arg);
+  gcall *call = gimple_build_call_internal (ifn, 3, m_crc_arg, m_data_arg,
+					    polynomial_arg);
 
   gimple_call_set_lhs (call, phi_result);
   gimple_set_location (call, loc);
-  gimple_stmt_iterator si = gsi_start_bb (output_crc->bb);
+  gimple_stmt_iterator si = gsi_after_labels (gimple_bb (output_crc));
   gsi_insert_before (&si, call, GSI_SAME_STMT);
 
   /* Remove phi statement, which was holding CRC result.  */

@@ -1,7 +1,7 @@
 /* Write and read the cgraph to the memory mapped representation of a
    .o file.
 
-   Copyright (C) 2009-2024 Free Software Foundation, Inc.
+   Copyright (C) 2009-2025 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
 
 This file is part of GCC.
@@ -45,9 +45,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "symtab-thunks.h"
 #include "symtab-clones.h"
 
-/* True when asm nodes has been output.  */
-bool asm_nodes_output = false;
-
 static void output_cgraph_opt_summary (void);
 static void input_cgraph_opt_summary (vec<symtab_node *>  nodes);
 
@@ -82,7 +79,7 @@ lto_symtab_encoder_new (bool for_input)
   lto_symtab_encoder_t encoder = XCNEW (struct lto_symtab_encoder_d);
 
   if (!for_input)
-    encoder->map = new hash_map<symtab_node *, size_t>;
+    encoder->map = new hash_map<toplevel_node *, size_t>;
   encoder->nodes.create (0);
   return encoder;
 }
@@ -108,7 +105,7 @@ lto_symtab_encoder_delete (lto_symtab_encoder_t encoder)
 
 int
 lto_symtab_encoder_encode (lto_symtab_encoder_t encoder,
-			   symtab_node *node)
+			   toplevel_node *node)
 {
   int ref;
 
@@ -140,7 +137,7 @@ lto_symtab_encoder_encode (lto_symtab_encoder_t encoder,
 
 bool
 lto_symtab_encoder_delete_node (lto_symtab_encoder_t encoder,
-			        symtab_node *node)
+				toplevel_node *node)
 {
   int index;
 
@@ -214,7 +211,7 @@ lto_set_symtab_encoder_encode_initializer (lto_symtab_encoder_t encoder,
 
 bool
 lto_symtab_encoder_in_partition_p (lto_symtab_encoder_t encoder,
-				   symtab_node *node)
+				   toplevel_node *node)
 {
   int index = lto_symtab_encoder_lookup (encoder, node);
   if (index == LCC_NOT_FOUND)
@@ -226,9 +223,16 @@ lto_symtab_encoder_in_partition_p (lto_symtab_encoder_t encoder,
 
 void
 lto_set_symtab_encoder_in_partition (lto_symtab_encoder_t encoder,
-				     symtab_node *node)
+				     toplevel_node *node)
 {
   int index = lto_symtab_encoder_encode (encoder, node);
+  if (dump_file)
+    {
+      if (symtab_node* snode = dyn_cast<symtab_node*> (node))
+	fprintf (dump_file, "Node %s, index %d\n", snode->asm_name (), index);
+      else
+	fprintf (dump_file, "Asm node, index %d\n", index);
+    }
   encoder->nodes[index].in_partition = true;
 }
 
@@ -272,6 +276,9 @@ lto_output_edge (struct lto_simple_output_block *ob, struct cgraph_edge *edge,
   bp_pack_value (&bp, edge->speculative_id, 16);
   bp_pack_value (&bp, edge->indirect_inlining_edge, 1);
   bp_pack_value (&bp, edge->speculative, 1);
+  bp_pack_value (&bp, edge->callback, 1);
+  bp_pack_value (&bp, edge->has_callback, 1);
+  bp_pack_value (&bp, edge->callback_id, 16);
   bp_pack_value (&bp, edge->call_stmt_cannot_inline_p, 1);
   gcc_assert (!edge->call_stmt_cannot_inline_p
 	      || edge->inline_failed != CIF_BODY_NOT_AVAILABLE);
@@ -550,8 +557,7 @@ lto_output_node (struct lto_simple_output_block *ob, struct cgraph_node *node,
   bp_pack_value (&bp, node->merged_extern_inline, 1);
   bp_pack_value (&bp, node->thunk, 1);
   bp_pack_value (&bp, node->parallelized_function, 1);
-  bp_pack_value (&bp, node->declare_variant_alt, 1);
-  bp_pack_value (&bp, node->calls_declare_variant_alt, 1);
+  bp_pack_value (&bp, node->has_omp_variant_constructs, 1);
 
   /* Stream thunk info always because we use it in
      ipa_polymorphic_call_context::ipa_polymorphic_call_context
@@ -717,11 +723,12 @@ output_profile_summary (struct lto_simple_output_block *ob)
 {
   if (profile_info)
     {
-      /* We do not output num and run_max, they are not used by
-         GCC profile feedback and they are difficult to merge from multiple
-         units.  */
       unsigned runs = (profile_info->runs);
       streamer_write_uhwi_stream (ob->main_stream, runs);
+      streamer_write_gcov_count_stream (ob->main_stream,
+					profile_info->sum_max);
+      streamer_write_gcov_count_stream (ob->main_stream,
+					profile_info->cutoff);
 
       /* IPA-profile computes hot bb threshold based on cumulated
 	 whole program profile.  We need to stream it down to ltrans.  */
@@ -765,7 +772,10 @@ output_refs (lto_symtab_encoder_t encoder)
 
   for (int i = 0; i < lto_symtab_encoder_size (encoder); i++)
     {
-      symtab_node *node = lto_symtab_encoder_deref (encoder, i);
+      toplevel_node *tnode = lto_symtab_encoder_deref (encoder, i);
+      symtab_node *node = dyn_cast <symtab_node *> (tnode);
+      if (!node)
+	continue;
 
       /* IPA_REF_ALIAS references are always preserved
 	 in the boundary.  Alias node can't have other references and
@@ -782,9 +792,6 @@ output_refs (lto_symtab_encoder_t encoder)
 	  for (int i = 0; node->iterate_reference (i, ref); i++)
 	    lto_output_ref (ob, ref, encoder);
 	}
-      if (cgraph_node *cnode = dyn_cast <cgraph_node *> (node))
-	if (cnode->declare_variant_alt)
-	  omp_lto_output_declare_variant_alt (ob, cnode, encoder);
     }
 
   streamer_write_uhwi_stream (ob->main_stream, 0);
@@ -893,7 +900,7 @@ compute_ltrans_boundary (lto_symtab_encoder_t in_encoder)
      pickle those too.  */
   for (i = 0; i < lto_symtab_encoder_size (encoder); i++)
     {
-      symtab_node *node = lto_symtab_encoder_deref (encoder, i);
+      toplevel_node *node = lto_symtab_encoder_deref (encoder, i);
       if (varpool_node *vnode = dyn_cast <varpool_node *> (node))
 	{
 	  if (!lto_symtab_encoder_encode_initializer_p (encoder,
@@ -960,7 +967,11 @@ compute_ltrans_boundary (lto_symtab_encoder_t in_encoder)
      to stay to aid local calling conventions.  */
   for (i = 0; i < lto_symtab_encoder_size (encoder); i++)
     {
-      symtab_node *node = lto_symtab_encoder_deref (encoder, i);
+      toplevel_node *tnode = lto_symtab_encoder_deref (encoder, i);
+      symtab_node *node = dyn_cast <symtab_node *> (tnode);
+      if (!node)
+	continue;
+
       cgraph_node *cnode = dyn_cast <cgraph_node *> (node);
 
       if (node->alias && node->analyzed)
@@ -977,6 +988,13 @@ compute_ltrans_boundary (lto_symtab_encoder_t in_encoder)
 	  else
 	    lto_symtab_encoder_encode (encoder, node);
 	}
+    }
+
+  for (lsei = lsei_start (in_encoder); !lsei_end_p (lsei); lsei_next (&lsei))
+    {
+      toplevel_node *tnode = lsei_node (lsei);
+      if (asm_node* node = dyn_cast <asm_node*> (tnode))
+	lto_set_symtab_encoder_in_partition (encoder, node);
     }
   lto_symtab_encoder_delete (in_encoder);
   return encoder;
@@ -1010,11 +1028,11 @@ output_symtab (void)
   n_nodes = lto_symtab_encoder_size (encoder);
   for (i = 0; i < n_nodes; i++)
     {
-      symtab_node *node = lto_symtab_encoder_deref (encoder, i);
+      toplevel_node *node = lto_symtab_encoder_deref (encoder, i);
       if (cgraph_node *cnode = dyn_cast <cgraph_node *> (node))
         lto_output_node (ob, cnode, encoder);
-      else
-	lto_output_varpool_node (ob, dyn_cast<varpool_node *> (node), encoder);
+      else if (varpool_node *vnode = dyn_cast <varpool_node *> (node))
+	lto_output_varpool_node (ob, vnode, encoder);
     }
 
   /* Go over the nodes in SET again to write edges.  */
@@ -1034,15 +1052,9 @@ output_symtab (void)
 
   lto_destroy_simple_output_block (ob);
 
-  /* Emit toplevel asms.
-     When doing WPA we must output every asm just once.  Since we do not partition asm
-     nodes at all, output them to first output.  This is kind of hack, but should work
-     well.  */
-  if (!asm_nodes_output && !lto_stream_offload_p)
-    {
-      asm_nodes_output = true;
-      lto_output_toplevel_asms ();
-    }
+  /* Emit toplevel asms.  */
+  if (!lto_stream_offload_p)
+    lto_output_toplevel_asms (encoder);
 
   output_refs (encoder);
 }
@@ -1258,8 +1270,7 @@ input_overwrite_node (struct lto_file_decl_data *file_data,
   node->merged_extern_inline = bp_unpack_value (bp, 1);
   node->thunk = bp_unpack_value (bp, 1);
   node->parallelized_function = bp_unpack_value (bp, 1);
-  node->declare_variant_alt = bp_unpack_value (bp, 1);
-  node->calls_declare_variant_alt = bp_unpack_value (bp, 1);
+  node->has_omp_variant_constructs = bp_unpack_value (bp, 1);
   *has_thunk_info = bp_unpack_value (bp, 1);
   node->resolution = bp_unpack_enum (bp, ld_plugin_symbol_resolution,
 				     LDPR_NUM_KNOWN);
@@ -1306,7 +1317,7 @@ input_node (struct lto_file_decl_data *file_data,
     {
       node = dyn_cast<cgraph_node *> (nodes[clone_ref])->create_clone (fn_decl,
 	profile_count::uninitialized (), false,
-	vNULL, false, NULL, NULL);
+	vNULL, false, NULL, NULL, NULL);
     }
   else
     {
@@ -1541,6 +1552,9 @@ input_edge (class lto_input_block *ib, vec<symtab_node *> nodes,
 
   edge->indirect_inlining_edge = bp_unpack_value (&bp, 1);
   edge->speculative = bp_unpack_value (&bp, 1);
+  edge->callback = bp_unpack_value(&bp, 1);
+  edge->has_callback = bp_unpack_value(&bp, 1);
+  edge->callback_id = bp_unpack_value(&bp, 16);
   edge->lto_stmt_uid = stmt_id;
   edge->speculative_id = speculative_id;
   edge->inline_failed = inline_failed;
@@ -1669,9 +1683,6 @@ input_refs (class lto_input_block *ib,
 	  input_ref (ib, node, nodes);
 	  count--;
 	}
-      if (cgraph_node *cnode = dyn_cast <cgraph_node *> (node))
-	if (cnode->declare_variant_alt)
-	  omp_lto_input_declare_variant_alt (ib, cnode, nodes);
     }
 }
 
@@ -1684,6 +1695,8 @@ input_profile_summary (class lto_input_block *ib,
   if (runs)
     {
       file_data->profile_info.runs = runs;
+      file_data->profile_info.sum_max = streamer_read_gcov_count (ib);
+      file_data->profile_info.cutoff = streamer_read_gcov_count (ib);
 
       /* IPA-profile computes hot bb threshold based on cumulated
 	 whole program profile.  We need to stream it down to ltrans.  */
@@ -1725,6 +1738,8 @@ merge_profile_summaries (struct lto_file_decl_data **file_data_vec)
 
   profile_info = XCNEW (gcov_summary);
   profile_info->runs = max_runs;
+  profile_info->sum_max = 0;
+  profile_info->cutoff = 0;
 
   /* If merging already happent at WPA time, we are done.  */
   if (flag_ltrans)
@@ -1741,6 +1756,14 @@ merge_profile_summaries (struct lto_file_decl_data **file_data_vec)
 
 	scale = RDIV (node->count_materialization_scale * max_runs,
                       node->lto_file_data->profile_info.runs);
+	gcov_type sum_max = RDIV (node->lto_file_data->profile_info.sum_max * max_runs,
+				  node->lto_file_data->profile_info.runs);
+	gcov_type cutoff = RDIV (node->lto_file_data->profile_info.cutoff * max_runs,
+				 node->lto_file_data->profile_info.runs);
+	if (sum_max > profile_info->sum_max)
+	  profile_info->sum_max = sum_max;
+	if (cutoff > profile_info->cutoff)
+	  profile_info->cutoff = cutoff;
 	node->count_materialization_scale = scale;
 	if (scale < 0)
 	  fatal_error (input_location, "Profile information in %s corrupted",
@@ -2098,7 +2121,7 @@ output_cgraph_opt_summary (void)
   n_nodes = lto_symtab_encoder_size (encoder);
   for (i = 0; i < n_nodes; i++)
     {
-      symtab_node *node = lto_symtab_encoder_deref (encoder, i);
+      toplevel_node *node = lto_symtab_encoder_deref (encoder, i);
       cgraph_node *cnode = dyn_cast <cgraph_node *> (node);
       if (cnode && output_cgraph_opt_summary_p (cnode))
 	count++;
@@ -2106,7 +2129,7 @@ output_cgraph_opt_summary (void)
   streamer_write_uhwi (ob, count);
   for (i = 0; i < n_nodes; i++)
     {
-      symtab_node *node = lto_symtab_encoder_deref (encoder, i);
+      toplevel_node *node = lto_symtab_encoder_deref (encoder, i);
       cgraph_node *cnode = dyn_cast <cgraph_node *> (node);
       if (cnode && output_cgraph_opt_summary_p (cnode))
 	{

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -1448,9 +1448,10 @@ package body Sem_Attr is
                null;
 
             --  Attribute 'Result is allowed to appear in aspect
-            --  Relaxed_Initialization (SPARK RM 6.10).
+            --  Relaxed_Initialization (SPARK RM 6.10) and Potentially_Invalid.
 
-            elsif Prag_Nam = Name_Relaxed_Initialization
+            elsif (Prag_Nam = Name_Relaxed_Initialization
+                     or else Prag_Nam = Name_Potentially_Invalid)
               and then Aname = Name_Result
             then
                null;
@@ -1459,6 +1460,13 @@ package body Sem_Attr is
                             | Name_Post_Class
                             | Name_Postcondition
                             | Name_Refined_Post
+            then
+               null;
+
+            --  Attribute 'Old is allowed to appear in Program_Exit
+
+            elsif Prag_Nam = Name_Program_Exit
+                 and then Aname = Name_Old
             then
                null;
 
@@ -1994,9 +2002,7 @@ package body Sem_Attr is
             Resolve (E1, Any_Integer);
             Set_Etype (E1, Standard_Integer);
 
-            if not Is_OK_Static_Expression (E1)
-              or else Raises_Constraint_Error (E1)
-            then
+            if not Is_OK_Static_Expression (E1) then
                Flag_Non_Static_Expr
                  ("expression for dimension must be static!", E1);
                Error_Attr;
@@ -2108,11 +2114,12 @@ package body Sem_Attr is
             --  designated type of the access type, since the type of the
             --  referenced array is this type (see AI95-00106).
 
-            --  As done elsewhere, freezing must not happen when preanalyzing
-            --  a pre- or postcondition or a default value for an object or for
-            --  a formal parameter.
+            --    However, we must not freeze the designated type during
+            --    preanalysis; neither under strict preanalysis nor when
+            --    preanalyzing a pre- or postcondition or a default value
+            --    for an object or for a formal parameter.
 
-            if not In_Spec_Expression then
+            if not Preanalysis_Active then
                Freeze_Before (N, Designated_Type (P_Type));
             end if;
 
@@ -2267,7 +2274,7 @@ package body Sem_Attr is
          --  Now test for dynamic predicate
 
          if Has_Predicates (P_Type)
-           and then not (Has_Static_Predicate (P_Type))
+           and then not Has_Static_Predicate (P_Type)
          then
             Error_Attr_P
               ("prefix of % attribute may not have dynamic predicate");
@@ -3216,26 +3223,23 @@ package body Sem_Attr is
 
          --  Deal with Ada 83 issues
 
-         if not Attribute_83 (Attr_Id) then
-            if Ada_Version = Ada_83 then
-               Error_Msg_Name_1 := Aname;
-               Error_Msg_N ("(Ada 83) attribute% is not standard??", N);
-            end if;
-
-            if Attribute_Impl_Def (Attr_Id) then
-               Check_Restriction (No_Implementation_Attributes, N);
-            end if;
+         if not Attribute_83 (Attr_Id) and then Ada_Version = Ada_83 then
+            Error_Msg_Name_1 := Aname;
+            Error_Msg_N ("(Ada 83) attribute% is not standard??", N);
          end if;
 
          --  Deal with Ada 2005 attributes that are implementation attributes
          --  because they appear in a version of Ada before Ada 2005, ditto for
          --  Ada 2012 and Ada 2022 attributes appearing in an earlier version.
+         --  Likewise for GNAT implementation-defined attributes.
 
          if (Attribute_05 (Attr_Id) and then Ada_Version < Ada_2005)
                or else
             (Attribute_12 (Attr_Id) and then Ada_Version < Ada_2012)
                or else
             (Attribute_22 (Attr_Id) and then Ada_Version < Ada_2022)
+               or else
+            Attribute_Impl_Def (Attr_Id)
          then
             Check_Restriction (No_Implementation_Attributes, N);
          end if;
@@ -3321,7 +3325,7 @@ package body Sem_Attr is
          E1 := Empty;
          E2 := Empty;
 
-      else
+      elsif Aname /= Name_Make then
          E1 := First (Exprs);
 
          --  Skip analysis for case of Restriction_Set, we do not expect
@@ -3424,18 +3428,6 @@ package body Sem_Attr is
       --  Remaining processing depends on attribute
 
       case Attr_Id is
-
-      --  Attributes related to Ada 2012 iterators. Attribute specifications
-      --  exist for these, but they cannot be queried.
-
-      when Attribute_Constant_Indexing
-         | Attribute_Default_Iterator
-         | Attribute_Implicit_Dereference
-         | Attribute_Iterator_Element
-         | Attribute_Iterable
-         | Attribute_Variable_Indexing
-      =>
-         Error_Msg_N ("illegal attribute", N);
 
       --  Internal attributes used to deal with Ada 2012 delayed aspects. These
       --  were already rejected by the parser. Thus they shouldn't appear here.
@@ -3965,6 +3957,13 @@ package body Sem_Attr is
          Error_Attr_P
            ("prefix of % attribute must be object of discriminated type");
 
+      -----------------
+      -- Constructor --
+      -----------------
+
+      when Attribute_Constructor =>
+         Error_Attr_P ("attribute% can only be used to define constructors");
+
       ---------------
       -- Copy_Sign --
       ---------------
@@ -4035,7 +4034,7 @@ package body Sem_Attr is
                   if (Is_Type (Tsk) and then Tsk = S)
                     or else (not Is_Type (Tsk)
                               and then Etype (Tsk) = S
-                              and then not (Comes_From_Source (S)))
+                              and then not Comes_From_Source (S))
                   then
                      null;
                   else
@@ -5100,7 +5099,7 @@ package body Sem_Attr is
          --  early transformation also avoids the generation of a useless loop
          --  entry constant.
 
-         if Present (Encl_Prag) and then Is_Ignored (Encl_Prag) then
+         if Present (Encl_Prag) and then Is_Ignored_In_Codegen (Encl_Prag) then
             Rewrite (N, Relocate_Node (P));
             Preanalyze_And_Resolve (N);
 
@@ -5179,6 +5178,42 @@ package body Sem_Attr is
          Check_Type;
          Check_Not_Incomplete_Type;
          Set_Etype (N, Universal_Integer);
+
+      ----------
+      -- Make --
+      ----------
+
+      when Attribute_Make => declare
+         Expr : Entity_Id;
+      begin
+         if not All_Extensions_Allowed then
+            Error_Msg_GNAT_Extension ("attribute %", Loc);
+            return;
+         end if;
+
+         Check_Type;
+         Set_Etype (N, Etype (P));
+
+         if not Needs_Construction (Entity (P)) then
+            Error_Msg_NE ("no available constructor for&", N, Entity (P));
+         end if;
+
+         if Present (Expressions (N)) then
+            Expr := First (Expressions (N));
+            while Present (Expr) loop
+               if Nkind (Expr) = N_Parameter_Association then
+                  Analyze (Explicit_Actual_Parameter (Expr));
+               else
+                  Analyze (Expr);
+               end if;
+
+               Next (Expr);
+            end loop;
+
+         elsif not Has_Default_Constructor (Entity (P)) then
+            Error_Msg_NE ("no default constructor for&", N, Entity (P));
+         end if;
+      end;
 
       --------------
       -- Mantissa --
@@ -5672,19 +5707,15 @@ package body Sem_Attr is
       when Attribute_Partition_ID =>
          Check_E0;
 
-         if P_Type /= Any_Type then
-            if not Is_Library_Level_Entity (Entity (P)) then
-               Error_Attr_P
-                 ("prefix of % attribute must be library-level entity");
+         if not Is_Library_Level_Entity (Entity (P)) then
+            Error_Attr_P
+              ("prefix of % attribute must be library-level entity");
 
-            --  The defining entity of prefix should not be declared inside a
-            --  Pure unit. RM E.1(8). Is_Pure was set during declaration.
+         --  The defining entity of prefix should not be declared inside a
+         --  Pure unit. RM E.1(8). Is_Pure was set during declaration.
 
-            elsif Is_Entity_Name (P)
-              and then Is_Pure (Entity (P))
-            then
-               Error_Attr_P ("prefix of% attribute must not be declared pure");
-            end if;
+         elsif Is_Entity_Name (P) and then Is_Pure (Entity (P)) then
+            Error_Attr_P ("prefix of% attribute must not be declared pure");
          end if;
 
          Set_Etype (N, Universal_Integer);
@@ -7172,6 +7203,27 @@ package body Sem_Attr is
 
          Analyze_Access_Attribute;
 
+      -------------------------
+      -- Unsigned_Base_Range --
+      -------------------------
+
+      --  GNAT core extension. The prefix of 'Unsigned_Base_Range must be a
+      --  signed integer type. The static result is a boolean that indicates
+      --  whether the base range is unsigned.
+
+      when Attribute_Unsigned_Base_Range =>
+         Check_E0;
+         Check_Integer_Type;
+         Check_Not_Incomplete_Type;
+         Set_Etype (N, Standard_Boolean);
+         Set_Is_Static_Expression (N, True);
+
+         if not Core_Extensions_Allowed then
+            Error_Msg_GNAT_Extension
+              ("'Unsigned_'Base_'Range", Sloc (N),
+               Is_Core_Extension => True);
+         end if;
+
       ------------
       -- Update --
       ------------
@@ -7527,13 +7579,14 @@ package body Sem_Attr is
          Set_Etype (N, Standard_Boolean);
          Validate_Non_Static_Attribute_Function_Call;
 
-         if P_Type in Standard_Boolean
+         if Root_Type (P_Type) in Standard_Boolean
                     | Standard_Character
                     | Standard_Wide_Character
                     | Standard_Wide_Wide_Character
          then
             Error_Attr_P
-              ("prefix of % attribute must not be a type in Standard");
+              ("prefix of % attribute must not be a type originating from " &
+               "Standard");
          end if;
 
          if Discard_Names (First_Subtype (P_Type)) then
@@ -7748,7 +7801,6 @@ package body Sem_Attr is
       when Bad_Attribute =>
          Set_Analyzed (N);
          Set_Etype (N, Any_Type);
-         return;
    end Analyze_Attribute;
 
    --------------------
@@ -8721,6 +8773,13 @@ package body Sem_Attr is
          Set_Etype (N, C_Type);
          return;
 
+      --  Handle 'Make constructor calls
+
+      elsif All_Extensions_Allowed
+        and then Id = Attribute_Make
+      then
+         P_Type := P_Entity;
+
       --  No other cases are foldable (they certainly aren't static, and at
       --  the moment we don't try to fold any cases other than the ones above).
 
@@ -8732,9 +8791,10 @@ package body Sem_Attr is
       --  If either attribute or the prefix is Any_Type, then propagate
       --  Any_Type to the result and don't do anything else at all.
 
-      if P_Type = Any_Type
+      if Id /= Attribute_Make
+        and then (P_Type = Any_Type
         or else (Present (E1) and then Etype (E1) = Any_Type)
-        or else (Present (E2) and then Etype (E2) = Any_Type)
+        or else (Present (E2) and then Etype (E2) = Any_Type))
       then
          Set_Etype (N, Any_Type);
          return;
@@ -8847,7 +8907,9 @@ package body Sem_Attr is
          Static := False;
          Set_Is_Static_Expression (N, False);
 
-      elsif Id /= Attribute_Max_Alignment_For_Allocation then
+      elsif Id not in Attribute_Max_Alignment_For_Allocation
+                    | Attribute_Make
+      then
          if not Is_Constrained (P_Type)
            or else (Id /= Attribute_First and then
                     Id /= Attribute_Last  and then
@@ -8923,53 +8985,55 @@ package body Sem_Attr is
       --  of the expressions to be scalar in order for the attribute to be
       --  considered to be static.
 
-      declare
-         E : Node_Id;
+      if Id /= Attribute_Make then
+         declare
+            E : Node_Id;
 
-      begin
-         E := E1;
+         begin
+            E := E1;
 
-         while Present (E) loop
+            while Present (E) loop
 
-            --  If expression is not static, then the attribute reference
-            --  result certainly cannot be static.
+               --  If expression is not static, then the attribute reference
+               --  result certainly cannot be static.
 
-            if not Is_Static_Expression (E) then
-               Static := False;
+               if not Is_Static_Expression (E) then
+                  Static := False;
+                  Set_Is_Static_Expression (N, False);
+               end if;
+
+               if Raises_Constraint_Error (E) then
+                  Set_Raises_Constraint_Error (N);
+               end if;
+
+               --  If the result is not known at compile time, or is not of
+               --  a scalar type, then the result is definitely not static,
+               --  so we can quit now.
+
+               if not Compile_Time_Known_Value (E)
+                 or else not Is_Scalar_Type (Etype (E))
+               then
+                  Check_Expressions;
+                  return;
+
+               --  If the expression raises a constraint error, then so does
+               --  the attribute reference. We keep going in this case because
+               --  we are still interested in whether the attribute reference
+               --  is static even if it is not static.
+
+               elsif Raises_Constraint_Error (E) then
+                  Set_Raises_Constraint_Error (N);
+               end if;
+
+               Next (E);
+            end loop;
+
+            if Raises_Constraint_Error (Prefix (N)) then
                Set_Is_Static_Expression (N, False);
-            end if;
-
-            if Raises_Constraint_Error (E) then
-               Set_Raises_Constraint_Error (N);
-            end if;
-
-            --  If the result is not known at compile time, or is not of
-            --  a scalar type, then the result is definitely not static,
-            --  so we can quit now.
-
-            if not Compile_Time_Known_Value (E)
-              or else not Is_Scalar_Type (Etype (E))
-            then
-               Check_Expressions;
                return;
-
-            --  If the expression raises a constraint error, then so does
-            --  the attribute reference. We keep going in this case because
-            --  we are still interested in whether the attribute reference
-            --  is static even if it is not static.
-
-            elsif Raises_Constraint_Error (E) then
-               Set_Raises_Constraint_Error (N);
             end if;
-
-            Next (E);
-         end loop;
-
-         if Raises_Constraint_Error (Prefix (N)) then
-            Set_Is_Static_Expression (N, False);
-            return;
-         end if;
-      end;
+         end;
+      end if;
 
       --  Deal with the case of a static attribute reference that raises
       --  constraint error. The Raises_Constraint_Error flag will already
@@ -9016,19 +9080,6 @@ package body Sem_Attr is
       --  base type instead of the root-type for floating point attributes.
 
       case Id is
-
-      --  Attributes related to Ada 2012 iterators; nothing to evaluate for
-      --  these.
-
-      when Attribute_Constant_Indexing
-         | Attribute_Default_Iterator
-         | Attribute_Implicit_Dereference
-         | Attribute_Iterator_Element
-         | Attribute_Iterable
-         | Attribute_Reduce
-         | Attribute_Variable_Indexing
-      =>
-         null;
 
       --  Internal attributes used to deal with Ada 2012 delayed aspects.
       --  These were already rejected by the parser. Thus they shouldn't
@@ -9335,6 +9386,20 @@ package body Sem_Attr is
       when Attribute_First =>
          Set_Bounds;
 
+         --  In GNATprove mode we only fold array attributes when prefix is
+         --  static (because that's required by the Ada rules) or at least can
+         --  be evaluated without checks (because GNATprove would miss them).
+
+         if GNATprove_Mode
+            and then
+              not (Static
+                   or else (Is_Entity_Name (P) and then Is_Type (Entity (P)))
+                   or else Statically_Names_Object (P)
+                   or else Ekind (P_Type) = E_String_Literal_Subtype)
+         then
+            return;
+         end if;
+
          if Compile_Time_Known_Value (Lo_Bound) then
             if Is_Real_Type (P_Type) then
                Fold_Ureal (N, Expr_Value_R (Lo_Bound), Static);
@@ -9448,7 +9513,7 @@ package body Sem_Attr is
       -----------
 
       --  Image is a scalar attribute, but is never static, because it is
-      --  not a static function (having a non-scalar argument (RM 4.9(22))
+      --  not a static function (having a non-scalar argument (RM 4.9(22)).
       --  However, we can constant-fold the image of an enumeration literal
       --  if names are available and default Image implementation has not
       --  been overridden.
@@ -9548,6 +9613,20 @@ package body Sem_Attr is
       when Attribute_Last =>
          Set_Bounds;
 
+         --  In GNATprove mode we only fold array attributes when prefix is
+         --  static (because that's required by the Ada rules) or at least can
+         --  be evaluated without checks (because GNATprove would miss them).
+
+         if GNATprove_Mode
+            and then
+              not (Static
+                   or else (Is_Entity_Name (P) and then Is_Type (Entity (P)))
+                   or else Statically_Names_Object (P)
+                   or else Ekind (P_Type) = E_String_Literal_Subtype)
+         then
+            return;
+         end if;
+
          if Compile_Time_Known_Value (Hi_Bound) then
             if Is_Real_Type (P_Type) then
                Fold_Ureal (N, Expr_Value_R (Hi_Bound), Static);
@@ -9630,6 +9709,20 @@ package body Sem_Attr is
          end loop;
 
          Set_Bounds;
+
+         --  In GNATprove mode we only fold array attributes when prefix is
+         --  static (because that's required by the Ada rules) or at least can
+         --  be evaluated without checks (because GNATprove would miss them).
+
+         if GNATprove_Mode
+            and then
+              not (Static
+                   or else (Is_Entity_Name (P) and then Is_Type (Entity (P)))
+                   or else Statically_Names_Object (P)
+                   or else Ekind (P_Type) = E_String_Literal_Subtype)
+         then
+            return;
+         end if;
 
          --  For two compile time values, we can compute length
 
@@ -9799,6 +9892,13 @@ package body Sem_Attr is
             Fold_Uint (N, Esize (P_TypeA), Static);
          end if;
       end Machine_Size;
+
+      ----------
+      -- Make --
+      ----------
+
+      when Attribute_Make =>
+         Set_Etype (N, Etype (Prefix (N)));
 
       --------------
       -- Mantissa --
@@ -10210,6 +10310,13 @@ package body Sem_Attr is
          end case;
       end Range_Length;
 
+      ------------
+      -- Reduce --
+      ------------
+
+      when Attribute_Reduce =>
+         null;
+
       ---------
       -- Ref --
       ---------
@@ -10401,10 +10508,10 @@ package body Sem_Attr is
                         Fold_Uint (N, Expr_Value (Expression (S)), Static);
 
                      --  If no size is specified, then we simply use the object
-                     --  size in the VADS_Size case (e.g. Natural'Size is equal
-                     --  to Integer'Size, not one less).
+                     --  size (when known) in the VADS_Size case (for example,
+                     --  Natural'Size is equal to Integer'Size, not one less).
 
-                     else
+                     elsif Known_Esize (P_TypeA) then
                         Fold_Uint (N, Esize (P_TypeA), Static);
                      end if;
                   end;
@@ -10604,6 +10711,26 @@ package body Sem_Attr is
          Static := True;
          Set_Is_Static_Expression (N, True);
       end Unconstrained_Array;
+
+      -------------------------
+      -- Unsigned_Base_Range --
+      -------------------------
+
+      when Attribute_Unsigned_Base_Range => Unsigned_Base_Range : declare
+      begin
+         Rewrite (N, New_Occurrence_Of (
+           Boolean_Literals (
+             Is_Integer_Type (P_Type)
+               and then
+                 Has_Unsigned_Base_Range_Aspect (P_Base_Type)), Loc));
+
+         --  Analyze and resolve as boolean, note that this attribute is
+         --  a static attribute in GNAT.
+
+         Analyze_And_Resolve (N, Standard_Boolean);
+         Static := True;
+         Set_Is_Static_Expression (N, True);
+      end Unsigned_Base_Range;
 
       --  Attribute Update is never static
 
@@ -11032,6 +11159,7 @@ package body Sem_Attr is
          | Attribute_Class
          | Attribute_Code_Address
          | Attribute_Compiler_Version
+         | Attribute_Constructor
          | Attribute_Count
          | Attribute_Default_Bit_Order
          | Attribute_Default_Scalar_Storage_Order
@@ -11110,7 +11238,9 @@ package body Sem_Attr is
       --  If this is still an attribute reference, then it has not been folded
       --  and that means that its expressions are in a non-static context.
 
-      elsif Nkind (N) = N_Attribute_Reference then
+      elsif Nkind (N) = N_Attribute_Reference
+        and then Attribute_Name (N) /= Name_Make
+      then
          Check_Expressions;
 
       --  Note: the else case not covered here are odd cases where the
@@ -11365,10 +11495,11 @@ package body Sem_Attr is
                   end loop;
 
                   --  If Prefix is a subprogram name, this reference freezes,
-                  --  but not if within spec expression mode. The profile of
-                  --  the subprogram is not frozen at this point.
+                  --  but not during preanalysis (including preanalysis of
+                  --  spec expressions). The profile of the subprogram is not
+                  --  frozen at this point.
 
-                  if not In_Spec_Expression then
+                  if not Preanalysis_Active then
                      Freeze_Before (N, Entity (P), Do_Freeze_Profile => False);
                   end if;
 
@@ -11377,7 +11508,7 @@ package body Sem_Attr is
                --  If it is an object, complete its resolution.
 
                elsif Is_Overloadable (Entity (P)) then
-                  if not In_Spec_Expression then
+                  if not Preanalysis_Active then
                      Freeze_Before (N, Entity (P), Do_Freeze_Profile => False);
                   end if;
 
@@ -12362,70 +12493,6 @@ package body Sem_Attr is
                Set_Address_Taken (Entity (P));
             end if;
 
-            if Nkind (P) = N_Slice then
-
-               --  Arr (X .. Y)'address is identical to Arr (X)'address,
-               --  even if the array is packed and the slice itself is not
-               --  addressable. Transform the prefix into an indexed component.
-
-               --  Note that the transformation is safe only if we know that
-               --  the slice is non-null. That is because a null slice can have
-               --  an out of bounds index value.
-
-               --  Right now, gigi blows up if given 'Address on a slice as a
-               --  result of some incorrect freeze nodes generated by the front
-               --  end, and this covers up that bug in one case, but the bug is
-               --  likely still there in the cases not handled by this code ???
-
-               --  It's not clear what 'Address *should* return for a null
-               --  slice with out of bounds indexes, this might be worth an ARG
-               --  discussion ???
-
-               --  One approach would be to do a length check unconditionally,
-               --  and then do the transformation below unconditionally, but
-               --  analyze with checks off, avoiding the problem of the out of
-               --  bounds index. This approach would interpret the address of
-               --  an out of bounds null slice as being the address where the
-               --  array element would be if there was one, which is probably
-               --  as reasonable an interpretation as any ???
-
-               declare
-                  Loc : constant Source_Ptr := Sloc (P);
-                  D   : constant Node_Id := Discrete_Range (P);
-                  Lo  : Node_Id;
-
-               begin
-                  if Is_Entity_Name (D)
-                    and then
-                      Not_Null_Range
-                        (Type_Low_Bound (Entity (D)),
-                         Type_High_Bound (Entity (D)))
-                  then
-                     Lo :=
-                       Make_Attribute_Reference (Loc,
-                          Prefix => (New_Occurrence_Of (Entity (D), Loc)),
-                          Attribute_Name => Name_First);
-
-                  elsif Nkind (D) = N_Range
-                    and then Not_Null_Range (Low_Bound (D), High_Bound (D))
-                  then
-                     Lo := Low_Bound (D);
-
-                  else
-                     Lo := Empty;
-                  end if;
-
-                  if Present (Lo) then
-                     Rewrite (P,
-                        Make_Indexed_Component (Loc,
-                           Prefix => Relocate_Node (Prefix (P)),
-                           Expressions => New_List (Lo)));
-
-                     Analyze_And_Resolve (P);
-                  end if;
-               end;
-            end if;
-
          ------------------
          -- Body_Version --
          ------------------
@@ -12690,45 +12757,43 @@ package body Sem_Attr is
                        and then Scope (Op) = Standard_Standard
                        and then not Strict
                      then
-                        declare
-                           Op_Chars : constant Any_Operator_Name := Chars (Op);
-                           --  Nonassociative ops like division are unlikely
-                           --  to come up in practice, but they are legal.
-                        begin
-                           case Op_Chars is
-                              when Name_Op_Add
-                                | Name_Op_Subtract
-                                | Name_Op_Multiply
-                                | Name_Op_Divide
-                                | Name_Op_Expon
-                              =>
-                                 return Is_Numeric_Type (Typ);
+                        --  Nonassociative ops like division are unlikely to
+                        --  come up in practice, but they are legal.
 
-                              when Name_Op_Mod | Name_Op_Rem =>
-                                 return Is_Numeric_Type (Typ)
-                                   and then Is_Discrete_Type (Typ);
+                        case Any_Operator_Name'(Chars (Op)) is
+                           when Name_Op_Add
+                             | Name_Op_Subtract
+                             | Name_Op_Multiply
+                             | Name_Op_Divide
+                             | Name_Op_Expon
+                           =>
+                              return Is_Numeric_Type (Typ);
 
-                              when Name_Op_And | Name_Op_Or | Name_Op_Xor =>
-                                 --  No Boolean array operators in Standard
-                                 return Is_Boolean_Type (Typ)
-                                   or else Is_Modular_Integer_Type (Typ);
+                           when Name_Op_Mod | Name_Op_Rem =>
+                              return Is_Numeric_Type (Typ)
+                                and then Is_Discrete_Type (Typ);
 
-                              when Name_Op_Concat =>
-                                 return Is_Array_Type (Typ)
-                                   and then Number_Dimensions (Typ) = 1;
+                           when Name_Op_And | Name_Op_Or | Name_Op_Xor =>
+                              --  No Boolean array operators in Standard
+                              return Is_Boolean_Type (Typ)
+                                or else Is_Modular_Integer_Type (Typ);
 
-                              when Name_Op_Eq | Name_Op_Ne
-                                | Name_Op_Lt | Name_Op_Le
-                                | Name_Op_Gt | Name_Op_Ge
-                              =>
-                                 return Is_Boolean_Type (Typ);
+                           when Name_Op_Concat =>
+                              return Is_Array_Type (Typ)
+                                and then Number_Dimensions (Typ) = 1;
 
-                              when Name_Op_Abs | Name_Op_Not =>
-                                 --  unary ops were already handled
-                                 pragma Assert (False);
-                                 raise Program_Error;
-                           end case;
-                        end;
+                           when Name_Op_Eq | Name_Op_Ne
+                             | Name_Op_Lt | Name_Op_Le
+                             | Name_Op_Gt | Name_Op_Ge
+                           =>
+                              return Is_Boolean_Type (Typ);
+
+                           when Name_Op_Abs | Name_Op_Not =>
+                              --  unary ops were already handled
+
+                              raise Program_Error;
+                        end case;
+
                      else
                         return False;
                      end if;
@@ -12736,7 +12801,10 @@ package body Sem_Attr is
                end Proper_Op;
 
             begin
-               Resolve (Init_Value_Exp, Typ);
+               --  First try to resolve the reducer and then, if this succeeds,
+               --  resolve the initial value.  This nicely deals with confused
+               --  programmers who swap the two items.
+
                if Is_Overloaded (Reducer_Subp_Name) then
                   Outer :
                   for Retry in Boolean loop
@@ -12758,14 +12826,18 @@ package body Sem_Attr is
                then
                   Op := Reducer_Subp_Name;
 
-               elsif Proper_Op (Entity (Reducer_Subp_Name)) then
+               elsif Is_Entity_Name (Reducer_Subp_Name)
+                 and then Proper_Op (Entity (Reducer_Subp_Name))
+               then
                   Op := Entity (Reducer_Subp_Name);
                   Set_Etype (N, Typ);
                end if;
 
                if No (Op) then
-                  Error_Msg_N ("No suitable reducer subprogram found",
+                  Error_Msg_N ("no suitable reducer subprogram found",
                     Reducer_Subp_Name);
+               else
+                  Resolve (Init_Value_Exp, Typ);
                end if;
             end;
 
@@ -12973,7 +13045,7 @@ package body Sem_Attr is
             --  their Entity attribute to reference their discriminal.
 
             if Expander_Active
-              and then Present (Expressions (N))
+              and then Attr_Id /= Attribute_Make
             then
                declare
                   Expr : Node_Id := First (Expressions (N));

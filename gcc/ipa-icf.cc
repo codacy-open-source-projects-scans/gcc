@@ -1,5 +1,5 @@
 /* Interprocedural Identical Code Folding pass
-   Copyright (C) 2014-2024 Free Software Foundation, Inc.
+   Copyright (C) 2014-2025 Free Software Foundation, Inc.
 
    Contributed by Jan Hubicka <hubicka@ucw.cz> and Martin Liska <mliska@suse.cz>
 
@@ -232,16 +232,6 @@ void sem_item::set_hash (hashval_t hash)
 }
 
 hash_map<const_tree, hashval_t> sem_item::m_type_hash_cache;
-
-/* Semantic function constructor that uses STACK as bitmap memory stack.  */
-
-sem_function::sem_function (bitmap_obstack *stack)
-  : sem_item (FUNC, stack), memory_access_types (), m_alias_sets_hash (0),
-    m_checker (NULL), m_compared_func (NULL)
-{
-  bb_sizes.create (0);
-  bb_sorted.create (0);
-}
 
 sem_function::sem_function (cgraph_node *node, bitmap_obstack *stack)
   : sem_item (FUNC, node, stack), memory_access_types (),
@@ -1367,7 +1357,6 @@ sem_function::init (ipa_icf_gimple::func_checker *checker)
   gcc_assert (SSANAMES (func));
 
   ssa_names_size = SSANAMES (func)->length ();
-  node = node;
 
   decl = fndecl;
   region_tree = func->eh->region_tree;
@@ -1645,10 +1634,6 @@ sem_function::bb_dict_test (vec<int> *bb_dict, int source, int target)
     }
   else
     return (*bb_dict)[source] == target;
-}
-
-sem_variable::sem_variable (bitmap_obstack *stack): sem_item (VAR, stack)
-{
 }
 
 sem_variable::sem_variable (varpool_node *node, bitmap_obstack *stack)
@@ -2181,7 +2166,9 @@ sem_item_optimizer::write_summary (void)
        !lsei_end_p (lsei);
        lsei_next_in_partition (&lsei))
     {
-      symtab_node *node = lsei_node (lsei);
+      symtab_node *node = dyn_cast <symtab_node *> (lsei_node (lsei));
+      if (!node)
+	continue;
 
       if (m_symtab_node_map.get (node))
 	count++;
@@ -2194,7 +2181,9 @@ sem_item_optimizer::write_summary (void)
        !lsei_end_p (lsei);
        lsei_next_in_partition (&lsei))
     {
-      symtab_node *node = lsei_node (lsei);
+      symtab_node *node = dyn_cast <symtab_node *> (lsei_node (lsei));
+      if (!node)
+	continue;
 
       sem_item **item = m_symtab_node_map.get (node);
 
@@ -2248,7 +2237,7 @@ sem_item_optimizer::read_section (lto_file_decl_data *file_data,
   for (i = 0; i < count; i++)
     {
       unsigned int index;
-      symtab_node *node;
+      toplevel_node *node;
       lto_symtab_encoder_t encoder;
 
       index = streamer_read_uhwi (&ib_main);
@@ -2256,12 +2245,11 @@ sem_item_optimizer::read_section (lto_file_decl_data *file_data,
       node = lto_symtab_encoder_deref (encoder, index);
 
       hashval_t hash = streamer_read_uhwi (&ib_main);
-      gcc_assert (node->definition);
+      if (symtab_node *snode = dyn_cast <symtab_node *> (node))
+	gcc_assert (snode->definition);
 
-      if (is_a<cgraph_node *> (node))
+      if (cgraph_node *cnode = dyn_cast <cgraph_node *> (node))
 	{
-	  cgraph_node *cnode = dyn_cast <cgraph_node *> (node);
-
 	  sem_function *fn = new sem_function (cnode, &m_bmstack);
 	  unsigned count = streamer_read_uhwi (&ib_main);
 	  inchash::hash hstate (0);
@@ -2278,10 +2266,8 @@ sem_item_optimizer::read_section (lto_file_decl_data *file_data,
 	  fn->set_hash (hash);
 	  m_items.safe_push (fn);
 	}
-      else
+      else if (varpool_node *vnode = dyn_cast <varpool_node *> (node))
 	{
-	  varpool_node *vnode = dyn_cast <varpool_node *> (node);
-
 	  sem_variable *var = new sem_variable (vnode, &m_bmstack);
 	  var->set_hash (hash);
 	  m_items.safe_push (var);

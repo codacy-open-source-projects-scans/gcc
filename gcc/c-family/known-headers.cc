@@ -1,5 +1,5 @@
 /* Support for suggestions about missing #include directives.
-   Copyright (C) 2017-2024 Free Software Foundation, Inc.
+   Copyright (C) 2017-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -329,9 +329,10 @@ suggest_missing_header::~suggest_missing_header ()
 
 /* suggest_missing_option's ctor.  */
 
-suggest_missing_option::suggest_missing_option (location_t loc,
-						const char *macro_name,
-						diagnostic_option_id option_id)
+suggest_missing_option::
+suggest_missing_option (location_t loc,
+			const char *macro_name,
+			diagnostics::option_id option_id)
 : deferred_diagnostic (loc), m_name_str (macro_name), m_option_id (option_id)
 {
   gcc_assert (macro_name);

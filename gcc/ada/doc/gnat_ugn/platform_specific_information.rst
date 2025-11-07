@@ -167,7 +167,7 @@ Alternatively, you can specify :file:`rts-sjlj/adainclude` in the file
 
 .. index:: --RTS switch
 
-You can select another run-time library temporarily 
+You can select another run-time library temporarily
 by using the :switch:`--RTS` switch, e.g., :switch:`--RTS=sjlj`
 
 
@@ -538,17 +538,17 @@ and::
 Choosing the Scheduling Policy with Windows
 -------------------------------------------
 
-Under Windows, the standard 31 priorities of the Ada model are mapped onto 
+Under Windows, the standard 31 priorities of the Ada model are mapped onto
 Window's seven standard priority levels by default: Idle, Lowest, Below Normal,
 Normal, Above Normal,
 
 When using the ``FIFO_Within_Priorities`` task dispatching policy, GNAT
-assigns the ``REALTIME_PRIORITY_CLASS`` priority class to the application 
-and maps the Ada priority range to the sixteen priorities made available under 
-``REALTIME_PRIORITY_CLASS``. 
+assigns the ``REALTIME_PRIORITY_CLASS`` priority class to the application
+and maps the Ada priority range to the sixteen priorities made available under
+``REALTIME_PRIORITY_CLASS``.
 
 For details on the values of the different priority mappings, see declarations
-in :file:`system.ads`. For more information about Windows priorities, please 
+in :file:`system.ads`. For more information about Windows priorities, please
 refer to Microsoft documentation.
 
 Windows Socket Timeouts
@@ -1548,13 +1548,6 @@ You may specify any of the following switches to ``gnatdll``:
   relocatable DLL. We advise you to build relocatable DLL.
 
 
-  .. index:: -b (gnatdll)
-
-:switch:`-b {address}`
-  Set the relocatable DLL base address. By default the address is
-  ``0x11000000``.
-
-
   .. index:: -bargs (gnatdll)
 
 :switch:`-bargs {opts}`
@@ -2219,11 +2212,12 @@ Setting Stack Size from ``gnatlink``
 You can specify the program stack size at link time. On most versions
 of Windows, starting with XP, this is mostly useful to set the size of
 the main stack (environment task). The other task stacks are set with
-pragma Storage_Size or with the *gnatbind -d* command.
+pragma Storage_Size or with the *gnatbind -d* command. The specified size will
+become the reserved memory size of the underlying thread.
 
 Since very old versions of Windows (2000, NT4, etc.) don't allow setting the
-reserve size of individual tasks, the link-time stack size applies to all
-tasks, and pragma Storage_Size has no effect.
+reserve size of individual tasks, for those versions the link-time stack size
+applies to all tasks, and pragma Storage_Size has no effect.
 In particular, Stack Overflow checks are made against this
 link-time specified size.
 

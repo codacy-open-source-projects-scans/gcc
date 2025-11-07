@@ -19,9 +19,7 @@ float repl1(T, T2, T2);
 template<typename T>
 float base1(T);
 
-/* { dg-message "sorry, unimplemented: 'append_args' clause not yet supported for 'float repl1\\(T, T2, T2\\) \\\[with T = short int; T2 = omp_interop_t\\\]'" "" { target *-*-* } .-4 }  */
-/* { dg-message "sorry, unimplemented: 'append_args' clause not yet supported for 'float repl1\\(T, T2, T2\\) \\\[with T = omp_interop_t; T2 = omp_interop_t\\\]'" "" { target *-*-* } .-5 }  */
-/* { dg-message "sorry, unimplemented: 'append_args' clause not yet supported for 'float repl1\\(T, T2, T2\\) \\\[with T = float; T2 = omp_interop_t\\\]'" "" { target *-*-* } .-6 }  */
+
 
 
 
@@ -45,27 +43,22 @@ void repl99(T);
         append_args(interop(target, targetsync, prefer_type("cuda")))
 void base99();
 
-/* { dg-message "sorry, unimplemented: 'append_args' clause not yet supported for 'void repl99\\(T\\) \\\[with T = omp_interop_t\\\]'" "" { target *-*-* } .-3 }  */
-
 
 
 template<typename T, typename T2, typename T3>
 void repl2(T, T2, T3, T3);
 #pragma omp declare variant(repl2) match(construct={dispatch}) adjust_args(need_device_ptr : y) \
         append_args(interop(target, targetsync, prefer_type(1)), \
-                    interop(prefer_type({fr(3), attr("ompx_nop")},{fr(2)},{attr("ompx_all")})))
+                    interop(target, prefer_type({fr(3), attr("ompx_nop")},{fr(2)},{attr("ompx_all")})))
 template<typename T, typename T2>
 void base2(T x, T2 y);
-
-/* { dg-message "sorry, unimplemented: 'append_args' clause not yet supported for 'void repl2\\(T, T2, T3, T3\\) \\\[with T = int\\*; T2 = int\\*; T3 = omp_interop_t\\\]'" "" { target *-*-* } .-5 }  */
-/* { dg-message "sorry, unimplemented: 'append_args' clause not yet supported for 'void repl2\\(T, T2, T3, T3\\) \\\[with T = int\\*; T2 = omp_interop_t; T3 = omp_interop_t\\\]'" "" { target *-*-* } .-6 }  */
 
 
 template<typename T,typename T3>
 void tooFewRepl(T, T, T3);
 #pragma omp declare variant(tooFewRepl) match(construct={dispatch}) \
         append_args(interop(target, targetsync, prefer_type(1)), \
-                    interop(prefer_type({fr(3), attr("ompx_nop")},{fr(2)},{attr("ompx_all")})))
+                    interop(target, prefer_type({fr(3), attr("ompx_nop")},{fr(2)},{attr("ompx_all")})))
 template<typename T, typename T2>
 void tooFewBase(T x, T2 y);
 
@@ -79,11 +72,10 @@ void tooFewBase(T x, T2 y);
 template<typename T, typename T2>
 void repl3(T, T2, ...);
 #pragma omp declare variant(repl3) match(construct={dispatch}) \
-        append_args(interop(prefer_type("cuda", "hsa")))
+	append_args(interop(target, prefer_type("cuda", "hsa")))
 template<typename T>
 void base3(T, ...);
 
-/* { dg-message "sorry, unimplemented: 'append_args' clause not yet supported for 'void repl3\\(T, T2, \.\.\.\\) \\\[with T = int\\*; T2 = omp_interop_t\\\]'" "" { target *-*-* } .-4 }  */
 
 
 
@@ -93,32 +85,29 @@ test (int *a, int *b)
   omp_interop_t obj1, obj2;
   float x, y;
 
-  #pragma omp dispatch interop ( obj1, obj2 )
+  #pragma omp dispatch interop ( obj1, obj2 ) device(2) // OK
     x = base1<short> (5);
-  /* { dg-note "required by 'dispatch' construct" "" { target *-*-* } .-2 }  */
+
+  #pragma omp dispatch interop ( obj1, obj2 ) // { dg-error "the 'device' clause must be present if the 'interop' clause has more than one list item" }
+    x = base1<short> (5);
 
   #pragma omp dispatch
     base2inval<int *, omp_interop_t> (a, omp_interop_none);
 
   #pragma omp dispatch
     base99 ();
-  /* { dg-note "required by 'dispatch' construct" "" { target *-*-* } .-2 }  */
 
   #pragma omp dispatch interop ( obj1 )
     base2<int *, omp_interop_t> (b, omp_interop_none);
-  /* { dg-note "required by 'dispatch' construct" "" { target *-*-* } .-2 }  */
 
   #pragma omp dispatch interop ( obj1 )
     base2<int *, int *> (b, a);
-  /* { dg-note "required by 'dispatch' construct" "" { target *-*-* } .-2 }  */
 
   #pragma omp dispatch interop ( obj1 )
     x = base1<omp_interop_t> (omp_interop_none);
-  /* { dg-note "required by 'dispatch' construct" "" { target *-*-* } .-2 }  */
 
   #pragma omp dispatch interop ( obj1 )
     x = base1<float> (1.0f);
-  /* { dg-note "required by 'dispatch' construct" "" { target *-*-* } .-2 }  */
 
   #pragma omp dispatch
     tooFewBase<int*,int*>(a,b);
@@ -128,7 +117,6 @@ test (int *a, int *b)
 
   #pragma omp dispatch
     base3<int*>(a, 1, 2, "abc");
-  /* { dg-note "required by 'dispatch' construct" "" { target *-*-* } .-2 }  */
 
   return x;
 }

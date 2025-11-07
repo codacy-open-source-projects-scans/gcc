@@ -1,5 +1,5 @@
 /* Subroutines used for expanding LoongArch builtins.
-   Copyright (C) 2021-2024 Free Software Foundation, Inc.
+   Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Loongson Ltd.
 
 This file is part of GCC.
@@ -282,10 +282,24 @@ AVAIL_ALL (lasx_frecipe, ISA_HAS_LASX && ISA_HAS_FRECIPE)
 #define CODE_FOR_lsx_vftintrz_l_d CODE_FOR_fix_truncv2dfv2di2
 #define CODE_FOR_lsx_vftintrz_wu_s CODE_FOR_fixuns_truncv4sfv4si2
 #define CODE_FOR_lsx_vftintrz_lu_d CODE_FOR_fixuns_truncv2dfv2di2
+#define CODE_FOR_lsx_vftintrz_w_d CODE_FOR_vec_pack_sfix_trunc_v2df
+#define CODE_FOR_lsx_vftintrzh_l_s CODE_FOR_vec_unpack_sfix_trunc_hi_v4sf
+#define CODE_FOR_lsx_vftintrzl_l_s CODE_FOR_vec_unpack_sfix_trunc_lo_v4sf
 #define CODE_FOR_lsx_vffint_s_w CODE_FOR_floatv4siv4sf2
 #define CODE_FOR_lsx_vffint_d_l CODE_FOR_floatv2div2df2
 #define CODE_FOR_lsx_vffint_s_wu CODE_FOR_floatunsv4siv4sf2
 #define CODE_FOR_lsx_vffint_d_lu CODE_FOR_floatunsv2div2df2
+#define CODE_FOR_lsx_vffint_s_l CODE_FOR_vec_packs_float_v2di
+#define CODE_FOR_lsx_vffinth_d_w CODE_FOR_vec_unpacks_float_hi_v4si
+#define CODE_FOR_lsx_vffintl_d_w CODE_FOR_vec_unpacks_float_lo_v4si
+#define CODE_FOR_lsx_vexth_h_b CODE_FOR_vec_unpacks_hi_v16qi
+#define CODE_FOR_lsx_vexth_w_h CODE_FOR_vec_unpacks_hi_v8hi
+#define CODE_FOR_lsx_vexth_d_w CODE_FOR_vec_unpacks_hi_v4si
+#define CODE_FOR_lsx_vexth_hu_bu CODE_FOR_vec_unpacku_hi_v16qi
+#define CODE_FOR_lsx_vexth_wu_hu CODE_FOR_vec_unpacku_hi_v8hi
+#define CODE_FOR_lsx_vexth_du_wu CODE_FOR_vec_unpacku_hi_v4si
+#define CODE_FOR_lsx_vfcvth_d_s CODE_FOR_vec_unpacks_hi_v4sf
+#define CODE_FOR_lsx_vfcvtl_d_s CODE_FOR_vec_unpacks_lo_v4sf
 #define CODE_FOR_lsx_vfsub_s CODE_FOR_subv4sf3
 #define CODE_FOR_lsx_vfsub_d CODE_FOR_subv2df3
 #define CODE_FOR_lsx_vfmul_s CODE_FOR_mulv4sf3
@@ -448,14 +462,14 @@ AVAIL_ALL (lasx_frecipe, ISA_HAS_LASX && ISA_HAS_FRECIPE)
 #define CODE_FOR_lsx_vssub_hu CODE_FOR_lsx_vssub_u_hu
 #define CODE_FOR_lsx_vssub_wu CODE_FOR_lsx_vssub_u_wu
 #define CODE_FOR_lsx_vssub_du CODE_FOR_lsx_vssub_u_du
-#define CODE_FOR_lsx_vabsd_b CODE_FOR_lsx_vabsd_s_b
-#define CODE_FOR_lsx_vabsd_h CODE_FOR_lsx_vabsd_s_h
-#define CODE_FOR_lsx_vabsd_w CODE_FOR_lsx_vabsd_s_w
-#define CODE_FOR_lsx_vabsd_d CODE_FOR_lsx_vabsd_s_d
-#define CODE_FOR_lsx_vabsd_bu CODE_FOR_lsx_vabsd_u_bu
-#define CODE_FOR_lsx_vabsd_hu CODE_FOR_lsx_vabsd_u_hu
-#define CODE_FOR_lsx_vabsd_wu CODE_FOR_lsx_vabsd_u_wu
-#define CODE_FOR_lsx_vabsd_du CODE_FOR_lsx_vabsd_u_du
+#define CODE_FOR_lsx_vabsd_b CODE_FOR_sabdv16qi3
+#define CODE_FOR_lsx_vabsd_h CODE_FOR_sabdv8hi3
+#define CODE_FOR_lsx_vabsd_w CODE_FOR_sabdv4si3
+#define CODE_FOR_lsx_vabsd_d CODE_FOR_sabdv2di3
+#define CODE_FOR_lsx_vabsd_bu CODE_FOR_uabdv16qi3
+#define CODE_FOR_lsx_vabsd_hu CODE_FOR_uabdv8hi3
+#define CODE_FOR_lsx_vabsd_wu CODE_FOR_uabdv4si3
+#define CODE_FOR_lsx_vabsd_du CODE_FOR_uabdv2di3
 #define CODE_FOR_lsx_vftint_wu_s CODE_FOR_lsx_vftint_u_wu_s
 #define CODE_FOR_lsx_vftint_lu_d CODE_FOR_lsx_vftint_u_lu_d
 #define CODE_FOR_lsx_vandn_v CODE_FOR_andnv16qi3
@@ -504,6 +518,36 @@ AVAIL_ALL (lasx_frecipe, ISA_HAS_LASX && ISA_HAS_FRECIPE)
 #define CODE_FOR_lsx_vfrsqrt_s CODE_FOR_rsqrtv4sf2
 #define CODE_FOR_lsx_vfrecip_d CODE_FOR_recipv2df3
 #define CODE_FOR_lsx_vfrecip_s CODE_FOR_recipv4sf3
+
+#define CODE_FOR_lsx_vaddwev_q_d	CODE_FOR_lsx_addwev_q_d_punned
+#define CODE_FOR_lsx_vaddwev_q_du	CODE_FOR_lsx_addwev_q_du_punned
+#define CODE_FOR_lsx_vsubwev_q_d	CODE_FOR_lsx_subwev_q_d_punned
+#define CODE_FOR_lsx_vsubwev_q_du	CODE_FOR_lsx_subwev_q_du_punned
+#define CODE_FOR_lsx_vmulwev_q_d	CODE_FOR_lsx_mulwev_q_d_punned
+#define CODE_FOR_lsx_vmulwev_q_du	CODE_FOR_lsx_mulwev_q_du_punned
+#define CODE_FOR_lsx_vaddwod_q_d	CODE_FOR_lsx_addwod_q_d_punned
+#define CODE_FOR_lsx_vaddwod_q_du	CODE_FOR_lsx_addwod_q_du_punned
+#define CODE_FOR_lsx_vsubwod_q_d	CODE_FOR_lsx_subwod_q_d_punned
+#define CODE_FOR_lsx_vsubwod_q_du	CODE_FOR_lsx_subwod_q_du_punned
+#define CODE_FOR_lsx_vmulwod_q_d	CODE_FOR_lsx_mulwod_q_d_punned
+#define CODE_FOR_lsx_vmulwod_q_du	CODE_FOR_lsx_mulwod_q_du_punned
+
+#define CODE_FOR_lsx_vaddwev_q_du_d	CODE_FOR_lsx_addwev_q_du_d_punned
+#define CODE_FOR_lsx_vmulwev_q_du_d	CODE_FOR_lsx_mulwev_q_du_d_punned
+#define CODE_FOR_lsx_vaddwod_q_du_d	CODE_FOR_lsx_addwod_q_du_d_punned
+#define CODE_FOR_lsx_vmulwod_q_du_d	CODE_FOR_lsx_mulwod_q_du_d_punned
+
+#define CODE_FOR_lsx_vhaddw_q_d		CODE_FOR_lsx_haddw_q_d_punned
+#define CODE_FOR_lsx_vhaddw_qu_du	CODE_FOR_lsx_haddw_qu_du_punned
+#define CODE_FOR_lsx_vhsubw_q_d		CODE_FOR_lsx_hsubw_q_d_punned
+#define CODE_FOR_lsx_vhsubw_qu_du	CODE_FOR_lsx_hsubw_qu_du_punned
+
+#define CODE_FOR_lsx_vmaddwev_q_d	CODE_FOR_lsx_maddwev_q_d_punned
+#define CODE_FOR_lsx_vmaddwev_q_du	CODE_FOR_lsx_maddwev_q_du_punned
+#define CODE_FOR_lsx_vmaddwev_q_du_d	CODE_FOR_lsx_maddwev_q_du_d_punned
+#define CODE_FOR_lsx_vmaddwod_q_d	CODE_FOR_lsx_maddwod_q_d_punned
+#define CODE_FOR_lsx_vmaddwod_q_du	CODE_FOR_lsx_maddwod_q_du_punned
+#define CODE_FOR_lsx_vmaddwod_q_du_d	CODE_FOR_lsx_maddwod_q_du_d_punned
 
 /* LoongArch ASX define CODE_FOR_lasx_mxxx */
 #define CODE_FOR_lasx_xvsadd_b CODE_FOR_ssaddv32qi3
@@ -563,6 +607,12 @@ AVAIL_ALL (lasx_frecipe, ISA_HAS_LASX && ISA_HAS_FRECIPE)
 #define CODE_FOR_lasx_xvffint_d_l CODE_FOR_floatv4div4df2
 #define CODE_FOR_lasx_xvffint_s_wu CODE_FOR_floatunsv8siv8sf2
 #define CODE_FOR_lasx_xvffint_d_lu CODE_FOR_floatunsv4div4df2
+#define CODE_FOR_lasx_vext2xv_h_b CODE_FOR_vec_unpacks_lo_v32qi
+#define CODE_FOR_lasx_vext2xv_w_h CODE_FOR_vec_unpacks_lo_v16hi
+#define CODE_FOR_lasx_vext2xv_d_w CODE_FOR_vec_unpacks_lo_v8si
+#define CODE_FOR_lasx_vext2xv_hu_bu CODE_FOR_vec_unpacku_lo_v32qi
+#define CODE_FOR_lasx_vext2xv_wu_hu CODE_FOR_vec_unpacku_lo_v16hi
+#define CODE_FOR_lasx_vext2xv_du_wu CODE_FOR_vec_unpacku_lo_v8si
 #define CODE_FOR_lasx_xvfsub_s CODE_FOR_subv8sf3
 #define CODE_FOR_lasx_xvfsub_d CODE_FOR_subv4df3
 #define CODE_FOR_lasx_xvfmul_s CODE_FOR_mulv8sf3
@@ -722,14 +772,14 @@ AVAIL_ALL (lasx_frecipe, ISA_HAS_LASX && ISA_HAS_FRECIPE)
 #define CODE_FOR_lasx_xvssub_hu CODE_FOR_lasx_xvssub_u_hu
 #define CODE_FOR_lasx_xvssub_wu CODE_FOR_lasx_xvssub_u_wu
 #define CODE_FOR_lasx_xvssub_du CODE_FOR_lasx_xvssub_u_du
-#define CODE_FOR_lasx_xvabsd_b CODE_FOR_lasx_xvabsd_s_b
-#define CODE_FOR_lasx_xvabsd_h CODE_FOR_lasx_xvabsd_s_h
-#define CODE_FOR_lasx_xvabsd_w CODE_FOR_lasx_xvabsd_s_w
-#define CODE_FOR_lasx_xvabsd_d CODE_FOR_lasx_xvabsd_s_d
-#define CODE_FOR_lasx_xvabsd_bu CODE_FOR_lasx_xvabsd_u_bu
-#define CODE_FOR_lasx_xvabsd_hu CODE_FOR_lasx_xvabsd_u_hu
-#define CODE_FOR_lasx_xvabsd_wu CODE_FOR_lasx_xvabsd_u_wu
-#define CODE_FOR_lasx_xvabsd_du CODE_FOR_lasx_xvabsd_u_du
+#define CODE_FOR_lasx_xvabsd_b CODE_FOR_sabdv32qi3
+#define CODE_FOR_lasx_xvabsd_h CODE_FOR_sabdv16hi3
+#define CODE_FOR_lasx_xvabsd_w CODE_FOR_sabdv8si3
+#define CODE_FOR_lasx_xvabsd_d CODE_FOR_sabdv4di3
+#define CODE_FOR_lasx_xvabsd_bu CODE_FOR_uabdv32qi3
+#define CODE_FOR_lasx_xvabsd_hu CODE_FOR_uabdv16hi3
+#define CODE_FOR_lasx_xvabsd_wu CODE_FOR_uabdv8si3
+#define CODE_FOR_lasx_xvabsd_du CODE_FOR_uabdv4di3
 #define CODE_FOR_lasx_xvavg_b CODE_FOR_lasx_xvavg_s_b
 #define CODE_FOR_lasx_xvavg_h CODE_FOR_lasx_xvavg_s_h
 #define CODE_FOR_lasx_xvavg_w CODE_FOR_lasx_xvavg_s_w
@@ -784,6 +834,57 @@ AVAIL_ALL (lasx_frecipe, ISA_HAS_LASX && ISA_HAS_FRECIPE)
 #define CODE_FOR_lasx_xvfrsqrt_s CODE_FOR_rsqrtv8sf2
 #define CODE_FOR_lasx_xvfrecip_d CODE_FOR_recipv4df3
 #define CODE_FOR_lasx_xvfrecip_s CODE_FOR_recipv8sf3
+
+#define CODE_FOR_lasx_xvaddwev_q_d	CODE_FOR_lasx_addwev_q_d_punned
+#define CODE_FOR_lasx_xvaddwev_q_du	CODE_FOR_lasx_addwev_q_du_punned
+#define CODE_FOR_lasx_xvsubwev_q_d	CODE_FOR_lasx_subwev_q_d_punned
+#define CODE_FOR_lasx_xvsubwev_q_du	CODE_FOR_lasx_subwev_q_du_punned
+#define CODE_FOR_lasx_xvmulwev_q_d	CODE_FOR_lasx_mulwev_q_d_punned
+#define CODE_FOR_lasx_xvmulwev_q_du	CODE_FOR_lasx_mulwev_q_du_punned
+#define CODE_FOR_lasx_xvaddwod_q_d	CODE_FOR_lasx_addwod_q_d_punned
+#define CODE_FOR_lasx_xvaddwod_q_du	CODE_FOR_lasx_addwod_q_du_punned
+#define CODE_FOR_lasx_xvsubwod_q_d	CODE_FOR_lasx_subwod_q_d_punned
+#define CODE_FOR_lasx_xvsubwod_q_du	CODE_FOR_lasx_subwod_q_du_punned
+#define CODE_FOR_lasx_xvmulwod_q_d	CODE_FOR_lasx_mulwod_q_d_punned
+#define CODE_FOR_lasx_xvmulwod_q_du	CODE_FOR_lasx_mulwod_q_du_punned
+
+#define CODE_FOR_lasx_xvaddwev_q_du_d	CODE_FOR_lasx_addwev_q_du_d_punned
+#define CODE_FOR_lasx_xvmulwev_q_du_d	CODE_FOR_lasx_mulwev_q_du_d_punned
+#define CODE_FOR_lasx_xvaddwod_q_du_d	CODE_FOR_lasx_addwod_q_du_d_punned
+#define CODE_FOR_lasx_xvmulwod_q_du_d	CODE_FOR_lasx_mulwod_q_du_d_punned
+
+#define CODE_FOR_lasx_xvhaddw_q_d	CODE_FOR_lasx_haddw_q_d_punned
+#define CODE_FOR_lasx_xvhaddw_qu_du	CODE_FOR_lasx_haddw_qu_du_punned
+#define CODE_FOR_lasx_xvhsubw_q_d	CODE_FOR_lasx_hsubw_q_d_punned
+#define CODE_FOR_lasx_xvhsubw_qu_du	CODE_FOR_lasx_hsubw_qu_du_punned
+
+#define CODE_FOR_lasx_xvmaddwev_q_d	CODE_FOR_lasx_maddwev_q_d_punned
+#define CODE_FOR_lasx_xvmaddwev_q_du	CODE_FOR_lasx_maddwev_q_du_punned
+#define CODE_FOR_lasx_xvmaddwev_q_du_d	CODE_FOR_lasx_maddwev_q_du_d_punned
+#define CODE_FOR_lasx_xvmaddwod_q_d	CODE_FOR_lasx_maddwod_q_d_punned
+#define CODE_FOR_lasx_xvmaddwod_q_du	CODE_FOR_lasx_maddwod_q_du_punned
+#define CODE_FOR_lasx_xvmaddwod_q_du_d	CODE_FOR_lasx_maddwod_q_du_d_punned
+
+
+/* Add mutual conversion between 128 and 256 vectors.  */
+#define CODE_FOR_lasx_extract_128_lo_s	CODE_FOR_vec_extract_lo_v8sf
+#define CODE_FOR_lasx_extract_128_hi_s	CODE_FOR_vec_extract_hi_v8sf
+#define CODE_FOR_lasx_extract_128_lo_d	CODE_FOR_vec_extract_lo_v4df
+#define CODE_FOR_lasx_extract_128_hi_d	CODE_FOR_vec_extract_hi_v4df
+#define CODE_FOR_lasx_extract_128_lo	CODE_FOR_vec_extract_lo_v4di
+#define CODE_FOR_lasx_extract_128_hi	CODE_FOR_vec_extract_hi_v4di
+#define CODE_FOR_lasx_insert_128_lo_s	CODE_FOR_vec_insert_lo_v8sf
+#define CODE_FOR_lasx_insert_128_hi_s	CODE_FOR_vec_insert_hi_v8sf
+#define CODE_FOR_lasx_insert_128_lo_d	CODE_FOR_vec_insert_lo_v4df
+#define CODE_FOR_lasx_insert_128_hi_d	CODE_FOR_vec_insert_hi_v4df
+#define CODE_FOR_lasx_insert_128_lo	CODE_FOR_vec_insert_lo_v4di
+#define CODE_FOR_lasx_insert_128_hi	CODE_FOR_vec_insert_hi_v4di
+#define CODE_FOR_lasx_concat_128_s	CODE_FOR_vec_concatv8sf
+#define CODE_FOR_lasx_concat_128_d	CODE_FOR_vec_concatv4df
+#define CODE_FOR_lasx_concat_128	CODE_FOR_vec_concatv4di
+#define CODE_FOR_lasx_cast_128_s   	CODE_FOR_vec_castv8sf
+#define CODE_FOR_lasx_cast_128_d  	CODE_FOR_vec_castv4df
+#define CODE_FOR_lasx_cast_128   	CODE_FOR_vec_castv4di
 
 static const struct loongarch_builtin_description loongarch_builtins[] = {
 #define LARCH_MOVFCSR2GR 0
@@ -2327,7 +2428,25 @@ static const struct loongarch_builtin_description loongarch_builtins[] = {
   LASX_BUILTIN (xvssrarni_bu_h, LARCH_UV32QI_FTYPE_UV32QI_V32QI_USI),
   LASX_BUILTIN (xvssrarni_hu_w, LARCH_UV16HI_FTYPE_UV16HI_V16HI_USI),
   LASX_BUILTIN (xvssrarni_wu_d, LARCH_UV8SI_FTYPE_UV8SI_V8SI_USI),
-  LASX_BUILTIN (xvssrarni_du_q, LARCH_UV4DI_FTYPE_UV4DI_V4DI_USI)
+  LASX_BUILTIN (xvssrarni_du_q, LARCH_UV4DI_FTYPE_UV4DI_V4DI_USI),
+  LASX_BUILTIN (extract_128_lo_s, LARCH_V4SF_FTYPE_V8SF),
+  LASX_BUILTIN (extract_128_hi_s, LARCH_V4SF_FTYPE_V8SF),
+  LASX_BUILTIN (extract_128_lo_d, LARCH_V2DF_FTYPE_V4DF),
+  LASX_BUILTIN (extract_128_hi_d, LARCH_V2DF_FTYPE_V4DF),
+  LASX_BUILTIN (extract_128_lo, LARCH_V2DI_FTYPE_V4DI),
+  LASX_BUILTIN (extract_128_hi, LARCH_V2DI_FTYPE_V4DI),
+  LASX_BUILTIN (insert_128_lo_s, LARCH_V8SF_FTYPE_V8SF_V4SF),
+  LASX_BUILTIN (insert_128_hi_s, LARCH_V8SF_FTYPE_V8SF_V4SF),
+  LASX_BUILTIN (insert_128_lo_d, LARCH_V4DF_FTYPE_V4DF_V2DF),
+  LASX_BUILTIN (insert_128_hi_d, LARCH_V4DF_FTYPE_V4DF_V2DF),
+  LASX_BUILTIN (insert_128_lo, LARCH_V4DI_FTYPE_V4DI_V2DI),
+  LASX_BUILTIN (insert_128_hi, LARCH_V4DI_FTYPE_V4DI_V2DI),
+  LASX_BUILTIN (concat_128_s, LARCH_V8SF_FTYPE_V4SF_V4SF),
+  LASX_BUILTIN (concat_128_d, LARCH_V4DF_FTYPE_V2DF_V2DF),
+  LASX_BUILTIN (concat_128, LARCH_V4DI_FTYPE_V2DI_V2DI),
+  LASX_BUILTIN (cast_128_s, LARCH_V8SF_FTYPE_V4SF),
+  LASX_BUILTIN (cast_128_d, LARCH_V4DF_FTYPE_V2DF),
+  LASX_BUILTIN (cast_128, LARCH_V4DI_FTYPE_V2DI)
 };
 
 /* Index I is the function declaration for loongarch_builtins[I], or null if
@@ -2757,6 +2876,8 @@ loongarch_expand_builtin_insn (enum insn_code icode, unsigned int nops,
     case CODE_FOR_lsx_vpickod_h:
     case CODE_FOR_lsx_vpickod_w:
     case CODE_FOR_lsx_vandn_v:
+    case CODE_FOR_lsx_vftintrz_w_d:
+    case CODE_FOR_lsx_vffint_s_l:
     case CODE_FOR_lasx_xvilvh_b:
     case CODE_FOR_lasx_xvilvh_h:
     case CODE_FOR_lasx_xvilvh_w:
@@ -2919,6 +3040,10 @@ loongarch_expand_builtin_direct (enum insn_code icode, rtx target, tree exp,
 {
   struct expand_operand ops[MAX_RECOG_OPERANDS];
   int opno, argno;
+  /* For vector extraction/insertion operations, sel_high_p being true
+     indicates that the high of the data is selected/retained from the
+     vector register.  */
+  bool sel_high_p = true;
 
   /* Map any target to operand 0.  */
   opno = 0;
@@ -2936,6 +3061,51 @@ loongarch_expand_builtin_direct (enum insn_code icode, rtx target, tree exp,
       loongarch_prepare_builtin_arg (&ops[2], exp, 0);
       create_input_operand (&ops[1], CONST1_RTX (ops[0].mode), ops[0].mode);
       return loongarch_expand_builtin_insn (icode, 3, ops, has_target_p);
+
+    case CODE_FOR_vec_extract_lo_v8sf:
+    case CODE_FOR_vec_extract_lo_v4df:
+    case CODE_FOR_vec_extract_lo_v4di:
+      sel_high_p = false;
+    /* Fall through.  */
+    case CODE_FOR_vec_extract_hi_v8sf:
+    case CODE_FOR_vec_extract_hi_v4df:
+    case CODE_FOR_vec_extract_hi_v4di:
+      {
+	/* The selection method for constructing the high/low half.  */
+	loongarch_prepare_builtin_arg (&ops[1], exp, 0);
+	int nelts = GET_MODE_NUNITS (GET_MODE (ops[1].value));
+	int half_nelts = nelts / 2;
+	int base = sel_high_p ? half_nelts : 0;
+
+	rtx pat_rtx
+	    = loongarch_gen_stepped_int_parallel (half_nelts, base, 1);
+	create_input_operand (&ops[2], pat_rtx, ops[1].mode);
+
+	return loongarch_expand_builtin_insn (icode, 3, ops, has_target_p);
+      }
+
+    case CODE_FOR_vec_insert_hi_v8sf:
+    case CODE_FOR_vec_insert_hi_v4df:
+    case CODE_FOR_vec_insert_hi_v4di:
+      sel_high_p = false;
+    /* Fall through.  */
+    case CODE_FOR_vec_insert_lo_v8sf:
+    case CODE_FOR_vec_insert_lo_v4df:
+    case CODE_FOR_vec_insert_lo_v4di:
+      {
+	/* The selection method for constructing the high/low half.  */
+	loongarch_prepare_builtin_arg (&ops[1], exp, 0);
+	loongarch_prepare_builtin_arg (&ops[2], exp, 1);
+	int nelts = GET_MODE_NUNITS (GET_MODE (ops[1].value));
+	int half_nelts = nelts / 2;
+	int base = sel_high_p ? half_nelts : 0;
+
+	rtx pat_rtx
+	    = loongarch_gen_stepped_int_parallel (half_nelts, base, 1);
+	create_input_operand (&ops[3], pat_rtx, ops[1].mode);
+
+	return loongarch_expand_builtin_insn (icode, 4, ops, has_target_p);
+      }
 
     default:
       break;
@@ -2974,7 +3144,10 @@ loongarch_expand_builtin_lsx_test_branch (enum insn_code icode, tree exp)
     ops[1].value = force_reg (ops[1].mode, ops[1].value);
 
   if ((cbranch = maybe_gen_insn (icode, 3, ops)) == NULL_RTX)
-    error ("failed to expand built-in function");
+    {
+      error ("failed to expand built-in function");
+      return const0_rtx;
+    }
 
   cmp_result = gen_reg_rtx (SImode);
 
@@ -3014,7 +3187,7 @@ loongarch_expand_builtin (tree exp, rtx target, rtx subtarget ATTRIBUTE_UNUSED,
     {
       error_at (EXPR_LOCATION (exp),
 		"built-in function %qD is not enabled", fndecl);
-      return target;
+      return target ? target : const0_rtx;
     }
 
   switch (d->builtin_type)

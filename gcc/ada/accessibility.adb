@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2022-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 2022-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -187,6 +187,15 @@ package body Accessibility is
                  or else (Nkind (Node_Par) = N_Object_Renaming_Declaration
                            and then Comes_From_Iterator (Node_Par))
                then
+                  --  Handle the case of expressions within library level
+                  --  subprograms here by adding one to the level modifier.
+
+                  if Encl_Scop = Standard_Standard
+                    and then Nkind (Node_Par) = N_Subprogram_Body
+                  then
+                     Master_Lvl_Modifier := Master_Lvl_Modifier + 1;
+                  end if;
+
                   --  Note that in some rare cases the scope depth may not be
                   --  set, for example, when we are in the middle of analyzing
                   --  a type and the enclosing scope is said type. In that case
@@ -318,8 +327,23 @@ package body Accessibility is
                if In_Return_Value (N)
                  or else In_Return_Context
                then
-                  return Make_Level_Literal
-                           (Subprogram_Access_Level (Current_Subprogram));
+                  if Present (Extra_Accessibility_Of_Result
+                                (Current_Subprogram))
+                  then
+                     --  If a function is passed an extra "level of the
+                     --  master of the call" parameter and that function
+                     --  returns a call to another such function (or
+                     --  possibly to the same function, in the case of a
+                     --  recursive call), then that parameter should be
+                     --  "passed along".
+
+                     return New_Occurrence_Of
+                              (Extra_Accessibility_Of_Result
+                                (Current_Subprogram), Loc);
+                  else
+                     return Make_Level_Literal
+                              (Subprogram_Access_Level (Current_Subprogram));
+                  end if;
                end if;
             end if;
 
@@ -1213,7 +1237,7 @@ package body Accessibility is
             return First (Choices (Assoc));
 
          elsif Nkind (Assoc) = N_Discriminant_Association then
-            return (First (Selector_Names (Assoc)));
+            return First (Selector_Names (Assoc));
 
          else
             raise Program_Error;
@@ -1292,7 +1316,7 @@ package body Accessibility is
                exit;
             end if;
 
-            Nlists.Next (Return_Con);
+            Next (Return_Con);
          end loop;
 
          pragma Assert (Present (Return_Con));
@@ -1633,6 +1657,13 @@ package body Accessibility is
              (No (Extra_Accessibility_Of_Result (Scope_Id))
                and then Is_Formal_Of_Current_Function (Assoc_Expr)
                and then Is_Tagged_Type (Etype (Scope_Id)))
+
+           --  Disable the check generation when we are only checking semantics
+           --  since required locals do not get generated (e.g. extra
+           --  accessibility of result), and constant folding can occur and
+           --  lead to spurious errors.
+
+           and then not Check_Semantics_Only_Mode
          then
             --  Generate a dynamic check based on the extra accessibility of
             --  the result or the scope of the current function.
@@ -1667,16 +1698,14 @@ package body Accessibility is
                 Condition => Check_Cond,
                 Reason    => PE_Accessibility_Check_Failed));
 
-            --  If constant folding has happened on the condition for the
-            --  generated error, then warn about it being unconditional when
-            --  we know an error will be raised.
+            --  ??? Is this how we want to detect RM 6.5(5.9) violations?
 
             if Nkind (Check_Cond) = N_Identifier
               and then Entity (Check_Cond) = Standard_True
             then
                Error_Msg_N
-                 ("access discriminant in return object would be a dangling"
-                  & " reference", Return_Stmt);
+                 ("level of type of access discriminant value of return object"
+                    & " is statically too deep", Return_Stmt);
             end if;
          end if;
 
@@ -1693,7 +1722,7 @@ package body Accessibility is
          if not Is_List_Member (Assoc) then
             exit;
          else
-            Nlists.Next (Assoc);
+            Next (Assoc);
          end if;
       end loop;
    end Check_Return_Construct_Accessibility;

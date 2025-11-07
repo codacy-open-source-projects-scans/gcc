@@ -1,5 +1,5 @@
 /* Redundant Extension Elimination pass for the GNU compiler.
-   Copyright (C) 2010-2024 Free Software Foundation, Inc.
+   Copyright (C) 2010-2025 Free Software Foundation, Inc.
    Contributed by Ilya Enkovich (ilya.enkovich@intel.com)
 
    Based on the Redundant Zero-extension elimination pass contributed by
@@ -903,8 +903,7 @@ combine_reaching_defs (ext_cand *cand, const_rtx set_pat, ext_state *state)
                                  REGNO (SET_DEST (set)));
       emit_move_insn (new_dst, new_src);
 
-      rtx_insn *insn = get_insns ();
-      end_sequence ();
+      rtx_insn *insn = end_sequence ();
       if (NEXT_INSN (insn))
 	return false;
       if (recog_memoized (insn) == -1)
@@ -1112,6 +1111,18 @@ add_removable_extension (const_rtx expr, rtx_insn *insn,
       rtx reg = XEXP (src, 0);
       struct df_link *defs, *def;
       ext_cand *cand;
+
+      if (fixed_regs[REGNO (reg)])
+	{
+	  if (dump_file)
+	    {
+	      fprintf (dump_file, "Cannot eliminate extension:\n");
+	      print_rtl_single (dump_file, insn);
+	      fprintf (dump_file, " because extension on fixed register"
+				  " isn't supported.\n");
+	    }
+	  return;
+	}
 
       /* Zero-extension of an undefined value is partly defined (it's
 	 completely undefined for sign-extension, though).  So if there exists

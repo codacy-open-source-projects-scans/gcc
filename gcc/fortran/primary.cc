@@ -1,5 +1,5 @@
 /* Primary expression subroutines
-   Copyright (C) 2000-2024 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -2071,6 +2071,23 @@ gfc_match_actual_arglist (int sub_flag, gfc_actual_arglist **argp, bool pdt)
 	    }
 	}
 
+    /* PDT kind expressions are acceptable as initialization expressions.
+       However, intrinsics with a KIND argument reject them. Convert the
+       expression now by use of the component initializer.  */
+    if (tail->expr
+	&& tail->expr->expr_type == EXPR_VARIABLE
+	&& gfc_expr_attr (tail->expr).pdt_kind)
+      {
+	gfc_ref *ref;
+	gfc_expr *tmp = NULL;
+	for (ref = tail->expr->ref; ref; ref = ref->next)
+	     if (!ref->next && ref->type == REF_COMPONENT
+		 && ref->u.c.component->attr.pdt_kind
+		 && ref->u.c.component->initializer)
+	  tmp = gfc_copy_expr (ref->u.c.component->initializer);
+	if (tmp)
+	  gfc_replace_expr (tail->expr, tmp);
+      }
 
     next:
       if (gfc_match_char (')') == MATCH_YES)
@@ -2102,10 +2119,18 @@ extend_ref (gfc_expr *primary, gfc_ref *tail)
 {
   if (primary->ref == NULL)
     primary->ref = tail = gfc_get_ref ();
+  else if (tail == NULL)
+    {
+      /* Set tail to end of reference chain.  */
+      for (gfc_ref *ref = primary->ref; ref; ref = ref->next)
+	if (ref->next == NULL)
+	  {
+	    tail = ref;
+	    break;
+	  }
+    }
   else
     {
-      if (tail == NULL)
-	gfc_internal_error ("extend_ref(): Bad tail");
       tail->next = gfc_get_ref ();
       tail = tail->next;
     }
@@ -2302,9 +2327,22 @@ gfc_match_varspec (gfc_expr *primary, int equiv_flag, bool sub_flag,
       gfc_array_spec *as;
       bool coarray_only = sym->attr.codimension && !sym->attr.dimension
 			  && sym->ts.type == BT_CHARACTER;
+      gfc_ref *ref, *strarr = NULL;
 
       tail = extend_ref (primary, tail);
-      tail->type = REF_ARRAY;
+      if (sym->ts.type == BT_CHARACTER && tail->type == REF_SUBSTRING)
+	{
+	  gcc_assert (sym->attr.dimension);
+	  /* Find array reference for substrings of character arrays.  */
+	  for (ref = primary->ref; ref && ref->next; ref = ref->next)
+	    if (ref->type == REF_ARRAY && ref->next->type == REF_SUBSTRING)
+	      {
+		strarr = ref;
+		break;
+	      }
+	}
+      else
+	tail->type = REF_ARRAY;
 
       /* In EQUIVALENCE, we don't know yet whether we are seeing
 	 an array, character variable or array of character
@@ -2317,7 +2355,8 @@ gfc_match_varspec (gfc_expr *primary, int equiv_flag, bool sub_flag,
       else
 	as = sym->as;
 
-      m = gfc_match_array_ref (&tail->u.ar, as, equiv_flag, as ? as->corank : 0,
+      ref = strarr ? strarr : tail;
+      m = gfc_match_array_ref (&ref->u.ar, as, equiv_flag, as ? as->corank : 0,
 			       coarray_only);
       if (m != MATCH_YES)
 	return m;
@@ -2483,6 +2522,7 @@ gfc_match_varspec (gfc_expr *primary, int equiv_flag, bool sub_flag,
     {
       bool t;
       gfc_symtree *tbp;
+      gfc_typespec *ts = &primary->ts;
 
       m = gfc_match_name (name);
       if (m == MATCH_NO)
@@ -2490,8 +2530,18 @@ gfc_match_varspec (gfc_expr *primary, int equiv_flag, bool sub_flag,
       if (m != MATCH_YES)
 	return MATCH_ERROR;
 
+      /* For derived type components find typespec of ultimate component.  */
+      if (ts->type == BT_DERIVED && primary->ref)
+	{
+	  for (gfc_ref *ref = primary->ref; ref; ref = ref->next)
+	    {
+	      if (ref->type == REF_COMPONENT && ref->u.c.component)
+		ts = &ref->u.c.component->ts;
+	    }
+	}
+
       intrinsic = false;
-      if (primary->ts.type != BT_CLASS && primary->ts.type != BT_DERIVED)
+      if (ts->type != BT_CLASS && ts->type != BT_DERIVED)
 	{
 	  inquiry = is_inquiry_ref (name, &tmp);
 	  if (inquiry)
@@ -2564,7 +2614,7 @@ gfc_match_varspec (gfc_expr *primary, int equiv_flag, bool sub_flag,
 			return MATCH_ERROR;
 		    }
 		  else if (tmp->u.i == INQUIRY_LEN
-			   && primary->ts.type != BT_CHARACTER)
+			   && ts->type != BT_CHARACTER)
 		    {
 			gfc_error ("The LEN part_ref at %C must be applied "
 				   "to a CHARACTER expression");
@@ -2640,6 +2690,14 @@ gfc_match_varspec (gfc_expr *primary, int equiv_flag, bool sub_flag,
       else
 	component = NULL;
 
+      if (previous && inquiry
+	  && (previous->attr.pdt_kind || previous->attr.pdt_len))
+	{
+	  gfc_error_now ("R901: A type parameter ref is not a designtor and "
+		     "cannot be followed by the type inquiry ref at %C");
+	  return MATCH_ERROR;
+	}
+
       if (intrinsic && !inquiry)
 	{
 	  if (previous)
@@ -2659,6 +2717,11 @@ gfc_match_varspec (gfc_expr *primary, int equiv_flag, bool sub_flag,
 	primary->ref = tmp;
       else
 	{
+	  /* Find end of reference chain if inquiry reference and tail not
+	     set.  */
+	  if (tail == NULL && inquiry && tmp)
+	    tail = extend_ref (primary, tail);
+
 	  /* Set by the for loop below for the last component ref.  */
 	  gcc_assert (tail != NULL);
 	  tail->next = tmp;
@@ -2676,6 +2739,9 @@ gfc_match_varspec (gfc_expr *primary, int equiv_flag, bool sub_flag,
 	  gfc_simplify_expr (primary, 0);
 
 	  if (primary->expr_type == EXPR_CONSTANT)
+	    goto check_done;
+
+	  if (primary->ref == NULL)
 	    goto check_done;
 
 	  switch (tmp->u.i)
@@ -2828,6 +2894,7 @@ check_substring:
 	  if (substring)
 	    primary->ts.u.cl = NULL;
 
+	  gfc_gobble_whitespace ();
 	  if (gfc_peek_ascii_char () == '(')
 	    {
 	      gfc_error_now ("Unexpected array/substring ref at %C");
@@ -2893,6 +2960,7 @@ gfc_variable_attr (gfc_expr *expr, gfc_typespec *ts)
   gfc_symbol *sym;
   gfc_component *comp;
   bool has_inquiry_part;
+  bool has_substring_ref = false;
 
   if (expr->expr_type != EXPR_VARIABLE
       && expr->expr_type != EXPR_FUNCTION
@@ -2955,7 +3023,12 @@ gfc_variable_attr (gfc_expr *expr, gfc_typespec *ts)
 
   has_inquiry_part = false;
   for (ref = expr->ref; ref; ref = ref->next)
-    if (ref->type == REF_INQUIRY)
+    if (ref->type == REF_SUBSTRING)
+      {
+	has_substring_ref = true;
+	optional = false;
+      }
+    else if (ref->type == REF_INQUIRY)
       {
 	has_inquiry_part = true;
 	optional = false;
@@ -3003,19 +3076,20 @@ gfc_variable_attr (gfc_expr *expr, gfc_typespec *ts)
 	    *ts = comp->ts;
 	    /* Don't set the string length if a substring reference
 	       follows.  */
-	    if (ts->type == BT_CHARACTER
-		&& ref->next && ref->next->type == REF_SUBSTRING)
-		ts->u.cl = NULL;
+	    if (ts->type == BT_CHARACTER && has_substring_ref)
+	      ts->u.cl = NULL;
 	  }
 
 	if (comp->ts.type == BT_CLASS)
 	  {
+	    dimension = CLASS_DATA (comp)->attr.dimension;
 	    codimension = CLASS_DATA (comp)->attr.codimension;
 	    pointer = CLASS_DATA (comp)->attr.class_pointer;
 	    allocatable = CLASS_DATA (comp)->attr.allocatable;
 	  }
 	else
 	  {
+	    dimension = comp->attr.dimension;
 	    codimension = comp->attr.codimension;
 	    if (expr->ts.type == BT_CLASS && strcmp (comp->name, "_data") == 0)
 	      pointer = comp->attr.class_pointer;
@@ -3469,7 +3543,7 @@ gfc_convert_to_structure_constructor (gfc_expr *e, gfc_symbol *sym, gfc_expr **c
 	}
 
       /* Find the current component in the structure definition and check
-	     its access is not private.  */
+	 its access is not private.  */
       if (comp)
 	this_comp = gfc_find_component (sym, comp->name, false, false, NULL);
       else
@@ -3761,6 +3835,7 @@ gfc_match_rvalue (gfc_expr **result)
   gfc_typespec *ts;
   bool implicit_char;
   gfc_ref *ref;
+  gfc_symtree *pdt_st;
 
   m = gfc_match ("%%loc");
   if (m == MATCH_YES)
@@ -4008,6 +4083,104 @@ gfc_match_rvalue (gfc_expr **result)
 	  break;
 	}
 
+      /* Check to see if this is a PDT constructor.  The format of these
+	 constructors is rather unusual:
+		name [(type_params)](component_values)
+	 where, component_values excludes the type_params. With the present
+	 gfortran representation this is rather awkward because the two are not
+	 distinguished, other than by their attributes.
+
+	 Even if 'name' is that of a PDT template, priority has to be given to
+	 specific procedures, other than the constructor, in the generic
+	 interface.  */
+
+      gfc_gobble_whitespace ();
+      gfc_find_sym_tree (gfc_dt_upper_string (name), NULL, 1, &pdt_st);
+      if (sym->attr.generic && pdt_st != NULL
+	  && !(sym->generic->next && gfc_peek_ascii_char() != '('))
+	{
+	  gfc_symbol *pdt_sym;
+	  gfc_actual_arglist *ctr_arglist = NULL, *tmp;
+	  gfc_component *c;
+
+	  /* Use the template.  */
+	  if (pdt_st->n.sym && pdt_st->n.sym->attr.pdt_template)
+	    {
+	      bool type_spec_list = false;
+	      pdt_sym = pdt_st->n.sym;
+	      gfc_gobble_whitespace ();
+	      /* Look for a second actual arglist. If present, try the first
+		 for the type parameters. Otherwise, or if there is no match,
+		 depend on default values by setting the type parameters to
+		 NULL.  */
+	      if (gfc_peek_ascii_char() == '(')
+		type_spec_list = true;
+	      if (!actual_arglist && !type_spec_list)
+		{
+		  gfc_error_now ("F2023 R755: The empty type specification at %C "
+				 "is not allowed");
+		  m = MATCH_ERROR;
+		  break;
+		}
+	      /* Generate this instance using the type parameters from the
+		 first argument list and return the parameter list in
+		 ctr_arglist.  */
+	      m = gfc_get_pdt_instance (actual_arglist, &pdt_sym, &ctr_arglist);
+	      if (m != MATCH_YES || !ctr_arglist)
+		{
+		  if (ctr_arglist)
+		    gfc_free_actual_arglist (ctr_arglist);
+		  /* See if all the type parameters have default values.  */
+		  m = gfc_get_pdt_instance (NULL, &pdt_sym, &ctr_arglist);
+		  if (m != MATCH_YES)
+		    {
+		      m = MATCH_NO;
+		      break;
+		    }
+		}
+
+	      /* Now match the component_values if the type parameters were
+		 present.  */
+	      if (type_spec_list)
+		{
+		  m = gfc_match_actual_arglist (0, &actual_arglist);
+		  if (m != MATCH_YES)
+		    {
+		      m = MATCH_ERROR;
+		      break;
+		    }
+		}
+
+	      /* Make sure that the component names are in place so that this
+		 list can be safely appended to the type parameters.  */
+	      tmp = actual_arglist;
+	      for (c = pdt_sym->components; c && tmp; c = c->next)
+		{
+		  if (c->attr.pdt_kind || c->attr.pdt_len)
+		    continue;
+		  tmp->name = c->name;
+		  tmp = tmp->next;
+		}
+
+	      gfc_find_sym_tree (gfc_dt_lower_string (pdt_sym->name),
+				 NULL, 1, &symtree);
+	      if (!symtree)
+		{
+		  gfc_get_ha_sym_tree (gfc_dt_lower_string (pdt_sym->name) ,
+				       &symtree);
+		  symtree->n.sym = pdt_sym;
+		  symtree->n.sym->ts.u.derived = pdt_sym;
+		  symtree->n.sym->ts.type = BT_DERIVED;
+		}
+
+	      /* Append the type_params and the component_values.  */
+	      for (tmp = ctr_arglist; tmp && tmp->next;)
+		tmp = tmp->next;
+	      tmp->next = actual_arglist;
+	      actual_arglist = ctr_arglist;
+	    }
+	}
+
       gfc_get_ha_sym_tree (name, &symtree);	/* Can't fail */
       sym = symtree->n.sym;
 
@@ -4039,12 +4212,11 @@ gfc_match_rvalue (gfc_expr **result)
 	}
 
       /* Check here for the existence of at least one argument for the
-         iso_c_binding functions C_LOC, C_FUNLOC, and C_ASSOCIATED.  The
-         argument(s) given will be checked in gfc_iso_c_func_interface,
-         during resolution of the function call.  */
+	 iso_c_binding functions C_LOC, C_FUNLOC, and C_ASSOCIATED.  */
       if (sym->attr.is_iso_c == 1
 	  && (sym->from_intmod == INTMOD_ISO_C_BINDING
 	      && (sym->intmod_sym_id == ISOCBINDING_LOC
+		  || sym->intmod_sym_id == ISOCBINDING_F_C_STRING
 		  || sym->intmod_sym_id == ISOCBINDING_FUNLOC
 		  || sym->intmod_sym_id == ISOCBINDING_ASSOCIATED)))
         {
@@ -4267,6 +4439,16 @@ gfc_match_rvalue (gfc_expr **result)
       return MATCH_ERROR;
     }
 
+  /* Scan for possible inquiry references.  */
+  if (m == MATCH_YES
+      && e->expr_type == EXPR_VARIABLE
+      && gfc_peek_ascii_char () == '%')
+      {
+	m = gfc_match_varspec (e, 0, false, false);
+	if (m == MATCH_NO)
+	  m = MATCH_YES;
+      }
+
   if (m == MATCH_YES)
     {
       e->where = where;
@@ -4298,6 +4480,8 @@ match_variable (gfc_expr **result, int equiv_flag, int host_flag)
   gfc_expr *expr;
   locus where, old_loc;
   match m;
+
+  *result = NULL;
 
   /* Since nothing has any business being an lvalue in a module
      specification block, an interface block or a contains section,
@@ -4390,7 +4574,7 @@ match_variable (gfc_expr **result, int equiv_flag, int host_flag)
     case FL_PROCEDURE:
       /* Check for a nonrecursive function result variable.  */
       if (sym->attr.function
-	  && !sym->attr.external
+	  && (!sym->attr.external || sym->abr_modproc_decl)
 	  && sym->result == sym
 	  && (gfc_is_function_return_value (sym, gfc_current_ns)
 	      || (sym->attr.entry

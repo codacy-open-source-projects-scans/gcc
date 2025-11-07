@@ -1,5 +1,5 @@
 /* Calculate branch probabilities, and basic block execution counts.
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
    Contributed by James E. Wilson, UC Berkeley/Cygnus Support;
    based on some ideas from Dain Samples of UC Berkeley.
    Further mangling by Bob Manson, Cygnus Support.
@@ -1908,7 +1908,7 @@ tree_profiling (void)
 	  thunk = true;
 	  /* When generate profile, expand thunk to gimple so it can be
 	     instrumented same way as other functions.  */
-	  if (profile_arc_flag || condition_coverage_flag)
+	  if (coverage_instrumentation_p ())
 	    expand_thunk (node, false, true);
 	  /* Read cgraph profile but keep function as thunk at profile-use
 	     time.  */
@@ -1953,7 +1953,7 @@ tree_profiling (void)
   release_profile_file_filtering ();
 
   /* Drop pure/const flags from instrumented functions.  */
-  if (profile_arc_flag || condition_coverage_flag || flag_test_coverage)
+  if (coverage_instrumentation_p () || flag_test_coverage)
     FOR_EACH_DEFINED_FUNCTION (node)
       {
 	if (!gimple_has_body_p (node->decl)
@@ -1985,7 +1985,7 @@ tree_profiling (void)
 
       push_cfun (DECL_STRUCT_FUNCTION (node->decl));
 
-      if (profile_arc_flag || condition_coverage_flag || flag_test_coverage)
+      if (coverage_instrumentation_p () || flag_test_coverage)
 	FOR_EACH_BB_FN (bb, cfun)
 	  {
 	    gimple_stmt_iterator gsi;
@@ -2031,6 +2031,7 @@ tree_profiling (void)
   handle_missing_profiles ();
 
   del_node_map ();
+  end_branch_prob ();
   return 0;
 }
 
@@ -2065,12 +2066,10 @@ public:
 bool
 pass_ipa_tree_profile::gate (function *)
 {
-  /* When profile instrumentation, use or test coverage shall be performed.
-     But for AutoFDO, this there is no instrumentation, thus this pass is
-     disabled.  */
-  return (!in_lto_p && !flag_auto_profile
+  /* When profile instrumentation, use or test coverage shall be performed.  */
+  return (!in_lto_p
 	  && (flag_branch_probabilities || flag_test_coverage
-	      || profile_arc_flag || condition_coverage_flag)
+	      || coverage_instrumentation_p ())
 	  && !seen_error ());
 }
 

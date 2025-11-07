@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1996-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1996-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -368,7 +368,7 @@ begin
          --  --help flag.
          Set_Standard_Output;
          Write_Eol;
-         Write_Line ("Report bugs to report@adacore.com");
+         Write_Line ("Report bugs to support@adacore.com");
          return;
       end if;
 

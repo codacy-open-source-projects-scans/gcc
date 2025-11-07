@@ -1,6 +1,6 @@
 ## Makefile for the include subdirectory of the GNU C++ Standard library.
 ##
-## Copyright (C) 2001-2024 Free Software Foundation, Inc.
+## Copyright (C) 2001-2025 Free Software Foundation, Inc.
 ##
 ## This file is part of the libstdc++ version 3 distribution.
 ## Process this file with automake to produce Makefile.in.
@@ -38,6 +38,7 @@ std_freestanding = \
 	${std_srcdir}/generator \
 	${std_srcdir}/iterator \
 	${std_srcdir}/limits \
+	${std_srcdir}/mdspan \
 	${std_srcdir}/memory \
 	${std_srcdir}/numbers \
 	${std_srcdir}/numeric \
@@ -67,13 +68,17 @@ std_headers = \
 	${std_srcdir}/codecvt \
 	${std_srcdir}/complex \
 	${std_srcdir}/condition_variable \
+	${std_srcdir}/debugging \
 	${std_srcdir}/deque \
 	${std_srcdir}/execution \
 	${std_srcdir}/filesystem \
+	${std_srcdir}/flat_map \
+	${std_srcdir}/flat_set \
 	${std_srcdir}/format \
 	${std_srcdir}/forward_list \
 	${std_srcdir}/fstream \
 	${std_srcdir}/future \
+	${std_srcdir}/inplace_vector \
 	${std_srcdir}/iomanip \
 	${std_srcdir}/ios \
 	${std_srcdir}/iosfwd \
@@ -135,6 +140,7 @@ bits_freestanding = \
 	${bits_srcdir}/memoryfwd.h \
 	${bits_srcdir}/monostate.h \
 	${bits_srcdir}/move.h \
+	${bits_srcdir}/ostream.h \
 	${bits_srcdir}/out_ptr.h \
 	${bits_srcdir}/predefined_ops.h \
 	${bits_srcdir}/parse_numbers.h \
@@ -185,13 +191,16 @@ bits_headers = \
 	${bits_srcdir}/basic_ios.tcc \
 	${bits_srcdir}/basic_string.h \
 	${bits_srcdir}/basic_string.tcc \
+	${bits_srcdir}/binders.h \
 	${bits_srcdir}/charconv.h \
 	${bits_srcdir}/chrono.h \
 	${bits_srcdir}/chrono_io.h \
 	${bits_srcdir}/codecvt.h \
 	${bits_srcdir}/cow_string.h \
+	${bits_srcdir}/cpyfunc_impl.h \
 	${bits_srcdir}/deque.tcc \
 	${bits_srcdir}/erase_if.h \
+	${bits_srcdir}/formatfwd.h \
 	${bits_srcdir}/forward_list.h \
 	${bits_srcdir}/forward_list.tcc \
 	${bits_srcdir}/fs_dir.h \
@@ -199,10 +208,13 @@ bits_headers = \
 	${bits_srcdir}/fs_ops.h \
 	${bits_srcdir}/fs_path.h \
 	${bits_srcdir}/fstream.tcc \
+	${bits_srcdir}/funcref_impl.h \
+	${bits_srcdir}/funcwrap.h \
 	${bits_srcdir}/gslice.h \
 	${bits_srcdir}/gslice_array.h \
 	${bits_srcdir}/hashtable.h \
 	${bits_srcdir}/hashtable_policy.h \
+	${bits_srcdir}/indirect.h \
 	${bits_srcdir}/indirect_array.h \
 	${bits_srcdir}/ios_base.h \
 	${bits_srcdir}/istream.tcc \
@@ -218,7 +230,6 @@ bits_headers = \
 	${bits_srcdir}/mask_array.h \
 	${bits_srcdir}/memory_resource.h \
 	${bits_srcdir}/mofunc_impl.h \
-	${bits_srcdir}/move_only_function.h \
 	${bits_srcdir}/new_allocator.h \
 	${bits_srcdir}/node_handle.h \
 	${bits_srcdir}/ostream.tcc \
@@ -908,6 +919,8 @@ c_compatibility_headers = \
 	${c_compatibility_srcdir}/tgmath.h \
 	${c_compatibility_srcdir}/math.h \
 	${c_compatibility_srcdir}/stdatomic.h \
+	${c_compatibility_srcdir}/stdbit.h \
+	${c_compatibility_srcdir}/stdckdint.h \
 	${c_compatibility_srcdir}/stdlib.h
 endif
 
@@ -1407,11 +1420,11 @@ ${host_builddir}/c++config.h: ${CONFIG_HEADER} \
 	-e "$$verbose_assert" \
 	    < ${glibcxx_srcdir}/include/bits/c++config > $@ ;\
 	sed -e 's/HAVE_/_GLIBCXX_HAVE_/g' \
-	    -e 's/PACKAGE/_GLIBCXX_PACKAGE/g' \
-	    -e 's/VERSION/_GLIBCXX_VERSION/g' \
+	    -e '/PACKAGE/s,^,// ,' \
+	    -e '/PACKAGE/!s/VERSION/_GLIBCXX_VERSION/g' \
 	    -e 's/WORDS_/_GLIBCXX_WORDS_/g' \
 	    -e 's/LT_OBJDIR/_GLIBCXX_LT_OBJDIR/g' \
-	    -e 's/STDC_HEADERS/_GLIBCXX_STDC_HEADERS/g' \
+	    -e 's,^#.*STDC_HEADERS,// &,' \
 	    -e 's/_DARWIN_USE_64_BIT_INODE/_GLIBCXX_DARWIN_USE_64_BIT_INODE/g' \
 	    -e 's/_FILE_OFFSET_BITS/_GLIBCXX_FILE_OFFSET_BITS/g' \
 	    -e 's/_LARGE_FILES/_GLIBCXX_LARGE_FILES/g' \

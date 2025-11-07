@@ -1,5 +1,5 @@
 ;; Machine description for AArch64 architecture.
-;; Copyright (C) 2009-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2025 Free Software Foundation, Inc.
 ;; Contributed by ARM Ltd.
 ;;
 ;; This file is part of GCC.
@@ -136,6 +136,14 @@
     ;; The actual value can sometimes vary, because it does not track
     ;; changes to PSTATE.ZA that happen during a lazy save and restore.
     ;; Those effects are instead tracked by ZA_SAVED_REGNUM.
+    ;;
+    ;; Sequences also write to this register if they synchronize the
+    ;; actual contents of ZA and PSTATE.ZA with the current function's
+    ;; ZA_REGNUM and SME_STATE_REGNUM.  Conceptually, these extra writes
+    ;; do not change the value of SME_STATE_REGNUM.  They simply act as
+    ;; sequencing points.  They means that all direct accesses to ZA can
+    ;; depend only on ZA_REGNUM and SME_STATE_REGNUM, rather than also
+    ;; depending on ZA_SAVED_REGNUM etc.
     (SME_STATE_REGNUM 89)
 
     ;; Instructions write to this register if they set TPIDR2_EL0 to a
@@ -198,8 +206,10 @@
     UNSPEC_AUTIB1716
     UNSPEC_AUTIASP
     UNSPEC_AUTIBSP
+    UNSPEC_BSL
     UNSPEC_CALLEE_ABI
     UNSPEC_CASESI
+    UNSPEC_COMBINE
     UNSPEC_CPYMEM
     UNSPEC_CRC32B
     UNSPEC_CRC32CB
@@ -209,6 +219,8 @@
     UNSPEC_CRC32H
     UNSPEC_CRC32W
     UNSPEC_CRC32X
+    UNSPEC_DUP
+    UNSPEC_DUP_LANE
     UNSPEC_FCVTZS
     UNSPEC_FCVTZU
     UNSPEC_FJCVTZS
@@ -227,6 +239,7 @@
     UNSPEC_FRINTP
     UNSPEC_FRINTX
     UNSPEC_FRINTZ
+    UNSPEC_GET_LANE
     UNSPEC_GOTSMALLPIC
     UNSPEC_GOTSMALLPIC28K
     UNSPEC_GOTSMALLTLS
@@ -236,6 +249,10 @@
     UNSPEC_LDP_FST
     UNSPEC_LDP_SND
     UNSPEC_LD1
+    UNSPEC_LD1_DUP
+    UNSPEC_LD1x2
+    UNSPEC_LD1x3
+    UNSPEC_LD1x4
     UNSPEC_LD2
     UNSPEC_LD2_DREG
     UNSPEC_LD2_DUP
@@ -263,14 +280,20 @@
     UNSPEC_PACIBSP
     UNSPEC_PRLG_STK
     UNSPEC_REV
+    UNSPEC_REV_PRED
     UNSPEC_SADALP
     UNSPEC_SCVTF
+    UNSPEC_SET_LANE
     UNSPEC_SETMEM
     UNSPEC_SISD_NEG
     UNSPEC_SISD_SSHL
     UNSPEC_SISD_USHL
     UNSPEC_SSHL_2S
     UNSPEC_ST1
+    UNSPEC_ST1_LANE
+    UNSPEC_ST1x2
+    UNSPEC_ST1x3
+    UNSPEC_ST1x4
     UNSPEC_ST2
     UNSPEC_ST3
     UNSPEC_ST4
@@ -314,6 +337,8 @@
     UNSPEC_UNPACKSLO
     UNSPEC_UNPACKULO
     UNSPEC_PACK
+    UNSPEC_VCREATE
+    UNSPEC_VEC_COPY
     UNSPEC_WHILEGE
     UNSPEC_WHILEGT
     UNSPEC_WHILEHI
@@ -340,6 +365,7 @@
     UNSPEC_UPDATE_FFRT
     UNSPEC_RDFFR
     UNSPEC_WRFFR
+    UNSPEC_WRITE_FPMR
     UNSPEC_SYSREG_RDI
     UNSPEC_SYSREG_RTI
     UNSPEC_SYSREG_WDI
@@ -415,6 +441,16 @@
    ; must not operate on inactive inputs if doing so could induce a fault.
    (SVE_STRICT_GP 1)])
 
+;; These constants are used as a const_int in MTE instructions
+(define_constants
+  [; 0xf0ff...
+   ; Tag mask for the 4-bit tag stored in the top 8 bits of a pointer.
+   (MEMTAG_TAG_MASK -1080863910568919041)
+
+   ;  0x00ff...
+   ; Tag mask 56-bit address used by subp instruction.
+   (MEMTAG_ADDR_MASK 72057594037927935)])
+
 (include "constraints.md")
 (include "predicates.md")
 (include "iterators.md")
@@ -457,6 +493,8 @@
 ;; clobber for SVE predicates.
 (define_attr "pred_clobber" "any,no,yes" (const_string "any"))
 
+(define_attr "enable_ldapur" "any,no,yes" (const_string "any"))
+
 ;; [For compatibility with Arm in pipeline models]
 ;; Attribute that specifies whether or not the instruction touches fp
 ;; registers.
@@ -481,7 +519,14 @@
 	  (eq_attr "pred_clobber" "yes")
 	  (match_test "TARGET_SVE_PRED_CLOBBER"))
 	(eq_attr "pred_clobber" "any"))
-
+      (ior
+	(and
+	  (eq_attr "enable_ldapur" "yes")
+	  (match_test "TARGET_ENABLE_LDAPUR"))
+	(and
+	  (eq_attr "enable_ldapur" "no")
+	  (match_test "!TARGET_ENABLE_LDAPUR"))
+	(eq_attr "enable_ldapur" "any"))
       (ior
 	(eq_attr "arch" "any")
 
@@ -544,9 +589,7 @@
 ;; Attribute that specifies whether we are dealing with a branch to a
 ;; label that is far away, i.e. further away than the maximum/minimum
 ;; representable in a signed 21-bits number.
-;; 0 :=: no
-;; 1 :=: yes
-(define_attr "far_branch" "" (const_int 0))
+(define_attr "far_branch" "no,yes" (const_string "no"))
 
 ;; Attribute that specifies whether the alternative uses MOVPRFX.
 (define_attr "movprfx" "no,yes" (const_string "no"))
@@ -604,6 +647,26 @@
 ;; patterns.
 (define_attr "ldpstp" "ldp,stp,none" (const_string "none"))
 
+;; Attribute that classifies SVE instructions by their functional type.
+;; This attribute is currently only used for dispatch scheduling.
+(define_attr "sve_type"
+  "none,\
+   sve_pred_logical,sve_pred_cnt_ctrl,sve_pred_cnt_scalar,sve_pred_misc,\
+   sve_pred_vec,\
+   sve_fp_arith,sve_fp_mul,sve_fp_assoc_add,sve_fp_cmp,sve_fp_cvt,sve_fp_log,\
+   sve_fp_exp,sve_fp_div,sve_fp_sqrt,sve_fp_reduc,sve_fp_misc,\
+   sve_int_general,sve_int_shift,sve_int_mul,sve_int_dot,sve_int_cmp_set,\
+   sve_int_extend,sve_int_extract,sve_int_cvt,sve_int_div,sve_int_index,\
+   sve_int_match,sve_int_recip_est,sve_int_reduc,sve_int_accum,\
+   sve_int_pmul,sve_int_bit_perm,\
+   sve_load_pred,sve_load_1reg,sve_load_2reg,sve_load_3reg,sve_load_4reg,\
+   sve_gatherload_32,sve_gatherload_64,\
+   sve_store_pred,sve_store_1reg,sve_store_2reg,sve_store_3reg,sve_store_4reg,\
+   sve_scatterstore_32,sve_scatterstore_64,\
+   sve_ffr,\
+   sve_crypto_sha3"
+  (const_string "none"))
+
 ;; -------------------------------------------------------------------
 ;; Pipeline descriptions and scheduling
 ;; -------------------------------------------------------------------
@@ -620,6 +683,9 @@
 (include "thunderx2t99.md")
 (include "tsv110.md")
 (include "thunderx3t110.md")
+
+;; Dispatch scheduling
+(include "neoversev2.md")
 
 ;; -------------------------------------------------------------------
 ;; Jumps and other miscellaneous insns
@@ -643,7 +709,7 @@
 
 (define_insn "aarch64_write_sysregdi"
   [(unspec_volatile:DI [(match_operand 0 "aarch64_sysreg_string" "")
-			(match_operand:DI 1 "register_operand" "rZ")]
+			(match_operand:DI 1 "aarch64_reg_or_zero" "rZ")]
 		       UNSPEC_SYSREG_WDI)]
   ""
   "msr\t%0, %x1"
@@ -656,6 +722,10 @@
  "TARGET_D128"
  "msrr\t%x0, %x1, %H1"
 )
+
+;; -------------------------------------------------------------------
+;; Unconditional jumps
+;; -------------------------------------------------------------------
 
 (define_insn "indirect_jump"
   [(set (pc) (match_operand:DI 0 "register_operand" "r"))]
@@ -675,43 +745,345 @@
   [(set_attr "type" "branch")]
 )
 
-(define_expand "cbranch<mode>4"
+;; Maximum PC-relative positive/negative displacements for various branching
+;; instructions.
+(define_constants
+  [
+    ;; +/- 1MiB.  Used by B.<cond>, CBZ, CBNZ.
+    (BRANCH_LEN_P_1MiB  1048572)
+    (BRANCH_LEN_N_1MiB -1048576)
+
+    ;; +/- 32KiB.  Used by TBZ, TBNZ.
+    (BRANCH_LEN_P_32KiB  32764)
+    (BRANCH_LEN_N_32KiB -32768)
+
+    ;; +/- 1KiB.  Used by CBB<cond>, CBH<cond>, CB<cond>.
+    (BRANCH_LEN_P_1KiB  1020)
+    (BRANCH_LEN_N_1KiB -1024)
+  ]
+)
+
+;; -------------------------------------------------------------------
+;; Conditional jumps
+;; -------------------------------------------------------------------
+
+;; The order of the rules below is important.
+;; Higher priority rules are preferred because they can express larger
+;; displacements.
+;; 1) EQ/NE comparisons against zero are handled by CBZ/CBNZ.
+;; 2) LT/GE comparisons against zero are handled by TBZ/TBNZ.
+;; 3) When the CMPBR extension is enabled:
+;;   a) Comparisons between two registers are handled by
+;;      CBB<cond>/CBH<cond>/CB<cond>.
+;;   b) Comparisons between a GP register and an in range immediate are
+;;      handled by CB<cond> (immediate).
+;; 4) Otherwise, emit a CMP+B<cond> sequence.
+;; -------------------------------------------------------------------
+
+(define_expand "cbranch<GPI:mode>4"
   [(set (pc) (if_then_else (match_operator 0 "aarch64_comparison_operator"
 			    [(match_operand:GPI 1 "register_operand")
 			     (match_operand:GPI 2 "aarch64_plus_operand")])
-			   (label_ref (match_operand 3 "" ""))
+			   (label_ref (match_operand 3))
 			   (pc)))]
   ""
-  "
-  operands[1] = aarch64_gen_compare_reg (GET_CODE (operands[0]), operands[1],
-					 operands[2]);
-  operands[2] = const0_rtx;
-  "
+  {
+    if (TARGET_CMPBR && aarch64_cb_rhs (GET_CODE (operands[0]), operands[2]))
+      {
+	/* The branch is supported natively.  */
+      }
+    else
+      {
+        operands[1] = aarch64_gen_compare_reg (GET_CODE (operands[0]),
+					       operands[1], operands[2]);
+        operands[2] = const0_rtx;
+      }
+  }
+)
+
+(define_expand "cbranch<SHORT:mode>4"
+  [(set (pc) (if_then_else (match_operator 0 "aarch64_comparison_operator"
+			    [(match_operand:SHORT 1 "register_operand")
+			     (match_operand:SHORT 2 "aarch64_reg_or_zero")])
+			   (label_ref (match_operand 3))
+			   (pc)))]
+  "TARGET_CMPBR"
+  ""
 )
 
 (define_expand "cbranch<mode>4"
-  [(set (pc) (if_then_else (match_operator 0 "aarch64_comparison_operator"
-			    [(match_operand:GPF 1 "register_operand")
-			     (match_operand:GPF 2 "aarch64_fp_compare_operand")])
-			   (label_ref (match_operand 3 "" ""))
-			   (pc)))]
+  [(set (pc) (if_then_else
+		(match_operator 0 "aarch64_comparison_operator"
+		 [(match_operand:GPF_F16 1 "register_operand")
+		  (match_operand:GPF_F16 2 "aarch64_fp_compare_operand")])
+		(label_ref (match_operand 3))
+		(pc)))]
   ""
-  "
-  operands[1] = aarch64_gen_compare_reg (GET_CODE (operands[0]), operands[1],
-					 operands[2]);
-  operands[2] = const0_rtx;
-  "
+  {
+    operands[1] = aarch64_gen_compare_reg (GET_CODE (operands[0]), operands[1],
+					   operands[2]);
+    operands[2] = const0_rtx;
+  }
 )
 
 (define_expand "cbranchcc4"
-  [(set (pc) (if_then_else
-	      (match_operator 0 "aarch64_comparison_operator"
-	       [(match_operand 1 "cc_register")
-	        (match_operand 2 "const0_operand")])
-	      (label_ref (match_operand 3 "" ""))
-	      (pc)))]
+  [(set (pc) (if_then_else (match_operator 0 "aarch64_comparison_operator"
+			    [(match_operand 1 "cc_register")
+			     (match_operand 2 "const0_operand")])
+			   (label_ref (match_operand 3))
+			   (pc)))]
   ""
-  "")
+  ""
+)
+
+;; For an EQ/NE comparison against zero, emit `CBZ`/`CBNZ`
+(define_insn "*aarch64_cbz<optab><mode>"
+  [(set (pc) (if_then_else (EQL (match_operand:GPI 0 "register_operand" "r")
+				(const_int 0))
+			   (label_ref (match_operand 1))
+			   (pc)))]
+  "!aarch64_track_speculation"
+  {
+    if (get_attr_length (insn) == 8)
+      return aarch64_gen_far_branch (operands, 1, "Lcb", "<inv_cb>\\t%<w>0, ");
+    else
+      return "<cbz>\\t%<w>0, %l1";
+  }
+  [(set_attr "type" "branch")
+   (set (attr "length")
+	(if_then_else (and (ge (minus (match_dup 1) (pc))
+			       (const_int BRANCH_LEN_N_1MiB))
+			   (lt (minus (match_dup 1) (pc))
+			       (const_int BRANCH_LEN_P_1MiB)))
+		      (const_int 4)
+		      (const_int 8)))
+   (set (attr "far_branch")
+	(if_then_else (and (ge (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_N_1MiB))
+			   (lt (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_P_1MiB)))
+		      (const_string "no")
+		      (const_string "yes")))]
+)
+
+;; For an LT/GE comparison against zero, emit `TBZ`/`TBNZ`
+(define_insn "*aarch64_tbz<optab><mode>1"
+  [(set (pc) (if_then_else (LTGE (match_operand:ALLI 0 "register_operand" "r")
+				 (const_int 0))
+			   (label_ref (match_operand 1))
+			   (pc)))]
+  "!aarch64_track_speculation"
+  {
+    if (get_attr_length (insn) == 4)
+      return "<tbz>\t%<w>0, <sizem1>, %l1";
+    return aarch64_gen_far_branch (operands, 1, "Ltb",
+				   "<inv_tb>\\t%<w>0, <sizem1>, ");
+  }
+  [(set_attr "type" "branch")
+   (set (attr "length")
+	(if_then_else (and (ge (minus (match_dup 1) (pc))
+			       (const_int BRANCH_LEN_N_32KiB))
+			   (lt (minus (match_dup 1) (pc))
+			       (const_int BRANCH_LEN_P_32KiB)))
+		      (const_int 4)
+		      (const_int 8)))
+   (set (attr "far_branch")
+	(if_then_else (and (ge (minus (match_dup 1) (pc))
+			       (const_int BRANCH_LEN_N_32KiB))
+			   (lt (minus (match_dup 1) (pc))
+			       (const_int BRANCH_LEN_P_32KiB)))
+		      (const_string "no")
+		      (const_string "yes")))]
+)
+
+;; Emit a `CB<cond> (register)` or `CB<cond> (immediate)` instruction.
+;; The immediate range depends on the comparison code.
+(define_insn "*aarch64_cb<code><mode>"
+  [(set (pc) (if_then_else
+		(INT_CMP
+		  (match_operand:GPI 0 "register_operand" "r")
+		  (match_operand:GPI 1
+		    "aarch64_reg_<cmpbr_imm_constraint>_operand"
+		    "r<cmpbr_imm_constraint>"))
+		(label_ref (match_operand 2))
+		(pc)))]
+  "TARGET_CMPBR"
+  {
+    if (get_attr_length (insn) == 4)
+      return "cb<cmp_op>\t%<w>0, %<w>1, %l2";
+    return aarch64_gen_far_branch (operands, 2, "L",
+		"cb<inv_cmp_op>\t%<w>0, %<w>1, ");
+  }
+  [(set_attr "type" "branch")
+   (set (attr "length")
+	(if_then_else (and (ge (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_N_1KiB))
+			   (lt (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_P_1KiB)))
+		      (const_int 4)
+		      (const_int 8)))
+   (set (attr "far_branch")
+	(if_then_else (and (ge (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_N_1KiB))
+			   (lt (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_P_1KiB)))
+		      (const_string "no")
+		      (const_string "yes")))]
+)
+
+;; Emit a `CBB<cond> (register)` or `CBH<cond> (register)` instruction.
+(define_insn "aarch64_cb<INT_CMP:code><SHORT:mode>"
+  [(set (pc) (if_then_else (INT_CMP
+			     (match_operand:SHORT 0 "register_operand" "r")
+			     (match_operand:SHORT 1 "aarch64_reg_or_zero" "rZ"))
+			   (label_ref (match_operand 2))
+			   (pc)))]
+  "TARGET_CMPBR"
+  {
+    return (get_attr_far_branch (insn) == FAR_BRANCH_NO)
+      ? "cb<SHORT:cmpbr_suffix><INT_CMP:cmp_op>\\t%<w>0, %<w>1, %l2"
+      : aarch64_gen_far_branch (operands, 2, "L",
+          "cb<SHORT:cmpbr_suffix><INT_CMP:inv_cmp_op>\\t%<w>0, %<w>1, ");
+  }
+  [(set_attr "type" "branch")
+   (set (attr "length")
+	(if_then_else (and (ge (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_N_1KiB))
+			   (lt (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_P_1KiB)))
+		      (const_int 4)
+		      (const_int 8)))
+   (set (attr "far_branch")
+	(if_then_else (and (ge (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_N_1KiB))
+			   (lt (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_P_1KiB)))
+		      (const_string "no")
+		      (const_string "yes")))]
+)
+
+;; Emit `B<cond>`, assuming that the condition is already in the CC register.
+(define_insn "aarch64_bcond"
+  [(set (pc) (if_then_else (match_operator 0 "aarch64_comparison_operator"
+			    [(match_operand 1 "cc_register")
+			     (const_int 0)])
+			   (label_ref (match_operand 2))
+			   (pc)))]
+  ""
+  {
+    /* GCC's traditional style has been to use "beq" instead of "b.eq", etc.,
+       but the "." is required for SVE conditions.  */
+    bool use_dot_p = GET_MODE (operands[1]) == CC_NZCmode;
+    if (get_attr_length (insn) == 8)
+      return aarch64_gen_far_branch (operands, 2, "Lbcond",
+				     use_dot_p ? "b.%M0\\t" : "b%M0\\t");
+    else
+      return use_dot_p ? "b.%m0\\t%l2" : "b%m0\\t%l2";
+  }
+  [(set_attr "type" "branch")
+   (set (attr "length")
+	(if_then_else (and (ge (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_N_1MiB))
+			   (lt (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_P_1MiB)))
+		      (const_int 4)
+		      (const_int 8)))
+   (set (attr "far_branch")
+	(if_then_else (and (ge (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_N_1MiB))
+			   (lt (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_P_1MiB)))
+		      (const_string "no")
+		      (const_string "yes")))]
+)
+
+;; For a 24-bit immediate CST we can optimize the compare for equality.
+(define_insn_and_split "*aarch64_bcond_wide_imm<GPI:mode>"
+  [(set (pc) (if_then_else
+	       (match_operator 0 "aarch64_equality_operator"
+		[(match_operand:GPI 1 "register_operand" "r")
+	         (match_operand:GPI 2 "aarch64_split_imm24" "n")])
+	       (label_ref (match_operand 3))
+	       (pc)))
+   (clobber (reg:CC CC_REGNUM))
+   (clobber (match_scratch:GPI 4 "=r"))]
+  ""
+  "#"
+  ""
+  [(const_int 0)]
+  {
+    rtx cc_reg = aarch64_gen_compare_split_imm24 (operands[1], operands[2],
+						  operands[4]);
+    emit_jump_insn (gen_aarch64_bcond (operands[0], cc_reg, operands[3]));
+    DONE;
+  }
+)
+
+;; -------------------------------------------------------------------
+;; Test bit and branch
+;; -------------------------------------------------------------------
+
+(define_expand "tbranch_<code><mode>3"
+  [(set (pc) (if_then_else (EQL
+			     (match_operand:SHORT 0 "register_operand")
+			     (match_operand 1 "const0_operand"))
+			   (label_ref (match_operand 2 ""))
+			   (pc)))]
+  ""
+{
+  rtx bitvalue = gen_reg_rtx (<ZEROM>mode);
+  rtx reg = gen_lowpart (<ZEROM>mode, operands[0]);
+  rtx val = gen_int_mode (HOST_WIDE_INT_1U << UINTVAL (operands[1]),
+			  <MODE>mode);
+  emit_insn (gen_and<zerom>3 (bitvalue, reg, val));
+  operands[1] = const0_rtx;
+  operands[0] = aarch64_gen_compare_reg (<CODE>, bitvalue,
+					 operands[1]);
+})
+
+(define_insn "@aarch64_tbz<optab><ALLI:mode><GPI:mode>"
+  [(set (pc) (if_then_else (EQL
+			     (zero_extract:GPI
+			       (match_operand:ALLI 0 "register_operand" "r")
+			       (const_int 1)
+			       (match_operand 1 "aarch64_simd_shift_imm_<ALLI:mode>" "n"))
+			     (const_int 0))
+			   (label_ref (match_operand 2))
+			   (pc)))
+   (clobber (reg:CC CC_REGNUM))]
+  "!aarch64_track_speculation"
+  {
+    if (get_attr_length (insn) == 8)
+      {
+	if (get_attr_far_branch (insn) == 1)
+	  return aarch64_gen_far_branch (operands, 2, "Ltb",
+					 "<inv_tb>\\t%<ALLI:w>0, %1, ");
+	else
+	  {
+	    operands[1] = GEN_INT (HOST_WIDE_INT_1U << UINTVAL (operands[1]));
+	    return "tst\t%<ALLI:w>0, %1\;<bcond>\t%l2";
+	  }
+      }
+    else
+      return "<tbz>\t%<ALLI:w>0, %1, %l2";
+  }
+  [(set_attr "type" "branch")
+   (set (attr "length")
+	(if_then_else (and (ge (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_N_32KiB))
+			   (lt (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_P_32KiB)))
+		      (const_int 4)
+		      (const_int 8)))
+   (set (attr "far_branch")
+	(if_then_else (and (ge (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_N_1MiB))
+			   (lt (minus (match_dup 2) (pc))
+			       (const_int BRANCH_LEN_P_1MiB)))
+		      (const_string "no")
+		      (const_string "yes")))]
+
+)
 
 (define_insn "@ccmp<CC_ONLY:mode><GPI:mode>"
   [(set (match_operand:CC_ONLY 1 "cc_register")
@@ -839,71 +1211,6 @@
 
     emit_insn (gen_csneg3<mode>_insn (operands[0], cond,
 				       masked_neg, masked_pos));
-    DONE;
-  }
-)
-
-(define_insn "condjump"
-  [(set (pc) (if_then_else (match_operator 0 "aarch64_comparison_operator"
-			    [(match_operand 1 "cc_register" "") (const_int 0)])
-			   (label_ref (match_operand 2 "" ""))
-			   (pc)))]
-  ""
-  {
-    /* GCC's traditional style has been to use "beq" instead of "b.eq", etc.,
-       but the "." is required for SVE conditions.  */
-    bool use_dot_p = GET_MODE (operands[1]) == CC_NZCmode;
-    if (get_attr_length (insn) == 8)
-      return aarch64_gen_far_branch (operands, 2, "Lbcond",
-				     use_dot_p ? "b.%M0\\t" : "b%M0\\t");
-    else
-      return use_dot_p ? "b.%m0\\t%l2" : "b%m0\\t%l2";
-  }
-  [(set_attr "type" "branch")
-   (set (attr "length")
-	(if_then_else (and (ge (minus (match_dup 2) (pc)) (const_int -1048576))
-			   (lt (minus (match_dup 2) (pc)) (const_int 1048572)))
-		      (const_int 4)
-		      (const_int 8)))
-   (set (attr "far_branch")
-	(if_then_else (and (ge (minus (match_dup 2) (pc)) (const_int -1048576))
-			   (lt (minus (match_dup 2) (pc)) (const_int 1048572)))
-		      (const_int 0)
-		      (const_int 1)))]
-)
-
-;; For a 24-bit immediate CST we can optimize the compare for equality
-;; and branch sequence from:
-;; 	mov	x0, #imm1
-;; 	movk	x0, #imm2, lsl 16 /* x0 contains CST.  */
-;; 	cmp	x1, x0
-;; 	b<ne,eq> .Label
-;; into the shorter:
-;; 	sub	x0, x1, #(CST & 0xfff000)
-;; 	subs	x0, x0, #(CST & 0x000fff)
-;; 	b<ne,eq> .Label
-(define_insn_and_split "*compare_condjump<GPI:mode>"
-  [(set (pc) (if_then_else (EQL
-			      (match_operand:GPI 0 "register_operand" "r")
-			      (match_operand:GPI 1 "aarch64_imm24" "n"))
-			   (label_ref:P (match_operand 2 "" ""))
-			   (pc)))]
-  "!aarch64_move_imm (INTVAL (operands[1]), <GPI:MODE>mode)
-   && !aarch64_plus_operand (operands[1], <GPI:MODE>mode)
-   && !reload_completed"
-  "#"
-  "&& true"
-  [(const_int 0)]
-  {
-    HOST_WIDE_INT lo_imm = UINTVAL (operands[1]) & 0xfff;
-    HOST_WIDE_INT hi_imm = UINTVAL (operands[1]) & 0xfff000;
-    rtx tmp = gen_reg_rtx (<GPI:MODE>mode);
-    emit_insn (gen_add<GPI:mode>3 (tmp, operands[0], GEN_INT (-hi_imm)));
-    emit_insn (gen_add<GPI:mode>3_compare0 (tmp, tmp, GEN_INT (-lo_imm)));
-    rtx cc_reg = gen_rtx_REG (CC_NZmode, CC_REGNUM);
-    rtx cmp_rtx = gen_rtx_fmt_ee (<EQL:CMP>, <GPI:MODE>mode,
-				  cc_reg, const0_rtx);
-    emit_jump_insn (gen_condjump (cmp_rtx, cc_reg, operands[2]));
     DONE;
   }
 )
@@ -1099,127 +1406,6 @@
    (set_attr "sls_length" "retbr")]
 )
 
-(define_insn "aarch64_cb<optab><mode>1"
-  [(set (pc) (if_then_else (EQL (match_operand:GPI 0 "register_operand" "r")
-				(const_int 0))
-			   (label_ref (match_operand 1 "" ""))
-			   (pc)))]
-  "!aarch64_track_speculation"
-  {
-    if (get_attr_length (insn) == 8)
-      return aarch64_gen_far_branch (operands, 1, "Lcb", "<inv_cb>\\t%<w>0, ");
-    else
-      return "<cbz>\\t%<w>0, %l1";
-  }
-  [(set_attr "type" "branch")
-   (set (attr "length")
-	(if_then_else (and (ge (minus (match_dup 1) (pc)) (const_int -1048576))
-			   (lt (minus (match_dup 1) (pc)) (const_int 1048572)))
-		      (const_int 4)
-		      (const_int 8)))
-   (set (attr "far_branch")
-	(if_then_else (and (ge (minus (match_dup 2) (pc)) (const_int -1048576))
-			   (lt (minus (match_dup 2) (pc)) (const_int 1048572)))
-		      (const_int 0)
-		      (const_int 1)))]
-)
-
-(define_expand "tbranch_<code><mode>3"
-  [(set (pc) (if_then_else
-              (EQL (match_operand:SHORT 0 "register_operand")
-                   (match_operand 1 "const0_operand"))
-              (label_ref (match_operand 2 ""))
-              (pc)))]
-  ""
-{
-  rtx bitvalue = gen_reg_rtx (<ZEROM>mode);
-  rtx reg = gen_lowpart (<ZEROM>mode, operands[0]);
-  rtx val = gen_int_mode (HOST_WIDE_INT_1U << UINTVAL (operands[1]), <MODE>mode);
-  emit_insn (gen_and<zerom>3 (bitvalue, reg, val));
-  operands[1] = const0_rtx;
-  operands[0] = aarch64_gen_compare_reg (<CODE>, bitvalue,
-					 operands[1]);
-})
-
-(define_insn "@aarch64_tb<optab><ALLI:mode><GPI:mode>"
-  [(set (pc) (if_then_else
-	      (EQL (zero_extract:GPI (match_operand:ALLI 0 "register_operand" "r")
-				     (const_int 1)
-				     (match_operand 1
-				       "aarch64_simd_shift_imm_<ALLI:mode>" "n"))
-		   (const_int 0))
-	     (label_ref (match_operand 2 "" ""))
-	     (pc)))
-   (clobber (reg:CC CC_REGNUM))]
-  "!aarch64_track_speculation"
-  {
-    if (get_attr_length (insn) == 8)
-      {
-	if (get_attr_far_branch (insn) == 1)
-	  return aarch64_gen_far_branch (operands, 2, "Ltb",
-					 "<inv_tb>\\t%<ALLI:w>0, %1, ");
-	else
-	  {
-	    operands[1] = GEN_INT (HOST_WIDE_INT_1U << UINTVAL (operands[1]));
-	    return "tst\t%<ALLI:w>0, %1\;<bcond>\t%l2";
-	  }
-      }
-    else
-      return "<tbz>\t%<ALLI:w>0, %1, %l2";
-  }
-  [(set_attr "type" "branch")
-   (set (attr "length")
-	(if_then_else (and (ge (minus (match_dup 2) (pc)) (const_int -32768))
-			   (lt (minus (match_dup 2) (pc)) (const_int 32764)))
-		      (const_int 4)
-		      (const_int 8)))
-   (set (attr "far_branch")
-	(if_then_else (and (ge (minus (match_dup 2) (pc)) (const_int -1048576))
-			   (lt (minus (match_dup 2) (pc)) (const_int 1048572)))
-		      (const_int 0)
-		      (const_int 1)))]
-
-)
-
-(define_insn "*cb<optab><mode>1"
-  [(set (pc) (if_then_else (LTGE (match_operand:ALLI 0 "register_operand" "r")
-				 (const_int 0))
-			   (label_ref (match_operand 1 "" ""))
-			   (pc)))
-   (clobber (reg:CC CC_REGNUM))]
-  "!aarch64_track_speculation"
-  {
-    if (get_attr_length (insn) == 8)
-      {
-	if (get_attr_far_branch (insn) == 1)
-	  return aarch64_gen_far_branch (operands, 1, "Ltb",
-					 "<inv_tb>\\t%<w>0, <sizem1>, ");
-	else
-	  {
-	    char buf[64];
-	    uint64_t val = ((uint64_t) 1)
-		<< (GET_MODE_SIZE (<MODE>mode) * BITS_PER_UNIT - 1);
-	    sprintf (buf, "tst\t%%<w>0, %" PRId64, val);
-	    output_asm_insn (buf, operands);
-	    return "<bcond>\t%l1";
-	  }
-      }
-    else
-      return "<tbz>\t%<w>0, <sizem1>, %l1";
-  }
-  [(set_attr "type" "branch")
-   (set (attr "length")
-	(if_then_else (and (ge (minus (match_dup 1) (pc)) (const_int -32768))
-			   (lt (minus (match_dup 1) (pc)) (const_int 32764)))
-		      (const_int 4)
-		      (const_int 8)))
-   (set (attr "far_branch")
-	(if_then_else (and (ge (minus (match_dup 1) (pc)) (const_int -1048576))
-			   (lt (minus (match_dup 1) (pc)) (const_int 1048572)))
-		      (const_int 0)
-		      (const_int 1)))]
-)
-
 (define_expand "save_stack_nonlocal"
   [(set (match_operand 0 "memory_operand")
         (match_operand 1 "register_operand"))]
@@ -1233,16 +1419,16 @@
       /* Save GCS with code like
 		mov     x16, 1
 		chkfeat x16
-		tbnz    x16, 0, .L_done
+		cbnz    x16, .L_done
 		mrs     tmp, gcspr_el0
 		str     tmp, [%0, 8]
 	.L_done:  */
 
-      rtx done_label = gen_label_rtx ();
+      auto done_label = gen_label_rtx ();
       rtx r16 = gen_rtx_REG (DImode, R16_REGNUM);
       emit_move_insn (r16, const1_rtx);
       emit_insn (gen_aarch64_chkfeat ());
-      emit_insn (gen_tbranch_neqi3 (r16, const0_rtx, done_label));
+      emit_jump_insn (aarch64_gen_compare_zero_and_branch (NE, r16, done_label));
       rtx gcs_slot = adjust_address (operands[0], Pmode, GET_MODE_SIZE (Pmode));
       rtx gcs = gen_reg_rtx (Pmode);
       emit_insn (gen_aarch64_load_gcspr (gcs));
@@ -1265,7 +1451,7 @@
       /* Restore GCS with code like
 		mov     x16, 1
 		chkfeat x16
-		tbnz    x16, 0, .L_done
+		cbnz    x16, .L_done
 		ldr     tmp1, [%1, 8]
 		mrs     tmp2, gcspr_el0
 		subs    tmp2, tmp1, tmp2
@@ -1276,12 +1462,12 @@
 		b.ne    .L_loop
 	.L_done:  */
 
-      rtx loop_label = gen_label_rtx ();
-      rtx done_label = gen_label_rtx ();
+      auto loop_label = gen_label_rtx ();
+      auto done_label = gen_label_rtx ();
       rtx r16 = gen_rtx_REG (DImode, R16_REGNUM);
       emit_move_insn (r16, const1_rtx);
       emit_insn (gen_aarch64_chkfeat ());
-      emit_insn (gen_tbranch_neqi3 (r16, const0_rtx, done_label));
+      emit_jump_insn (aarch64_gen_compare_zero_and_branch (NE, r16, done_label));
       rtx gcs_slot = adjust_address (operands[1], Pmode, GET_MODE_SIZE (Pmode));
       rtx gcs_old = gen_reg_rtx (Pmode);
       emit_move_insn (gcs_old, gcs_slot);
@@ -1290,13 +1476,13 @@
       emit_insn (gen_subdi3_compare1 (gcs_now, gcs_old, gcs_now));
       rtx cc_reg = gen_rtx_REG (CC_NZmode, CC_REGNUM);
       rtx cmp_rtx = gen_rtx_fmt_ee (EQ, DImode, cc_reg, const0_rtx);
-      emit_jump_insn (gen_condjump (cmp_rtx, cc_reg, done_label));
+      emit_jump_insn (gen_aarch64_bcond (cmp_rtx, cc_reg, done_label));
       emit_label (loop_label);
       emit_insn (gen_aarch64_gcspopm_xzr ());
       emit_insn (gen_adddi3_compare0 (gcs_now, gcs_now, GEN_INT (-8)));
       cc_reg = gen_rtx_REG (CC_NZmode, CC_REGNUM);
       cmp_rtx = gen_rtx_fmt_ee (NE, DImode, cc_reg, const0_rtx);
-      emit_jump_insn (gen_condjump (cmp_rtx, cc_reg, loop_label));
+      emit_jump_insn (gen_aarch64_bcond (cmp_rtx, cc_reg, loop_label));
       emit_label (done_label);
     }
   DONE;
@@ -1515,7 +1701,7 @@
      [w, r Z  ; neon_from_gp<q>, nosimd     ] fmov\t%s0, %w1
      [w, w    ; neon_dup       , simd       ] dup\t%<Vetype>0, %1.<v>[0]
      [w, w    ; neon_dup       , nosimd     ] fmov\t%s0, %s1
-     [Umv, r  ; mrs            , *          ] msr\t%0, %x1
+     [Umv, rZ ; mrs            , *          ] msr\t%0, %x1
      [r, Umv  ; mrs            , *          ] mrs\t%x0, %1
   }
 )
@@ -1579,7 +1765,7 @@
      [r  , w  ; f_mrc    , fp  , 4] fmov\t%w0, %s1
      [w  , w  ; fmov     , fp  , 4] fmov\t%s0, %s1
      [w  , Ds ; neon_move, simd, 4] << aarch64_output_scalar_simd_mov_immediate (operands[1], SImode);
-     [Umv, r  ; mrs      , *   , 4] msr\t%0, %x1
+     [Umv, rZ ; mrs      , *   , 4] msr\t%0, %x1
      [r, Umv  ; mrs      , *   , 4] mrs\t%x0, %1
   }
   "CONST_INT_P (operands[1]) && !aarch64_move_imm (INTVAL (operands[1]), SImode)
@@ -1597,30 +1783,30 @@
   "(register_operand (operands[0], DImode)
     || aarch64_reg_or_zero (operands[1], DImode))"
   {@ [cons: =0, 1; attrs: type, arch, length]
-     [w, Z  ; neon_move, simd, 4] movi\t%0.2d, #0
-     [r, r  ; mov_reg  , *   , 4] mov\t%x0, %x1
-     [k, r  ; mov_reg  , *   , 4] mov\t%0, %x1
-     [r, k  ; mov_reg  , *   , 4] mov\t%x0, %1
-     [r, O  ; mov_imm  , *   , 4] << aarch64_is_mov_xn_imm (INTVAL (operands[1])) ? "mov\t%x0, %1" : "mov\t%w0, %1";
-     [r, n  ; mov_imm  , *   ,16] #
+     [w, Z   ; neon_move, simd, 4] movi\t%0.2d, #0
+     [r, r   ; mov_reg  , *   , 4] mov\t%x0, %x1
+     [k, r   ; mov_reg  , *   , 4] mov\t%0, %x1
+     [r, k   ; mov_reg  , *   , 4] mov\t%x0, %1
+     [r, O   ; mov_imm  , *   , 4] << aarch64_is_mov_xn_imm (INTVAL (operands[1])) ? "mov\t%x0, %1" : "mov\t%w0, %1";
+     [r, n   ; mov_imm  , *   ,16] #
      /* The "mov_imm" type for CNT is just a placeholder.  */
-     [r, Usv; mov_imm  , sve , 4] << aarch64_output_sve_cnt_immediate ("cnt", "%x0", operands[1]);
-     [r, Usr; mov_imm  , sve,  4] << aarch64_output_sve_rdvl (operands[1]);
-     [r, UsR; mov_imm  , sme,  4] << aarch64_output_rdsvl (operands[1]);
-     [r, m  ; load_8   , *   , 4] ldr\t%x0, %1
-     [w, m  ; load_8   , fp  , 4] ldr\t%d0, %1
-     [m, r Z; store_8  , *   , 4] str\t%x1, %0
-     [m, w  ; store_8  , fp  , 4] str\t%d1, %0
-     [r, Usw; load_8   , *   , 8] << TARGET_ILP32 ? "adrp\t%0, %A1\;ldr\t%w0, [%0, %L1]" : "adrp\t%0, %A1\;ldr\t%0, [%0, %L1]";
-     [r, Usa; adr      , *   , 4] adr\t%x0, %c1
-     [r, Ush; adr      , *   , 4] adrp\t%x0, %A1
-     [w, r Z; f_mcr    , fp  , 4] fmov\t%d0, %x1
-     [r, w  ; f_mrc    , fp  , 4] fmov\t%x0, %d1
-     [w, w  ; fmov     , fp  , 4] fmov\t%d0, %d1
-     [w, Dd ; neon_move, simd, 4] << aarch64_output_scalar_simd_mov_immediate (operands[1], DImode);
-     [w, Dx ; neon_move, simd, 8] #
-     [Umv, r; mrs      , *   , 4] msr\t%0, %1
-     [r, Umv; mrs      , *   , 4] mrs\t%0, %1
+     [r, Usv ; mov_imm  , sve , 4] << aarch64_output_sve_cnt_immediate ("cnt", "%x0", operands[1]);
+     [r, Usr ; mov_imm  , sve,  4] << aarch64_output_sve_rdvl (operands[1]);
+     [r, UsR ; mov_imm  , sme,  4] << aarch64_output_rdsvl (operands[1]);
+     [r, m   ; load_8   , *   , 4] ldr\t%x0, %1
+     [w, m   ; load_8   , fp  , 4] ldr\t%d0, %1
+     [m, r Z ; store_8  , *   , 4] str\t%x1, %0
+     [m, w   ; store_8  , fp  , 4] str\t%d1, %0
+     [r, Usw ; load_8   , *   , 8] << TARGET_ILP32 ? "adrp\t%0, %A1\;ldr\t%w0, [%0, %L1]" : "adrp\t%0, %A1\;ldr\t%0, [%0, %L1]";
+     [r, Usa ; adr      , *   , 4] adr\t%x0, %c1
+     [r, Ush ; adr      , *   , 4] adrp\t%x0, %A1
+     [w, r Z ; f_mcr    , fp  , 4] fmov\t%d0, %x1
+     [r, w   ; f_mrc    , fp  , 4] fmov\t%x0, %d1
+     [w, w   ; fmov     , fp  , 4] fmov\t%d0, %d1
+     [w, Dd  ; neon_move, simd, 4] << aarch64_output_scalar_simd_mov_immediate (operands[1], DImode);
+     [w, Dx  ; neon_move, simd, 8] #
+     [Umv, rZ; mrs      , *   , 4] msr\t%0, %x1
+     [r, Umv ; mrs      , *   , 4] mrs\t%0, %1
   }
   "CONST_INT_P (operands[1])
    && REG_P (operands[0])
@@ -1744,14 +1930,32 @@
         && ! (GET_CODE (operands[1]) == CONST_DOUBLE
 	      && aarch64_float_const_zero_rtx_p (operands[1])))
       operands[1] = force_reg (<MODE>mode, operands[1]);
+
+    if (GET_CODE (operands[1]) == CONST_DOUBLE
+	&& can_create_pseudo_p ()
+	&& !aarch64_can_const_movi_rtx_p (operands[1], <MODE>mode)
+	&& !aarch64_float_const_representable_p (operands[1])
+	&& !aarch64_float_const_zero_rtx_p (operands[1])
+	&&  aarch64_float_const_rtx_p (operands[1]))
+      {
+	unsigned HOST_WIDE_INT ival;
+	bool res = aarch64_reinterpret_float_as_int (operands[1], &ival);
+	gcc_assert (res);
+
+	machine_mode intmode
+	  = int_mode_for_size (GET_MODE_BITSIZE (<MODE>mode), 0).require ();
+	rtx tmp = gen_reg_rtx (intmode);
+	emit_move_insn (tmp, gen_int_mode (ival, intmode));
+	emit_move_insn (operands[0], gen_lowpart (<MODE>mode, tmp));
+	DONE;
+      }
   }
 )
 
 (define_insn "*mov<mode>_aarch64"
   [(set (match_operand:HFBF 0 "nonimmediate_operand")
 	(match_operand:HFBF 1 "general_operand"))]
-  "TARGET_FLOAT && (register_operand (operands[0], <MODE>mode)
-    || aarch64_reg_or_fp_zero (operands[1], <MODE>mode))"
+  "aarch64_valid_fp_move (operands[0], operands[1], <MODE>mode)"
   {@ [ cons: =0 , 1   ; attrs: type , arch  ]
      [ w        , Y   ; neon_move   , simd  ] movi\t%0.4h, #0
      [ w        , ?rY ; f_mcr       , fp16  ] fmov\t%h0, %w1
@@ -1774,8 +1978,7 @@
 (define_insn "*mov<mode>_aarch64"
   [(set (match_operand:SFD 0 "nonimmediate_operand")
 	(match_operand:SFD 1 "general_operand"))]
-  "TARGET_FLOAT && (register_operand (operands[0], <MODE>mode)
-    || aarch64_reg_or_fp_zero (operands[1], <MODE>mode))"
+  "aarch64_valid_fp_move (operands[0], operands[1], <MODE>mode)"
   {@ [ cons: =0 , 1   ; attrs: type , arch  ]
      [ w        , Y   ; neon_move   , simd  ] movi\t%0.2s, #0
      [ w        , ?rY ; f_mcr       , *     ] fmov\t%s0, %w1
@@ -1795,8 +1998,7 @@
 (define_insn "*mov<mode>_aarch64"
   [(set (match_operand:DFD 0 "nonimmediate_operand")
 	(match_operand:DFD 1 "general_operand"))]
-  "TARGET_FLOAT && (register_operand (operands[0], <MODE>mode)
-    || aarch64_reg_or_fp_zero (operands[1], <MODE>mode))"
+  "aarch64_valid_fp_move (operands[0], operands[1], <MODE>mode)"
   {@ [ cons: =0 , 1   ; attrs: type , arch  ]
      [ w        , Y   ; neon_move   , simd  ] movi\t%d0, #0
      [ w        , ?rY ; f_mcr       , *     ] fmov\t%d0, %x1
@@ -1810,27 +2012,6 @@
      [ m        , rY  ; store_8     , *     ] str\t%x1, %0
      [ r        , r   ; mov_reg     , *     ] mov\t%x0, %x1
      [ r        , O   ; fconstd     , *     ] << aarch64_is_mov_xn_imm (INTVAL (operands[1])) ? "mov\t%x0, %1" : "mov\t%w0, %1";
-  }
-)
-
-(define_split
-  [(set (match_operand:GPF_HF 0 "nonimmediate_operand")
-	(match_operand:GPF_HF 1 "const_double_operand"))]
-  "can_create_pseudo_p ()
-   && !aarch64_can_const_movi_rtx_p (operands[1], <MODE>mode)
-   && !aarch64_float_const_representable_p (operands[1])
-   && !aarch64_float_const_zero_rtx_p (operands[1])
-   &&  aarch64_float_const_rtx_p (operands[1])"
-  [(const_int 0)]
-  {
-    unsigned HOST_WIDE_INT ival;
-    if (!aarch64_reinterpret_float_as_int (operands[1], &ival))
-      FAIL;
-
-    rtx tmp = gen_reg_rtx (<FCVT_TARGET>mode);
-    emit_move_insn (tmp, gen_int_mode (ival, <FCVT_TARGET>mode));
-    emit_move_insn (operands[0], gen_lowpart (<MODE>mode, tmp));
-    DONE;
   }
 )
 
@@ -1869,6 +2050,44 @@
     aarch64_split_128bit_move (operands[0], operands[1]);
     DONE;
   }
+)
+
+;; The preferred way of writing to the FPMR is to test whether it already
+;; has the desired value and branch around the write if so.  This reduces
+;; the number of redundant FPMR writes caused by ABI boundaries, such as in:
+;;
+;;    for (...)
+;;      fp8_kernel (..., fpmr_value);
+;;
+;; Without this optimization, fp8_kernel would set FPMR to fpmr_value each
+;; time that it is called.
+;;
+;; We do this as a split so that hardreg_pre can optimize the moves first.
+(define_split
+  [(set (reg:DI FPM_REGNUM)
+        (match_operand:DI 0 "aarch64_reg_or_zero"))]
+  "TARGET_FP8 && !TARGET_CHEAP_FPMR_WRITE && can_create_pseudo_p ()"
+  [(const_int 0)]
+  {
+    auto label = gen_label_rtx ();
+    rtx current = copy_to_reg (gen_rtx_REG (DImode, FPM_REGNUM));
+    rtx cond = gen_rtx_EQ (VOIDmode, current, operands[0]);
+    emit_jump_insn (gen_cbranchdi4 (cond, current, operands[0], label));
+    emit_insn (gen_aarch64_write_fpmr (operands[0]));
+    emit_label (label);
+    DONE;
+  }
+)
+
+;; A write to the FPMR that is already protected by a conditional branch.
+;; Since this instruction is introduced late, it shouldn't matter too much
+;; that we're using an unspec for a move.
+(define_insn "aarch64_write_fpmr"
+  [(set (reg:DI FPM_REGNUM)
+        (unspec:DI [(match_operand:DI 0 "aarch64_reg_or_zero" "rZ")]
+		   UNSPEC_WRITE_FPMR))]
+  "TARGET_FP8"
+  "msr\tfpmr, %x0"
 )
 
 (define_expand "aarch64_cpymemdi"
@@ -2131,9 +2350,9 @@
   "aarch64_mem_pair_offset (operands[4], <MODE>mode)
    && known_eq (INTVAL (operands[5]),
 		INTVAL (operands[4]) + GET_MODE_SIZE (<MODE>mode))"
-  {@ [cons: =&0, 1, =2, =3; attrs: type     ]
-     [       rk, 0,  r,  r; load_<ldpstp_sz>] ldp\t%<w>2, %<w>3, [%0, %4]!
-     [       rk, 0,  w,  w; neon_load1_2reg ] ldp\t%<v>2, %<v>3, [%0, %4]!
+  {@ [cons: =0,   1, =2, =3; attrs: type     ]
+     [       &rk, 0,  r,  r; load_<ldpstp_sz>] ldp\t%<w>2, %<w>3, [%0, %4]!
+     [       rk,  0,  w,  w; neon_load1_2reg ] ldp\t%<v>2, %<v>3, [%0, %4]!
   }
 )
 
@@ -2187,9 +2406,9 @@
 		INTVAL (operands[4]) + GET_MODE_SIZE (<MODE>mode))
    && !reg_overlap_mentioned_p (operands[0], operands[2])
    && !reg_overlap_mentioned_p (operands[0], operands[3])"
-  {@ [cons: =&0, 1,   2,   3; attrs: type      ]
-     [       rk, 0, rYZ, rYZ; store_<ldpstp_sz>] stp\t%<w>2, %<w>3, [%0, %4]!
-     [       rk, 0,   w,   w; neon_store1_2reg ] stp\t%<v>2, %<v>3, [%0, %4]!
+  {@ [cons: =0, 1,   2,   3; attrs: type      ]
+     [     &rk, 0, rYZ, rYZ; store_<ldpstp_sz>] stp\t%<w>2, %<w>3, [%0, %4]!
+     [      rk, 0,   w,   w; neon_store1_2reg ] stp\t%<v>2, %<v>3, [%0, %4]!
   }
 )
 
@@ -2435,15 +2654,15 @@
      (match_operand:GPI 1 "register_operand")
      (match_operand:GPI 2 "aarch64_pluslong_operand")))]
   ""
-  {@ [ cons: =0 , 1   , 2   ; attrs: type , arch  ]
-     [ rk       , %rk , I   ; alu_imm     , *     ] add\t%<w>0, %<w>1, %2
-     [ rk       , rk  , r   ; alu_sreg    , *     ] add\t%<w>0, %<w>1, %<w>2
-     [ w        , w   , w   ; neon_add    , simd  ] add\t%<rtn>0<vas>, %<rtn>1<vas>, %<rtn>2<vas>
-     [ rk       , rk  , J   ; alu_imm     , *     ] sub\t%<w>0, %<w>1, #%n2
-     [ r        , rk  , Uaa ; multiple    , *     ] #
-     [ r        , 0   , Uai ; alu_imm     , sve   ] << aarch64_output_sve_scalar_inc_dec (operands[2]);
-     [ rk       , rk  , Uav ; alu_imm     , sve   ] << aarch64_output_sve_addvl_addpl (operands[2]);
-     [ rk       , rk  , UaV ; alu_imm     , sme   ] << aarch64_output_addsvl_addspl (operands[2]);
+  {@ [ cons: =0 , %1 , 2   ; attrs: type , arch  ]
+     [ rk       , rk , I   ; alu_imm     , *     ] add\t%<w>0, %<w>1, %2
+     [ rk       , rk , r   ; alu_sreg    , *     ] add\t%<w>0, %<w>1, %<w>2
+     [ w        , w  , w   ; neon_add    , simd  ] add\t%<rtn>0<vas>, %<rtn>1<vas>, %<rtn>2<vas>
+     [ rk       , rk , J   ; alu_imm     , *     ] sub\t%<w>0, %<w>1, #%n2
+     [ r        , rk , Uaa ; multiple    , *     ] #
+     [ r        , 0  , Uai ; alu_imm     , sve   ] << aarch64_output_sve_scalar_inc_dec (operands[2]);
+     [ rk       , rk , Uav ; alu_imm     , sve   ] << aarch64_output_sve_addvl_addpl (operands[2]);
+     [ rk       , rk , UaV ; alu_imm     , sme   ] << aarch64_output_addsvl_addspl (operands[2]);
   }
   ;; The "alu_imm" types for INC/DEC and ADDVL/ADDPL are just placeholders.
 )
@@ -2456,11 +2675,11 @@
      (plus:SI (match_operand:SI 1 "register_operand")
 	      (match_operand:SI 2 "aarch64_pluslong_operand"))))]
   ""
-  {@ [ cons: =0 , 1   , 2   ; attrs: type ]
-     [ rk       , %rk , I   ; alu_imm     ] add\t%w0, %w1, %2
-     [ rk       , rk  , r   ; alu_sreg    ] add\t%w0, %w1, %w2
-     [ rk       , rk  , J   ; alu_imm     ] sub\t%w0, %w1, #%n2
-     [ r        , rk  , Uaa ; multiple    ] #
+  {@ [ cons: =0 , %1 , 2   ; attrs: type ]
+     [ rk       , rk , I   ; alu_imm     ] add\t%w0, %w1, %2
+     [ rk       , rk , r   ; alu_sreg    ] add\t%w0, %w1, %w2
+     [ rk       , rk , J   ; alu_imm     ] sub\t%w0, %w1, #%n2
+     [ r        , rk , Uaa ; multiple    ] #
   }
 )
 
@@ -2529,14 +2748,14 @@
      (match_operand:GPI 1 "register_operand")
      (match_operand:GPI 2 "aarch64_pluslong_or_poly_operand")))]
   "TARGET_SVE && operands[0] != stack_pointer_rtx"
-  {@ [ cons: =0 , 1   , 2   ; attrs: type ]
-     [ r        , %rk , I   ; alu_imm     ] add\t%<w>0, %<w>1, %2
-     [ r        , rk  , r   ; alu_sreg    ] add\t%<w>0, %<w>1, %<w>2
-     [ r        , rk  , J   ; alu_imm     ] sub\t%<w>0, %<w>1, #%n2
-     [ r        , rk  , Uaa ; multiple    ] #
-     [ r        , 0   , Uai ; alu_imm     ] << aarch64_output_sve_scalar_inc_dec (operands[2]);
-     [ r        , rk  , Uav ; alu_imm     ] << aarch64_output_sve_addvl_addpl (operands[2]);
-     [ &r       , rk  , Uat ; multiple    ] #
+  {@ [ cons: =0 , %1 , 2   ; attrs: type ]
+     [ r        , rk , I   ; alu_imm     ] add\t%<w>0, %<w>1, %2
+     [ r        , rk , r   ; alu_sreg    ] add\t%<w>0, %<w>1, %<w>2
+     [ r        , rk , J   ; alu_imm     ] sub\t%<w>0, %<w>1, #%n2
+     [ r        , rk , Uaa ; multiple    ] #
+     [ r        , 0  , Uai ; alu_imm     ] << aarch64_output_sve_scalar_inc_dec (operands[2]);
+     [ r        , rk , Uav ; alu_imm     ] << aarch64_output_sve_addvl_addpl (operands[2]);
+     [ &r       , rk , Uat ; multiple    ] #
   }
   "&& epilogue_completed
    && !reg_overlap_mentioned_p (operands[0], operands[1])
@@ -2708,10 +2927,10 @@
    (set (match_operand:GPI 0 "register_operand")
 	(plus:GPI (match_dup 1) (match_dup 2)))]
   ""
-  {@ [ cons: =0 , 1   , 2 ; attrs: type ]
-     [ r        , %rk , r ; alus_sreg   ] adds\t%<w>0, %<w>1, %<w>2
-     [ r        , rk  , I ; alus_imm    ] adds\t%<w>0, %<w>1, %2
-     [ r        , rk  , J ; alus_imm    ] subs\t%<w>0, %<w>1, #%n2
+  {@ [ cons: =0 , %1 , 2 ; attrs: type ]
+     [ r        , rk , r ; alus_sreg   ] adds\t%<w>0, %<w>1, %<w>2
+     [ r        , rk , I ; alus_imm    ] adds\t%<w>0, %<w>1, %2
+     [ r        , rk , J ; alus_imm    ] subs\t%<w>0, %<w>1, #%n2
   }
 )
 
@@ -2725,10 +2944,10 @@
    (set (match_operand:DI 0 "register_operand")
 	(zero_extend:DI (plus:SI (match_dup 1) (match_dup 2))))]
   ""
-  {@ [ cons: =0 , 1   , 2 ; attrs: type ]
-     [ r        , %rk , r ; alus_sreg   ] adds\t%w0, %w1, %w2
-     [ r        , rk  , I ; alus_imm    ] adds\t%w0, %w1, %2
-     [ r        , rk  , J ; alus_imm    ] subs\t%w0, %w1, #%n2
+  {@ [ cons: =0 , %1 , 2 ; attrs: type ]
+     [ r        , rk , r ; alus_sreg   ] adds\t%w0, %w1, %w2
+     [ r        , rk , I ; alus_imm    ] adds\t%w0, %w1, %2
+     [ r        , rk , J ; alus_imm    ] subs\t%w0, %w1, #%n2
   }
 )
 
@@ -2929,10 +3148,10 @@
 		   (match_operand:GPI 1 "aarch64_plus_operand"))
 	 (const_int 0)))]
   ""
-  {@ [ cons: 0 , 1 ; attrs: type ]
-     [ %r      , r ; alus_sreg   ] cmn\t%<w>0, %<w>1
-     [ r       , I ; alus_imm    ] cmn\t%<w>0, %1
-     [ r       , J ; alus_imm    ] cmp\t%<w>0, #%n1
+  {@ [ cons: %0 , 1 ; attrs: type ]
+     [ r        , r ; alus_sreg   ] cmn\t%<w>0, %<w>1
+     [ r        , I ; alus_imm    ] cmn\t%<w>0, %1
+     [ r        , J ; alus_imm    ] cmp\t%<w>0, #%n1
   }
 )
 
@@ -4287,29 +4506,31 @@
 
 (define_insn "fcmp<mode>"
   [(set (reg:CCFP CC_REGNUM)
-        (compare:CCFP (match_operand:GPF 0 "register_operand")
-		      (match_operand:GPF 1 "aarch64_fp_compare_operand")))]
+	(compare:CCFP
+	  (match_operand:GPF_F16 0 "register_operand")
+	  (match_operand:GPF_F16 1 "aarch64_fp_compare_operand")))]
    "TARGET_FLOAT"
    {@ [ cons: 0 , 1  ]
       [ w       , Y  ] fcmp\t%<s>0, #0.0
       [ w       , w  ] fcmp\t%<s>0, %<s>1
   }
-  [(set_attr "type" "fcmp<s>")]
+  [(set_attr "type" "fcmp<stype>")]
 )
 
 (define_insn "fcmpe<mode>"
   [(set (reg:CCFPE CC_REGNUM)
-        (compare:CCFPE (match_operand:GPF 0 "register_operand")
-		       (match_operand:GPF 1 "aarch64_fp_compare_operand")))]
+	(compare:CCFPE
+	  (match_operand:GPF_F16 0 "register_operand")
+	  (match_operand:GPF_F16 1 "aarch64_fp_compare_operand")))]
    "TARGET_FLOAT"
    {@ [ cons: 0 , 1  ]
       [ w       , Y  ] fcmpe\t%<s>0, #0.0
       [ w       , w  ] fcmpe\t%<s>0, %<s>1
   }
-  [(set_attr "type" "fcmp<s>")]
+  [(set_attr "type" "fcmp<stype>")]
 )
 
-(define_insn "*cmp_swp_<shift>_reg<mode>"
+(define_insn "cmp_swp_<shift>_reg<mode>"
   [(set (reg:CC_SWP CC_REGNUM)
 	(compare:CC_SWP (ASHIFT:GPI
 			 (match_operand:GPI 0 "register_operand" "r")
@@ -4340,6 +4561,49 @@
   ""
   "cmp\\t%<GPI:w>2, %w0, <su>xt<ALLX:size> %1"
   [(set_attr "type" "alus_ext")]
+)
+
+;; <=> operator pattern (integer)
+;; (a == b) ? 0 : (a < b) ? -1 : 1.
+(define_expand "spaceship<mode>4"
+  [(match_operand:SI  0 "register_operand")
+   (match_operand:GPI 1 "register_operand")
+   (match_operand:GPI 2 "register_operand")
+   (match_operand:SI  3 "const_int_operand")]
+  ""
+  {
+    // 1 indicates unsigned comparison, -1 indicates signed.
+    gcc_assert (operands[3] == constm1_rtx || operands[3] == const1_rtx);
+
+    rtx cc_reg = aarch64_gen_compare_reg (EQ, operands[1], operands[2]);
+    RTX_CODE code_gt = operands[3] == const1_rtx ? GTU : GT;
+    RTX_CODE code_lt = operands[3] == const1_rtx ? LTU : LT;
+
+    rtx cc_gt = gen_rtx_fmt_ee (code_gt, VOIDmode, cc_reg, const0_rtx);
+    rtx cc_lt = gen_rtx_fmt_ee (code_lt, VOIDmode, cc_reg, const0_rtx);
+
+    rtx temp = gen_reg_rtx (SImode);
+    emit_insn (gen_rtx_SET (temp, gen_rtx_IF_THEN_ELSE (SImode, cc_gt,
+						const1_rtx, const0_rtx)));
+    emit_insn (gen_rtx_SET (operands[0], gen_rtx_IF_THEN_ELSE (SImode, cc_lt,
+						constm1_rtx, temp)));
+    DONE;
+  }
+)
+
+;; <=> operator pattern (floating-point)
+;; (a == b) ? 0 : (a < b) ? -1 : (a > b) ? 1 : UNORDERED.
+(define_expand "spaceship<mode>4"
+  [(match_operand:SI  0 "register_operand")
+   (match_operand:GPF 1 "register_operand")
+   (match_operand:GPF 2 "register_operand")
+   (match_operand:SI  3 "const_int_operand")]
+  "TARGET_FLOAT"
+  {
+    aarch64_expand_fp_spaceship (operands[0], operands[1], operands[2],
+				operands[3]);
+    DONE;
+  }
 )
 
 ;; -------------------------------------------------------------------
@@ -4374,8 +4638,8 @@
 (define_expand "cstore<mode>4"
   [(set (match_operand:SI 0 "register_operand")
 	(match_operator:SI 1 "aarch64_comparison_operator_mode"
-	 [(match_operand:GPF 2 "register_operand")
-	  (match_operand:GPF 3 "aarch64_fp_compare_operand")]))]
+	 [(match_operand:GPF_F16 2 "register_operand")
+	  (match_operand:GPF_F16 3 "aarch64_fp_compare_operand")]))]
   ""
   "
   operands[2] = aarch64_gen_compare_reg (GET_CODE (operands[1]), operands[2],
@@ -4393,39 +4657,24 @@
   [(set_attr "type" "csel")]
 )
 
-;; For a 24-bit immediate CST we can optimize the compare for equality
-;; and branch sequence from:
-;; 	mov	x0, #imm1
-;; 	movk	x0, #imm2, lsl 16 /* x0 contains CST.  */
-;; 	cmp	x1, x0
-;; 	cset	x2, <ne,eq>
-;; into the shorter:
-;; 	sub	x0, x1, #(CST & 0xfff000)
-;; 	subs	x0, x0, #(CST & 0x000fff)
-;; 	cset x2, <ne, eq>.
+;; For a 24-bit immediate CST we can optimize the compare for equality.
 (define_insn_and_split "*compare_cstore<mode>_insn"
   [(set (match_operand:GPI 0 "register_operand" "=r")
-	 (EQL:GPI (match_operand:GPI 1 "register_operand" "r")
-		  (match_operand:GPI 2 "aarch64_imm24" "n")))
-   (clobber (reg:CC CC_REGNUM))]
-  "!aarch64_move_imm (INTVAL (operands[2]), <MODE>mode)
-   && !aarch64_plus_operand (operands[2], <MODE>mode)
-   && !reload_completed"
+	(match_operator:GPI 1 "aarch64_equality_operator"
+	 [(match_operand:GPI 2 "register_operand" "r")
+	  (match_operand:GPI 3 "aarch64_split_imm24" "n")]))
+   (clobber (reg:CC CC_REGNUM))
+   (clobber (match_scratch:GPI 4 "=r"))]
+  ""
   "#"
-  "&& true"
+  ""
   [(const_int 0)]
   {
-    HOST_WIDE_INT lo_imm = UINTVAL (operands[2]) & 0xfff;
-    HOST_WIDE_INT hi_imm = UINTVAL (operands[2]) & 0xfff000;
-    rtx tmp = gen_reg_rtx (<MODE>mode);
-    emit_insn (gen_add<mode>3 (tmp, operands[1], GEN_INT (-hi_imm)));
-    emit_insn (gen_add<mode>3_compare0 (tmp, tmp, GEN_INT (-lo_imm)));
-    rtx cc_reg = gen_rtx_REG (CC_NZmode, CC_REGNUM);
-    rtx cmp_rtx = gen_rtx_fmt_ee (<EQL:CMP>, <MODE>mode, cc_reg, const0_rtx);
-    emit_insn (gen_aarch64_cstore<mode> (operands[0], cmp_rtx, cc_reg));
+    rtx cc_reg = aarch64_gen_compare_split_imm24 (operands[2], operands[3],
+						  operands[4]);
+    emit_insn (gen_aarch64_cstore<mode> (operands[0], operands[1], cc_reg));
     DONE;
   }
-  [(set_attr "type" "csel")]
 )
 
 ;; zero_extend version of the above
@@ -4457,38 +4706,6 @@
   ""
   "csetm\\t%w0, %m1"
   [(set_attr "type" "csel")]
-)
-
-(define_expand "cmov<mode>6"
-  [(set (match_operand:GPI 0 "register_operand")
-	(if_then_else:GPI
-	 (match_operator 1 "aarch64_comparison_operator"
-	  [(match_operand:GPI 2 "register_operand")
-	   (match_operand:GPI 3 "aarch64_plus_operand")])
-	 (match_operand:GPI 4 "register_operand")
-	 (match_operand:GPI 5 "register_operand")))]
-  ""
-  "
-  operands[2] = aarch64_gen_compare_reg (GET_CODE (operands[1]), operands[2],
-				      operands[3]);
-  operands[3] = const0_rtx;
-  "
-)
-
-(define_expand "cmov<mode>6"
-  [(set (match_operand:GPF 0 "register_operand")
-	(if_then_else:GPF
-	 (match_operator 1 "aarch64_comparison_operator"
-	  [(match_operand:GPF 2 "register_operand")
-	   (match_operand:GPF 3 "aarch64_fp_compare_operand")])
-	 (match_operand:GPF 4 "register_operand")
-	 (match_operand:GPF 5 "register_operand")))]
-  ""
-  "
-  operands[2] = aarch64_gen_compare_reg (GET_CODE (operands[1]), operands[2],
-				      operands[3]);
-  operands[3] = const0_rtx;
-  "
 )
 
 (define_insn "*cmov<mode>_insn"
@@ -4587,15 +4804,21 @@
 			   (match_operand:ALLI 3 "register_operand")))]
   ""
   {
-    rtx ccreg;
     enum rtx_code code = GET_CODE (operands[1]);
-
     if (code == UNEQ || code == LTGT)
       FAIL;
 
-    ccreg = aarch64_gen_compare_reg (code, XEXP (operands[1], 0),
-				     XEXP (operands[1], 1));
-    operands[1] = gen_rtx_fmt_ee (code, VOIDmode, ccreg, const0_rtx);
+    rtx ccreg = XEXP (operands[1], 0);
+    enum machine_mode ccmode = GET_MODE (ccreg);
+    if (GET_MODE_CLASS (ccmode) == MODE_CC)
+      gcc_assert (XEXP (operands[1], 1) == const0_rtx);
+    else if (ccmode == QImode || ccmode == HImode)
+      FAIL;
+    else
+      {
+	ccreg = aarch64_gen_compare_reg (code, ccreg, XEXP (operands[1], 1));
+	operands[1] = gen_rtx_fmt_ee (code, VOIDmode, ccreg, const0_rtx);
+      }
   }
 )
 
@@ -4995,8 +5218,8 @@
 	(LOGICAL:GPI (match_operand:GPI 1 "register_operand")
 		     (match_operand:GPI 2 "aarch64_logical_operand")))]
   ""
-  {@ [ cons: =0 , 1  , 2        ; attrs: type , arch  ]
-     [ r        , %r , r        ; logic_reg   , *     ] <logical>\t%<w>0, %<w>1, %<w>2
+  {@ [ cons: =0 , %1 , 2        ; attrs: type , arch  ]
+     [ r        , r  , r        ; logic_reg   , *     ] <logical>\t%<w>0, %<w>1, %<w>2
      [ rk       , r  , <lconst> ; logic_imm   , *     ] <logical>\t%<w>0, %<w>1, %2
      [ w        , 0  , <lconst> ; *           , sve   ] <logical>\t%Z0.<s>, %Z0.<s>, #%2
      [ w        , w  , w        ; neon_logic  , simd  ] <logical>\t%0.<Vbtype>, %1.<Vbtype>, %2.<Vbtype>
@@ -5010,8 +5233,8 @@
          (LOGICAL:SI (match_operand:SI 1 "register_operand")
 		     (match_operand:SI 2 "aarch64_logical_operand"))))]
   ""
-  {@ [ cons: =0 , 1  , 2 ; attrs: type ]
-     [ r        , %r , r ; logic_reg   ] <logical>\t%w0, %w1, %w2
+  {@ [ cons: =0 , %1 , 2 ; attrs: type ]
+     [ r        , r  , r ; logic_reg   ] <logical>\t%w0, %w1, %w2
      [ rk       , r  , K ; logic_imm   ] <logical>\t%w0, %w1, %2
   }
 )
@@ -5025,8 +5248,8 @@
    (set (match_operand:GPI 0 "register_operand")
 	(and:GPI (match_dup 1) (match_dup 2)))]
   ""
-  {@ [ cons: =0 , 1  , 2        ; attrs: type ]
-     [ r        , %r , r        ; logics_reg  ] ands\t%<w>0, %<w>1, %<w>2
+  {@ [ cons: =0 , %1 , 2        ; attrs: type ]
+     [ r        , r  , r        ; logics_reg  ] ands\t%<w>0, %<w>1, %<w>2
      [ r        , r  , <lconst> ; logics_imm  ] ands\t%<w>0, %<w>1, %2
   }
 )
@@ -5041,8 +5264,8 @@
    (set (match_operand:DI 0 "register_operand")
 	(zero_extend:DI (and:SI (match_dup 1) (match_dup 2))))]
   ""
-  {@ [ cons: =0 , 1  , 2 ; attrs: type ]
-     [ r        , %r , r ; logics_reg  ] ands\t%w0, %w1, %w2
+  {@ [ cons: =0 , %1 , 2 ; attrs: type ]
+     [ r        , r  , r ; logics_reg  ] ands\t%w0, %w1, %w2
      [ r        , r  , K ; logics_imm  ] ands\t%w0, %w1, %2
   }
 )
@@ -5555,6 +5778,19 @@
    (match_operand:TI 1 "register_operand")]
   "TARGET_SIMD && !TARGET_CSSC"
 {
+  /* For SVE we can do popcount on DImode chunks of the TImode argument
+     and then use a cheap ADDP reduction.  The SVE CNT instruction requires
+     materializing a PTRUE so don't do this if optimizing for size.  */
+  if (TARGET_SVE && !optimize_function_for_size_p (cfun))
+    {
+      rtx v = gen_reg_rtx (V2DImode);
+      rtx v1 = gen_reg_rtx (V2DImode);
+      emit_move_insn (v, gen_lowpart (V2DImode, operands[1]));
+      rtx p = aarch64_ptrue_reg (VNx2BImode, 16);
+      emit_insn (gen_aarch64_pred_popcountv2di (v1, p, v));
+      emit_insn (gen_reduc_plus_scal_v2di (operands[0], v1));
+      DONE;
+    }
   rtx v = gen_reg_rtx (V16QImode);
   rtx v1 = gen_reg_rtx (V16QImode);
   emit_move_insn (v, gen_lowpart (V16QImode, operands[1]));
@@ -5626,9 +5862,9 @@
 		  (match_operand:GPI 1 "aarch64_logical_operand"))
 	 (const_int 0)))]
   ""
-  {@ [ cons: 0 , 1        ; attrs: type ]
-     [ %r      , r        ; logics_reg  ] tst\t%<w>0, %<w>1
-     [ r       , <lconst> ; logics_imm  ] tst\t%<w>0, %1
+  {@ [ cons: %0 , 1        ; attrs: type ]
+     [ r        , r        ; logics_reg  ] tst\t%<w>0, %<w>1
+     [ r        , <lconst> ; logics_imm  ] tst\t%<w>0, %1
   }
 )
 
@@ -6143,10 +6379,11 @@
 
 (define_insn "*extr<mode>5_insn"
   [(set (match_operand:GPI 0 "register_operand" "=r")
-	(ior:GPI (ashift:GPI (match_operand:GPI 1 "register_operand" "r")
-			     (match_operand 3 "const_int_operand" "n"))
-		 (lshiftrt:GPI (match_operand:GPI 2 "register_operand" "r")
-			       (match_operand 4 "const_int_operand" "n"))))]
+	(any_or_plus:GPI
+	  (ashift:GPI (match_operand:GPI 1 "register_operand" "r")
+		      (match_operand 3 "const_int_operand" "n"))
+	  (lshiftrt:GPI (match_operand:GPI 2 "register_operand" "r")
+		      (match_operand 4 "const_int_operand" "n"))))]
   "UINTVAL (operands[3]) < GET_MODE_BITSIZE (<MODE>mode) &&
    (UINTVAL (operands[3]) + UINTVAL (operands[4]) == GET_MODE_BITSIZE (<MODE>mode))"
   "extr\\t%<w>0, %<w>1, %<w>2, %4"
@@ -6157,10 +6394,11 @@
 ;; so we have to match both orderings.
 (define_insn "*extr<mode>5_insn_alt"
   [(set (match_operand:GPI 0 "register_operand" "=r")
-	(ior:GPI  (lshiftrt:GPI (match_operand:GPI 2 "register_operand" "r")
-			        (match_operand 4 "const_int_operand" "n"))
-		  (ashift:GPI (match_operand:GPI 1 "register_operand" "r")
-			      (match_operand 3 "const_int_operand" "n"))))]
+	(any_or_plus:GPI
+	  (lshiftrt:GPI (match_operand:GPI 2 "register_operand" "r")
+		        (match_operand 4 "const_int_operand" "n"))
+	  (ashift:GPI (match_operand:GPI 1 "register_operand" "r")
+		      (match_operand 3 "const_int_operand" "n"))))]
   "UINTVAL (operands[3]) < GET_MODE_BITSIZE (<MODE>mode)
    && (UINTVAL (operands[3]) + UINTVAL (operands[4])
        == GET_MODE_BITSIZE (<MODE>mode))"
@@ -6172,10 +6410,11 @@
 (define_insn "*extrsi5_insn_uxtw"
   [(set (match_operand:DI 0 "register_operand" "=r")
 	(zero_extend:DI
-	 (ior:SI (ashift:SI (match_operand:SI 1 "register_operand" "r")
-			    (match_operand 3 "const_int_operand" "n"))
-		 (lshiftrt:SI (match_operand:SI 2 "register_operand" "r")
-			      (match_operand 4 "const_int_operand" "n")))))]
+	 (any_or_plus:SI
+	   (ashift:SI (match_operand:SI 1 "register_operand" "r")
+		      (match_operand 3 "const_int_operand" "n"))
+	   (lshiftrt:SI (match_operand:SI 2 "register_operand" "r")
+		      (match_operand 4 "const_int_operand" "n")))))]
   "UINTVAL (operands[3]) < 32 &&
    (UINTVAL (operands[3]) + UINTVAL (operands[4]) == 32)"
   "extr\\t%w0, %w1, %w2, %4"
@@ -6185,10 +6424,11 @@
 (define_insn "*extrsi5_insn_uxtw_alt"
   [(set (match_operand:DI 0 "register_operand" "=r")
 	(zero_extend:DI
-	 (ior:SI (lshiftrt:SI (match_operand:SI 2 "register_operand" "r")
-			       (match_operand 4 "const_int_operand" "n"))
-		 (ashift:SI (match_operand:SI 1 "register_operand" "r")
-			    (match_operand 3 "const_int_operand" "n")))))]
+	 (any_or_plus:SI
+	   (lshiftrt:SI (match_operand:SI 2 "register_operand" "r")
+			(match_operand 4 "const_int_operand" "n"))
+	   (ashift:SI (match_operand:SI 1 "register_operand" "r")
+		      (match_operand 3 "const_int_operand" "n")))))]
   "UINTVAL (operands[3]) < 32 &&
    (UINTVAL (operands[3]) + UINTVAL (operands[4]) == 32)"
   "extr\\t%w0, %w1, %w2, %4"
@@ -6197,13 +6437,13 @@
 
 (define_insn "*extrsi5_insn_di"
   [(set (match_operand:SI 0 "register_operand" "=r")
-	(ior:SI (ashift:SI (match_operand:SI 1 "register_operand" "r")
-			   (match_operand 3 "const_int_operand" "n"))
-		(match_operator:SI 6 "subreg_lowpart_operator"
-		  [(zero_extract:DI
-		     (match_operand:DI 2 "register_operand" "r")
-		     (match_operand 5 "const_int_operand" "n")
-		     (match_operand 4 "const_int_operand" "n"))])))]
+	(any_or_plus:SI (ashift:SI (match_operand:SI 1 "register_operand" "r")
+				    (match_operand 3 "const_int_operand" "n"))
+			 (match_operator:SI 6 "subreg_lowpart_operator"
+			  [(zero_extract:DI
+			     (match_operand:DI 2 "register_operand" "r")
+			     (match_operand 5 "const_int_operand" "n")
+			     (match_operand 4 "const_int_operand" "n"))])))]
   "UINTVAL (operands[3]) < 32
    && UINTVAL (operands[3]) + UINTVAL (operands[4]) == 32
    && INTVAL (operands[3]) == INTVAL (operands[5])"
@@ -6349,7 +6589,8 @@
       return "ins\t%0.<bits_etype>[%1], %2.<bits_etype>[0]";
     return "ins\t%0.<bits_etype>[%1], %w2";
   }
-  [(set_attr "type" "bfm,neon_ins_q,neon_ins_q")]
+  [(set_attr "type" "bfm,neon_ins_q,neon_ins_q")
+   (set_attr "arch" "*,simd,simd")]
 )
 
 (define_insn "*insv_reg<mode>"
@@ -6379,10 +6620,11 @@
 			  (match_dup 1))
 	(match_dup 2))]
   {
-    operands[2] = lowpart_subreg (<GPI:MODE>mode, operands[2],
-				  <ALLX:MODE>mode);
+    operands[2] = force_lowpart_subreg (<GPI:MODE>mode, operands[2],
+					<ALLX:MODE>mode);
   }
-  [(set_attr "type" "bfm,neon_ins_q,neon_ins_q")]
+  [(set_attr "type" "bfm,neon_ins_q,neon_ins_q")
+   (set_attr "arch" "*,simd,simd")]
 )
 
 (define_insn "*aarch64_bfi<GPI:mode><ALLX:mode>4"
@@ -6414,7 +6656,8 @@
   {
     operands[2] = lowpart_subreg (DImode, operands[3], <ALLX:MODE>mode);
   }
-  [(set_attr "type" "bfm,neon_ins_q,neon_ins_q")]
+  [(set_attr "type" "bfm,neon_ins_q,neon_ins_q")
+   (set_attr "arch" "*,simd,simd")]
 )
 
 ;;  Match a bfi instruction where the shift of OP3 means that we are
@@ -7422,7 +7665,7 @@
     {
       emit_insn (gen_ior<vq_int_equiv>3 (
 	lowpart_subreg (<VQ_INT_EQUIV>mode, operands[0], <MODE>mode),
-	lowpart_subreg (<VQ_INT_EQUIV>mode, operands[1], <MODE>mode),
+	force_lowpart_subreg (<VQ_INT_EQUIV>mode, operands[1], <MODE>mode),
 	v_bitmask));
       DONE;
     }
@@ -7461,11 +7704,59 @@
   "TARGET_SIMD"
 {
   rtx tmp = gen_reg_rtx (<VCONQ>mode);
-  rtx op1 = lowpart_subreg (<VCONQ>mode, operands[1], <MODE>mode);
-  rtx op2 = lowpart_subreg (<VCONQ>mode, operands[2], <MODE>mode);
+  rtx op1 = force_lowpart_subreg (<VCONQ>mode, operands[1], <MODE>mode);
+  rtx op2 = force_lowpart_subreg (<VCONQ>mode, operands[2], <MODE>mode);
   emit_insn (gen_xorsign3 (<VCONQ>mode, tmp, op1, op2));
   emit_move_insn (operands[0],
 		  lowpart_subreg (<MODE>mode, tmp, <VCONQ>mode));
+  DONE;
+}
+)
+
+(define_expand "isinf<mode>2"
+ [(match_operand:SI 0 "register_operand")
+  (match_operand:GPF 1 "register_operand")]
+ "TARGET_FLOAT"
+{
+  rtx op = force_lowpart_subreg (<V_INT_EQUIV>mode, operands[1], <MODE>mode);
+  rtx tmp = gen_reg_rtx (<V_INT_EQUIV>mode);
+  emit_move_insn (tmp, GEN_INT (HOST_WIDE_INT_M1U << (<mantissa_bits> + 1)));
+  rtx cc_reg = gen_rtx_REG (CC_SWPmode, CC_REGNUM);
+  emit_insn (gen_cmp_swp_lsl_reg<v_int_equiv> (op, GEN_INT (1), tmp));
+  rtx cmp = gen_rtx_fmt_ee (EQ, SImode, cc_reg, const0_rtx);
+  emit_insn (gen_aarch64_cstoresi (operands[0], cmp, cc_reg));
+  DONE;
+}
+)
+
+(define_expand "isfinite<mode>2"
+ [(match_operand:SI 0 "register_operand")
+  (match_operand:GPF 1 "register_operand")]
+ "TARGET_FLOAT"
+{
+  rtx op = force_lowpart_subreg (<V_INT_EQUIV>mode, operands[1], <MODE>mode);
+  rtx tmp = gen_reg_rtx (<V_INT_EQUIV>mode);
+  emit_move_insn (tmp, GEN_INT (HOST_WIDE_INT_M1U << (<mantissa_bits> + 1)));
+  rtx cc_reg = gen_rtx_REG (CC_SWPmode, CC_REGNUM);
+  emit_insn (gen_cmp_swp_lsl_reg<v_int_equiv> (op, GEN_INT (1), tmp));
+  rtx cmp = gen_rtx_fmt_ee (LTU, SImode, cc_reg, const0_rtx);
+  emit_insn (gen_aarch64_cstoresi (operands[0], cmp, cc_reg));
+  DONE;
+}
+)
+
+(define_expand "isnan<mode>2"
+ [(match_operand:SI 0 "register_operand")
+  (match_operand:GPF 1 "register_operand")]
+ "TARGET_FLOAT && flag_signaling_nans"
+{
+  rtx op = force_lowpart_subreg (<V_INT_EQUIV>mode, operands[1], <MODE>mode);
+  rtx tmp = gen_reg_rtx (<V_INT_EQUIV>mode);
+  emit_move_insn (tmp, GEN_INT (HOST_WIDE_INT_M1U << (<mantissa_bits> + 1)));
+  rtx cc_reg = gen_rtx_REG (CC_SWPmode, CC_REGNUM);
+  emit_insn (gen_cmp_swp_lsl_reg<v_int_equiv> (op, GEN_INT (1), tmp));
+  rtx cmp = gen_rtx_fmt_ee (GTU, SImode, cc_reg, const0_rtx);
+  emit_insn (gen_aarch64_cstoresi (operands[0], cmp, cc_reg));
   DONE;
 }
 )
@@ -7834,11 +8125,11 @@
   [(set_attr "type" "f_cvtf2i")]
 )
 
-;; Pointer authentication patterns are always provided.  In architecture
-;; revisions prior to ARMv8.3-A these HINT instructions operate as NOPs.
+;; Pointer authentication patterns are always provided.  On targets that
+;; don't implement FEAT_PAuth these HINT instructions operate as NOPs.
 ;; This lets the user write portable software which authenticates pointers
-;; when run on something which implements ARMv8.3-A, and which runs
-;; correctly, but does not authenticate pointers, where ARMv8.3-A is not
+;; when run on something which implements FEAT_PAuth, and which runs
+;; correctly, but does not authenticate pointers, where FEAT_PAuth is not
 ;; implemented.
 
 ;; Signing/Authenticating R30 using SP as the salt.
@@ -8011,8 +8302,8 @@
 	     : gen_stack_protect_test_si) (operands[0], operands[1]));
 
   rtx cc_reg = gen_rtx_REG (CCmode, CC_REGNUM);
-  emit_jump_insn (gen_condjump (gen_rtx_EQ (VOIDmode, cc_reg, const0_rtx),
-				cc_reg, operands[2]));
+  emit_jump_insn (gen_aarch64_bcond (gen_rtx_EQ (VOIDmode, cc_reg, const0_rtx),
+				     cc_reg, operands[2]));
   DONE;
 })
 
@@ -8320,7 +8611,7 @@
   [(set (match_operand:DI 0 "register_operand" "=rk")
 	(ior:DI
 	 (and:DI (match_operand:DI 1 "register_operand" "rk")
-		 (const_int -1080863910568919041)) ;; 0xf0ff...
+		 (const_int MEMTAG_TAG_MASK))
 	 (ashift:DI (unspec:QI [(match_operand:DI 2 "register_operand" "r")]
 		     UNSPEC_GEN_TAG_RND)
 		    (const_int 56))))]
@@ -8363,9 +8654,9 @@
   [(set (match_operand:DI 0 "register_operand" "=r")
 	(minus:DI
 	  (and:DI (match_operand:DI 1 "register_operand" "rk")
-		  (const_int 72057594037927935)) ;; 0x00ff...
+		  (const_int MEMTAG_ADDR_MASK))
 	  (and:DI (match_operand:DI 2 "register_operand" "rk")
-		  (const_int 72057594037927935))))] ;; 0x00ff...
+		  (const_int MEMTAG_ADDR_MASK))))]
   "TARGET_MEMTAG"
   "subp\\t%0, %1, %2"
   [(set_attr "type" "memtag")]
@@ -8375,7 +8666,7 @@
 (define_insn "ldg"
   [(set (match_operand:DI 0 "register_operand" "+r")
 	(ior:DI
-	 (and:DI (match_dup 0) (const_int -1080863910568919041)) ;; 0xf0ff...
+	 (and:DI (match_dup 0) (const_int MEMTAG_TAG_MASK))
 	 (ashift:DI
 	  (mem:QI (unspec:DI
 	   [(and:DI (plus:DI (match_operand:DI 1 "register_operand" "rk")

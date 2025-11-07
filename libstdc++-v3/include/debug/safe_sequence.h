@@ -1,6 +1,6 @@
 // Safe sequence implementation  -*- C++ -*-
 
-// Copyright (C) 2003-2024 Free Software Foundation, Inc.
+// Copyright (C) 2003-2025 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -114,7 +114,7 @@ namespace __gnu_debug
 	  in the safe ones. */
       template<typename _Predicate>
 	void
-	_M_invalidate_if(_Predicate __pred);
+	_M_invalidate_if(_Predicate __pred) const;
 
       /** Transfers all iterators @c x that reference @c from sequence,
 	  are not singular, and for which @c __pred(x) returns @c
@@ -122,7 +122,8 @@ namespace __gnu_debug
 	  in the safe ones. */
       template<typename _Predicate>
 	void
-	_M_transfer_from_if(_Safe_sequence& __from, _Predicate __pred);
+	_M_transfer_from_if(const _Safe_sequence& __from,
+			    _Predicate __pred) const;
     };
 
   /// Like _Safe_sequence but with a special _M_invalidate_all implementation
@@ -133,12 +134,12 @@ namespace __gnu_debug
     {
     protected:
       void
-      _M_invalidate_all()
+      _M_invalidate_all() const
       {
 	typedef typename _Sequence::const_iterator _Const_iterator;
 	typedef typename _Const_iterator::iterator_type _Base_const_iterator;
 	typedef __gnu_debug::_Not_equal_to<_Base_const_iterator> _Not_equal;
-	const _Sequence& __seq = *static_cast<_Sequence*>(this);
+	const _Sequence& __seq = *static_cast<const _Sequence*>(this);
 	this->_M_invalidate_if(_Not_equal(__seq._M_base().end()));
       }
     };

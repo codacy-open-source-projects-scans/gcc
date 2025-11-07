@@ -1,5 +1,5 @@
 /* Subroutines for targets on Windows.
-Copyright (C) 2024 Free Software Foundation, Inc.
+Copyright (C) 2024-2025 Free Software Foundation, Inc.
 
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
@@ -31,6 +31,7 @@ extern void mingw_pe_file_end (void);
 extern void mingw_pe_maybe_record_exported_symbol (tree, const char *, int);
 extern void mingw_pe_record_stub (const char *, bool);
 extern unsigned int mingw_pe_section_type_flags (tree, const char *, int);
+extern section *mingw_pe_select_section (tree, int, unsigned HOST_WIDE_INT);
 extern void mingw_pe_unique_section (tree, int);
 extern bool mingw_pe_valid_dllimport_attribute_p (const_tree);
 

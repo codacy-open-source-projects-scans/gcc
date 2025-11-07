@@ -1,5 +1,5 @@
 /* Variable tracking routines for the GNU compiler.
-   Copyright (C) 2002-2024 Free Software Foundation, Inc.
+   Copyright (C) 2002-2025 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -6273,7 +6273,7 @@ prepare_call_arguments (basic_block bb, rtx_insn *insn)
 	  if (SYMBOL_REF_DECL (symbol))
 	    fndecl = SYMBOL_REF_DECL (symbol);
 	}
-      if (fndecl == NULL_TREE)
+      if (fndecl == NULL_TREE && MEM_P (XEXP (call, 0)))
 	fndecl = MEM_EXPR (XEXP (call, 0));
       if (fndecl
 	  && TREE_CODE (TREE_TYPE (fndecl)) != FUNCTION_TYPE

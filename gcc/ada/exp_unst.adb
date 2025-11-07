@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2014-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 2014-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -220,6 +220,8 @@ package body Exp_Unst is
          else
             Lev := Lev + 1;
             S   := Enclosing_Subprogram (S);
+
+            pragma Assert (Present (S));
          end if;
       end loop;
    end Get_Level;
@@ -2305,8 +2307,6 @@ package body Exp_Unst is
             end if;
          end Adjust_One_Call;
       end loop Adjust_Calls;
-
-      return;
    end Unnest_Subprogram;
 
    ------------------------

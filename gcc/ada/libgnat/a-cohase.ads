@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -62,12 +62,12 @@ is
       Default_Iterator  => Iterate,
       Iterator_Element  => Element_Type,
       Aggregate         => (Empty       => Empty,
-                            Add_Unnamed => Include);
+                            Add_Unnamed => Include),
+      Preelaborable_Initialization;
 
-   pragma Preelaborable_Initialization (Set);
-
-   type Cursor is private;
-   pragma Preelaborable_Initialization (Cursor);
+   type Cursor is private
+   with
+      Preelaborable_Initialization;
 
    function "=" (Left, Right : Cursor) return Boolean;
    --  The representation of cursors includes a component used to optimize

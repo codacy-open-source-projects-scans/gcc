@@ -1,5 +1,5 @@
 /* Some code common to C++ and ObjC++ front ends.
-   Copyright (C) 2004-2024 Free Software Foundation, Inc.
+   Copyright (C) 2004-2025 Free Software Foundation, Inc.
    Contributed by Ziemowit Laski  <zlaski@apple.com>
 
 This file is part of GCC.
@@ -233,6 +233,7 @@ cp_tree_size (enum tree_code code)
     case ASSERTION_STMT:	return sizeof (tree_exp);
     case PRECONDITION_STMT:	return sizeof (tree_exp);
     case POSTCONDITION_STMT:	return sizeof (tree_exp);
+    case TU_LOCAL_ENTITY:	return sizeof (tree_tu_local_entity);
     default:
       switch (TREE_CODE_CLASS (code))
 	{
@@ -586,6 +587,8 @@ names_builtin_p (const char *name)
     case RID_BUILTIN_ASSOC_BARRIER:
     case RID_BUILTIN_BIT_CAST:
     case RID_OFFSETOF:
+    case RID_VA_ARG:
+    case RID_C23_VA_START:
       return 1;
     case RID_BUILTIN_OPERATOR_NEW:
     case RID_BUILTIN_OPERATOR_DELETE:
@@ -612,6 +615,8 @@ cp_register_dumps (gcc::dump_manager *dumps)
     (".raw", "lang-raw", "lang-raw", DK_lang, OPTGROUP_NONE, false);
   coro_dump_id = dumps->dump_register
     (".coro", "lang-coro", "lang-coro", DK_lang, OPTGROUP_NONE, false);
+  tinst_dump_id = dumps->dump_register
+    (".tinst", "lang-tinst", "lang-tinst", DK_lang, OPTGROUP_NONE, false);
 }
 
 void
@@ -655,6 +660,7 @@ cp_common_init_ts (void)
   MARK_TS_EXP (IF_STMT);
   MARK_TS_EXP (OMP_DEPOBJ);
   MARK_TS_EXP (RANGE_FOR_STMT);
+  MARK_TS_EXP (TEMPLATE_FOR_STMT);
   MARK_TS_EXP (TRY_BLOCK);
   MARK_TS_EXP (USING_STMT);
 

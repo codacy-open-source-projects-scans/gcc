@@ -1,5 +1,5 @@
 /* AddressSanitizer, a fast memory error detector.
-   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+   Copyright (C) 2012-2025 Free Software Foundation, Inc.
    Contributed by Kostya Serebryany <kcc@google.com>
 
 This file is part of GCC.
@@ -1509,8 +1509,7 @@ asan_clear_shadow (rtx shadow_mem, HOST_WIDE_INT len)
   gcc_assert ((len & 3) == 0);
   start_sequence ();
   clear_storage (shadow_mem, GEN_INT (len), BLOCK_OP_NORMAL);
-  insns = get_insns ();
-  end_sequence ();
+  insns = end_sequence ();
   for (insn = insns; insn; insn = NEXT_INSN (insn))
     if (CALL_P (insn))
       break;
@@ -2167,28 +2166,13 @@ asan_emit_stack_protection (rtx base, rtx pbase, unsigned int alignb,
       mem = adjust_address (mem, VOIDmode, base_align_bias);
       emit_move_insn (mem, gen_int_mode (ASAN_STACK_RETIRED_MAGIC, ptr_mode));
       unsigned HOST_WIDE_INT sz = asan_frame_size >> ASAN_SHADOW_SHIFT;
+      bool asan_stack_free_emitted_p = false;
       if (use_after_return_class < 5
 	  && can_store_by_pieces (sz, builtin_memset_read_str, &c,
 				  BITS_PER_UNIT, true))
-	{
-	  /* Emit:
-	       memset(ShadowBase, kAsanStackAfterReturnMagic, ShadowSize);
-	       **SavedFlagPtr(FakeStack, class_id) = 0
-	  */
-	  store_by_pieces (shadow_mem, sz, builtin_memset_read_str, &c,
-			   BITS_PER_UNIT, true, RETURN_BEGIN);
-
-	  unsigned HOST_WIDE_INT offset
-	    = (1 << (use_after_return_class + 6));
-	  offset -= GET_MODE_SIZE (ptr_mode);
-	  mem = gen_rtx_MEM (ptr_mode, base);
-	  mem = adjust_address (mem, ptr_mode, offset);
-	  rtx addr = gen_reg_rtx (ptr_mode);
-	  emit_move_insn (addr, mem);
-	  addr = convert_memory_address (Pmode, addr);
-	  mem = gen_rtx_MEM (QImode, addr);
-	  emit_move_insn (mem, const0_rtx);
-	}
+	/* Emit memset (ShadowBase, kAsanStackAfterReturnMagic, ShadowSize).  */
+	store_by_pieces (shadow_mem, sz, builtin_memset_read_str, &c,
+			 BITS_PER_UNIT, true, RETURN_BEGIN);
       else if (use_after_return_class >= 5
 	       || !set_storage_via_setmem (shadow_mem,
 					   GEN_INT (sz),
@@ -2205,6 +2189,20 @@ asan_emit_stack_protection (rtx base, rtx pbase, unsigned int alignb,
 			     GEN_INT (asan_frame_size + base_align_bias),
 			     TYPE_MODE (pointer_sized_int_node),
 			     orig_addr, ptr_mode);
+	  asan_stack_free_emitted_p = true;
+	}
+      if (!asan_stack_free_emitted_p)
+	{
+	  /* Emit **SavedFlagPtr (FakeStack, class_id) = 0.  */
+	  unsigned HOST_WIDE_INT offset = (1 << (use_after_return_class + 6));
+	  offset -= GET_MODE_SIZE (ptr_mode);
+	  mem = gen_rtx_MEM (ptr_mode, base);
+	  mem = adjust_address (mem, ptr_mode, offset);
+	  rtx addr = gen_reg_rtx (ptr_mode);
+	  emit_move_insn (addr, mem);
+	  addr = convert_memory_address (Pmode, addr);
+	  mem = gen_rtx_MEM (QImode, addr);
+	  emit_move_insn (mem, const0_rtx);
 	}
       lab = gen_label_rtx ();
       emit_jump (lab);
@@ -2284,8 +2282,7 @@ asan_emit_stack_protection (rtx base, rtx pbase, unsigned int alignb,
   if (lab)
     emit_label (lab);
 
-  insns = get_insns ();
-  end_sequence ();
+  insns = end_sequence ();
   return insns;
 }
 
@@ -2307,9 +2304,7 @@ asan_emit_allocas_unpoison (rtx top, rtx bot, rtx_insn *before)
 		     top, ptr_mode, bot, ptr_mode);
 
   do_pending_stack_adjust ();
-  rtx_insn *insns = get_insns ();
-  end_sequence ();
-  return insns;
+  return end_sequence ();
 }
 
 /* Return true if DECL, a global var, might be overridden and needs
@@ -4473,8 +4468,7 @@ hwasan_frame_base ()
 	= force_reg (Pmode,
 		     targetm.memtag.insert_random_tag (virtual_stack_vars_rtx,
 						       NULL_RTX));
-      hwasan_frame_base_init_seq = get_insns ();
-      end_sequence ();
+      hwasan_frame_base_init_seq = end_sequence ();
     }
 
   return hwasan_frame_base_ptr;
@@ -4742,9 +4736,7 @@ hwasan_emit_untag_frame (rtx dynamic, rtx vars)
 		     size_rtx, ptr_mode);
 
   do_pending_stack_adjust ();
-  rtx_insn *insns = get_insns ();
-  end_sequence ();
-  return insns;
+  return end_sequence ();
 }
 
 /* Needs to be GTY(()), because cgraph_build_static_cdtor may

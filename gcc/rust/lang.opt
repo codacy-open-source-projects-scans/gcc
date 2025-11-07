@@ -1,5 +1,5 @@
 ; Options for the Rust front end.
-; Copyright (C) 2003-2024 Free Software Foundation, Inc.
+; Copyright (C) 2003-2025 Free Software Foundation, Inc.
 ;
 ; This file is part of GCC.
 ;
@@ -205,11 +205,32 @@ EnumValue
 Enum(frust_compile_until) String(end) Value(13)
 
 frust-name-resolution-2.0
-Rust Var(flag_name_resolution_2_0)
+Rust Var(flag_name_resolution_2_0) Init(1)
 Use the temporary and experimental name resolution pipeline instead of the stable one
 
 frust-borrowcheck
 Rust Var(flag_borrowcheck)
 Use the WIP borrow checker.
+
+frust-panic=
+Rust Joined RejectNegative Enum(frust_panic) Var(flag_rust_panic)
+-frust-edition=[unwind|abort]             Panic strategy to compile crate with
+
+Enum
+Name(frust_panic) Type(int) UnknownError(unknown panic strategy %qs)
+
+EnumValue
+Enum(frust_panic) String(unwind) Value(0)
+
+EnumValue
+Enum(frust_panic) String(abort) Value(1)
+
+frust-overflow-checks
+Rust Var(flag_overflow_checks) Init(1)
+Enable the overflow checks in code generation
+
+frust-assume-builtin-offset-of
+Rust Var(flag_assume_builtin_offset_of)
+Define a built-in offset_of macro in the compiler and assume it is present
 
 ; This comment is to ensure we retain the blank line above.

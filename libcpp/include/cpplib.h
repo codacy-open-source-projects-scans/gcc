@@ -1,5 +1,5 @@
 /* Definitions for CPP library.
-   Copyright (C) 1995-2024 Free Software Foundation, Inc.
+   Copyright (C) 1995-2025 Free Software Foundation, Inc.
    Written by Per Bothner, 1994-95.
 
 This program is free software; you can redistribute it and/or modify it
@@ -435,6 +435,10 @@ struct cpp_options
      Presumably the usage is protected by the appropriate #ifdef.  */
   unsigned char warn_variadic_macros;
 
+  /* Non-zero means suppress diagnostics for NODE_WARN #define or #undef.
+     Used for cpp_define/cpp_undef.  */
+  unsigned char suppress_builtin_macro_warnings;
+
   /* Nonzero means warn about builtin macros that are redefined or
      explicitly undefined.  */
   unsigned char warn_builtin_macro_redefined;
@@ -620,6 +624,9 @@ struct cpp_options
   /* True if -finput-charset= option has been used explicitly.  */
   bool cpp_input_charset_explicit;
 
+  /* True if -Wkeyword-macro.  */
+  bool cpp_warn_keyword_macro;
+
   /* -Wleading-whitespace= value.  */
   unsigned char cpp_warn_leading_whitespace;
 
@@ -749,6 +756,7 @@ enum cpp_warning_reason {
   CPP_W_CXX17_EXTENSIONS,
   CPP_W_CXX20_EXTENSIONS,
   CPP_W_CXX23_EXTENSIONS,
+  CPP_W_CXX26_EXTENSIONS,
   CPP_W_EXPANSION_TO_DEFINED,
   CPP_W_BIDIRECTIONAL,
   CPP_W_INVALID_UTF8,
@@ -756,7 +764,8 @@ enum cpp_warning_reason {
   CPP_W_HEADER_GUARD,
   CPP_W_PRAGMA_ONCE_OUTSIDE_HEADER,
   CPP_W_LEADING_WHITESPACE,
-  CPP_W_TRAILING_WHITESPACE
+  CPP_W_TRAILING_WHITESPACE,
+  CPP_W_KEYWORD_MACRO
 };
 
 /* Callback for header lookup for HEADER, which is the name of a
@@ -1168,6 +1177,8 @@ extern const char *cpp_probe_header_unit (cpp_reader *, const char *file,
 extern const char *cpp_get_narrow_charset_name (cpp_reader *) ATTRIBUTE_PURE;
 extern const char *cpp_get_wide_charset_name (cpp_reader *) ATTRIBUTE_PURE;
 
+extern location_t cpp_get_diagnostic_override_loc (const cpp_reader *);
+
 /* This function reads the file, but does not start preprocessing.  It
    returns the name of the original file; this is the same as the
    input file, except for preprocessed input.  This will generate at
@@ -1245,6 +1256,17 @@ cpp_macro *cpp_get_deferred_macro (cpp_reader *, cpp_hashnode *, location_t);
 inline bool cpp_fun_like_macro_p (cpp_hashnode *node)
 {
   return cpp_user_macro_p (node) && node->value.macro->fun_like;
+}
+
+/* Return true for nodes marked for -Wkeyword-macro diagnostics.  */
+inline bool cpp_keyword_p (cpp_hashnode *node)
+{
+  /* As keywords are marked identifiers which don't start with underscore
+     or start with underscore followed by capital letter (except for
+     _Pragma).  */
+  return ((node->flags & NODE_WARN)
+	  && (NODE_NAME (node)[0] != '_'
+	      || (NODE_NAME (node)[1] != '_' && NODE_NAME (node)[1] != 'P')));
 }
 
 extern const unsigned char *cpp_macro_definition (cpp_reader *, cpp_hashnode *);
@@ -1508,6 +1530,21 @@ extern cpp_comment_table *cpp_get_comments (cpp_reader *);
 extern cpp_hashnode *cpp_lookup (cpp_reader *, const unsigned char *,
 				 unsigned int);
 
+/* Set NODE_WARN flag for NAME, such that there will be diagnostics
+   for #define or #undef of NAME.  */
+
+inline void
+cpp_warn (cpp_reader *pfile, const char *name, unsigned int len)
+{
+  cpp_lookup (pfile, (const unsigned char *) name, len)->flags |= NODE_WARN;
+}
+
+inline void
+cpp_warn (cpp_reader *pfile, const char *name)
+{
+  cpp_warn (pfile, name, strlen (name));
+}
+
 typedef int (*cpp_cb) (cpp_reader *, cpp_hashnode *, void *);
 extern void cpp_forall_identifiers (cpp_reader *, cpp_cb, void *);
 
@@ -1607,7 +1644,8 @@ struct cpp_decoded_char
    This is a tabstop value, along with a callback for getting the
    widths of characters.  Normally this callback is cpp_wcwidth, but we
    support other schemes for escaping non-ASCII unicode as a series of
-   ASCII chars when printing the user's source code in diagnostic-show-locus.cc
+   ASCII chars when printing the user's source code in
+   gcc/diagnostics/source-printing.cc
 
    For example, consider:
    - the Unicode character U+03C0 "GREEK SMALL LETTER PI" (UTF-8: 0xCF 0x80)

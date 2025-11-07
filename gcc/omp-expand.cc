@@ -2,7 +2,7 @@
    directives to separate functions, converts others into explicit calls to the
    runtime library (libgomp) and so forth
 
-Copyright (C) 2005-2024 Free Software Foundation, Inc.
+Copyright (C) 2005-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1510,6 +1510,8 @@ expand_omp_taskreg (struct omp_region *region)
       child_cfun->has_force_vectorize_loops |= cfun->has_force_vectorize_loops;
       cgraph_node *node = cgraph_node::get_create (child_fn);
       node->parallelized_function = 1;
+      node->has_omp_variant_constructs
+	|= cgraph_node::get (cfun->decl)->has_omp_variant_constructs;
       cgraph_node::add_new_function (child_fn, true);
 
       bool need_asm = DECL_ASSEMBLER_NAME_SET_P (current_function_decl)
@@ -1893,6 +1895,7 @@ expand_omp_for_init_counts (struct omp_for_data *fd, gimple_stmt_iterator *gsi,
 	}
     }
   bool rect_count_seen = false;
+  bool init_n2 = SSA_VAR_P (fd->loop.n2) && zero_iter1_bb;
   for (i = 0; i < (fd->ordered ? fd->ordered : fd->collapse); i++)
     {
       tree itype = TREE_TYPE (fd->loops[i].v);
@@ -1917,6 +1920,21 @@ expand_omp_for_init_counts (struct omp_for_data *fd, gimple_stmt_iterator *gsi,
 	{
 	  gcond *cond_stmt;
 	  tree n1, n2;
+	  if (init_n2 && i < fd->collapse && !rect_count_seen)
+	    {
+	      /* When called with non-NULL zero_iter1_bb, we won't clear
+		 fd->loop.n2 in the if (zero_iter_bb == NULL) code below
+		 and if it is prior to storing fd->loop.n2 where
+		 rect_count_seen is set, it could be used uninitialized.
+		 As zero_iter1_bb in that case can be reached also if there
+		 are non-zero iterations, the clearing can't be emitted
+		 to the zero_iter1_bb, but needs to be done before the
+		 condition.  */
+	      gassign *assign_stmt
+		= gimple_build_assign (fd->loop.n2, build_zero_cst (type));
+	      gsi_insert_before (gsi, assign_stmt, GSI_SAME_STMT);
+	      init_n2 = false;
+	    }
 	  n1 = fold_convert (itype, unshare_expr (fd->loops[i].n1));
 	  n1 = force_gimple_operand_gsi (gsi, n1, true, NULL_TREE,
 					 true, GSI_SAME_STMT);
@@ -10051,6 +10069,8 @@ expand_omp_target (struct omp_region *region)
       child_cfun->has_force_vectorize_loops |= cfun->has_force_vectorize_loops;
       cgraph_node *node = cgraph_node::get_create (child_fn);
       node->parallelized_function = 1;
+      node->has_omp_variant_constructs
+	|= cgraph_node::get (cfun->decl)->has_omp_variant_constructs;
       cgraph_node::add_new_function (child_fn, true);
 
       /* Add the new function to the offload table.  */
@@ -10142,7 +10162,7 @@ expand_omp_target (struct omp_region *region)
 
 	  /* Enable pass_omp_device_lower pass.  */
 	  fn2_node = cgraph_node::get (DECL_CONTEXT (child_fn));
-	  fn2_node->calls_declare_variant_alt = 1;
+	  fn2_node->has_omp_variant_constructs = 1;
 
 	  t = build_decl (DECL_SOURCE_LOCATION (child_fn),
 			  RESULT_DECL, NULL_TREE, void_type_node);

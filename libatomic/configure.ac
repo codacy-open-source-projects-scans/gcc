@@ -1,5 +1,5 @@
 # Process this file with autoreconf to produce a configure script.
-#  Copyright (C) 2012-2024 Free Software Foundation, Inc.
+#  Copyright (C) 2012-2025 Free Software Foundation, Inc.
 #
 #  This file is part of the GNU Atomic Library (libatomic).
 #
@@ -129,6 +129,26 @@ AC_SUBST(toolexeclibdir)
 # the wrong, non-multilib-adjusted value will be used in multilibs.
 # As a side effect, we have to subst CFLAGS ourselves.
 
+# AC_PROG_CC sets CFLAGS to "-g -O2" by default (if unset), and
+# then compile conftests with default CFLAGS, leaving no place to temporarily
+# modify CFLAGS and restore them later.  However we need to pass
+# -fno-link-libatomic in CFLAGS so conftests compiled in AC_PROG_CC don't fail.
+# Assert that CFLAGS is always set by user so the default setting of CFLAGS by
+# AC_PROG_CC won't be applicable anyway.
+if test -z "${CFLAGS}"; then
+  AC_MSG_ERROR([CFLAGS must be set.])
+fi
+
+# In order to override CFLAGS_FOR_TARGET, all of our special flags go
+# in XCFLAGS.  But we need them in CFLAGS during configury.  So put them
+# in both places for now and restore CFLAGS at the end of config.
+__libatomic_save_CFLAGS__="$CFLAGS"
+
+# Append -fno-link-libatomic to avoid automatically linking libatomic,
+# while building libatomic itself.
+XCFLAGS="$XCFLAGS -fno-link-libatomic"
+CFLAGS="$__libatomic_save_CFLAGS__ $XCFLAGS"
+
 m4_rename([_AC_ARG_VAR_PRECIOUS],[real_PRECIOUS])
 m4_define([_AC_ARG_VAR_PRECIOUS],[])
 AC_PROG_CC
@@ -136,11 +156,6 @@ AM_PROG_AS
 m4_rename_force([real_PRECIOUS],[_AC_ARG_VAR_PRECIOUS])
 
 AC_SUBST(CFLAGS)
-
-# In order to override CFLAGS_FOR_TARGET, all of our special flags go
-# in XCFLAGS.  But we need them in CFLAGS during configury.  So put them
-# in both places for now and restore CFLAGS at the end of config.
-save_CFLAGS="$CFLAGS"
 
 # Find other programs we need.
 AC_CHECK_TOOL(AR, ar)
@@ -175,10 +190,13 @@ esac
 AC_SUBST(SYSROOT_CFLAGS_FOR_TARGET)
 
 # Get target configury.
+partial_libatomic=
 . ${srcdir}/configure.tgt
 if test -n "$UNSUPPORTED"; then
   AC_MSG_ERROR([Configuration ${target} is unsupported.])
 fi
+
+AM_CONDITIONAL(PARTIAL_VXWORKS, test "x$partial_libatomic" = "xvxworks")
 
 # Write out the ifunc resolver arg type.
 AC_DEFINE_UNQUOTED(IFUNC_RESOLVER_ARGS, $IFUNC_RESOLVER_ARGS,
@@ -186,7 +204,7 @@ AC_DEFINE_UNQUOTED(IFUNC_RESOLVER_ARGS, $IFUNC_RESOLVER_ARGS,
 
 # Disable fallbacks to __sync routines from libgcc.  Otherwise we'll
 # make silly decisions about what the cpu can do.
-CFLAGS="$save_CFLAGS -fno-sync-libcalls $XCFLAGS"
+CFLAGS="$__libatomic_save_CFLAGS__ -fno-sync-libcalls $XCFLAGS"
 
 # Check header files.
 AC_STDC_HEADERS
@@ -227,7 +245,7 @@ case " $config_path " in
       void *g(void *d) { return NULL; }],
      [pthread_t t; pthread_create(&t,NULL,g,NULL);])],
     [XPCFLAGS=" -pthread"],
-    [CFLAGS="$save_CFLAGS $XCFLAGS" LIBS="-lpthread $LIBS"
+    [CFLAGS="$__libatomic_save_CFLAGS__ $XCFLAGS" LIBS="-lpthread $LIBS"
      AC_LINK_IFELSE(
       [AC_LANG_PROGRAM(
        [#include <pthread.h>
@@ -235,7 +253,7 @@ case " $config_path " in
        [pthread_t t; pthread_create(&t,NULL,g,NULL);])],
       [],
       [AC_MSG_ERROR([Pthreads are required to build libatomic])])])
-  CFLAGS="$save_CFLAGS $XPCFLAGS"
+  CFLAGS="$__libatomic_save_CFLAGS__ $XPCFLAGS $XCFLAGS"
   ;;
 esac
 
@@ -251,7 +269,7 @@ fi
 LIBAT_ENABLE_SYMVERS
 
 # Cleanup and exit.
-CFLAGS="$save_CFLAGS"
+CFLAGS="$__libatomic_save_CFLAGS__"
 AC_CACHE_SAVE
 
 AC_ARG_ENABLE([werror],

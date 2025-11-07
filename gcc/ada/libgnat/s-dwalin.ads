@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---           Copyright (C) 2009-2024, Free Software Foundation, Inc.        --
+--           Copyright (C) 2009-2025, Free Software Foundation, Inc.        --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -80,11 +80,12 @@ package System.Dwarf_Lines is
    --  Read symbol information to speed up Symbolic_Traceback.
 
    procedure Symbolic_Traceback
-     (Cin          :        Dwarf_Context;
-      Traceback    :        STE.Tracebacks_Array;
-      Suppress_Hex :        Boolean;
-      Symbol_Found :    out Boolean;
-      Res          : in out System.Bounded_Strings.Bounded_String);
+     (Cin              : Dwarf_Context;
+      Traceback        : STE.Tracebacks_Array;
+      Suppress_Hex     : Boolean;
+      Subprg_Name_Only : Boolean;
+      Symbol_Found     : out Boolean;
+      Res              : in out System.Bounded_Strings.Bounded_String);
    --  Generate a string for a traceback suitable for displaying to the user.
    --  If one or more symbols are found, Symbol_Found is set to True. This
    --  allows the caller to fall back to hexadecimal addresses.

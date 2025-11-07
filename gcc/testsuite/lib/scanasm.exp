@@ -1,4 +1,4 @@
-# Copyright (C) 2000-2024 Free Software Foundation, Inc.
+# Copyright (C) 2000-2025 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -896,6 +896,10 @@ proc configure_check-function-bodies { config } {
 	set up_config(fluff) {^\s*(?://)}
     } elseif { [istarget *-*-darwin*] } {
 	set up_config(fluff) {^\s*(?:\.|//|@)|^L[0-9ABCESV]}
+    } elseif { [istarget s390*-*-*] } {
+	# Additionally to the defaults skip lines beginning with a # resulting
+	# from inline asm.
+	set up_config(fluff) {^\s*(?:\.|//|@|$|#)}
     } else {
 	# Skip lines beginning with labels ('.L[...]:') or other directives
 	# ('.align', '.cfi_startproc', '.quad [...]', '.text', etc.), '//' or
@@ -985,7 +989,7 @@ proc check_function_body { functions name body_regexp } {
 
 # Check the implementations of functions against expected output.  Used as:
 #
-# { dg-do { check-function-bodies PREFIX TERMINATOR[ OPTION[ SELECTOR [MATCHED]]] } }
+# { dg-final { check-function-bodies PREFIX TERMINATOR[ OPTION[ SELECTOR [MATCHED]]] } }
 #
 # See sourcebuild.texi for details.
 
@@ -1108,6 +1112,8 @@ proc check-function-bodies { args } {
 	    } elseif { [string equal $line "..."] } {
 		append function_regexp ".*"
 	    } elseif { [regexp {^\.L} $line] } {
+		append function_regexp $line "\n"
+	    } elseif { [regexp {^[0-9]+:} $line] } {
 		append function_regexp $line "\n"
 	    } else {
 		append function_regexp $config(line_prefix) $line "\n"

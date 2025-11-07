@@ -1,5 +1,5 @@
 # Machine description for AArch64 architecture.
-#  Copyright (C) 2009-2024 Free Software Foundation, Inc.
+#  Copyright (C) 2009-2025 Free Software Foundation, Inc.
 #  Contributed by ARM Ltd.
 #
 #  This file is part of GCC.
@@ -50,11 +50,12 @@ endif
 s-mddeps: s-aarch64-tune-md
 
 aarch64-builtins.o: $(srcdir)/config/aarch64/aarch64-builtins.cc $(CONFIG_H) \
-  $(SYSTEM_H) coretypes.h $(TM_H) \
+  $(SYSTEM_H) coretypes.h $(TM_H) $(REGS_H) \
   $(RTL_H) $(TREE_H) expr.h $(TM_P_H) $(RECOG_H) langhooks.h \
   $(DIAGNOSTIC_CORE_H) $(OPTABS_H) \
   $(srcdir)/config/aarch64/aarch64-simd-builtins.def \
   $(srcdir)/config/aarch64/aarch64-simd-builtin-types.def \
+  $(srcdir)/config/aarch64/aarch64-simd-pragma-builtins.def \
   aarch64-builtin-iterators.h
 	$(COMPILER) -c $(ALL_COMPILERFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
 		$(srcdir)/config/aarch64/aarch64-builtins.cc
@@ -68,7 +69,7 @@ aarch64-sve-builtins.o: $(srcdir)/config/aarch64/aarch64-sve-builtins.cc \
   $(TM_P_H) memmodel.h insn-codes.h $(OPTABS_H) $(RECOG_H) $(DIAGNOSTIC_H) \
   $(EXPR_H) $(BASIC_BLOCK_H) $(FUNCTION_H) fold-const.h $(GIMPLE_H) \
   gimple-iterator.h gimplify.h explow.h $(EMIT_RTL_H) tree-vector-builder.h \
-  stor-layout.h $(REG_H) alias.h gimple-fold.h langhooks.h \
+  stor-layout.h alias.h gimple-fold.h langhooks.h \
   stringpool.h \
   $(srcdir)/config/aarch64/aarch64-sve-builtins.h \
   $(srcdir)/config/aarch64/aarch64-sve-builtins-shapes.h \
@@ -139,6 +140,17 @@ aarch-common.o: $(srcdir)/config/arm/aarch-common.cc $(CONFIG_H) $(SYSTEM_H) \
 	$(COMPILER) -c $(ALL_COMPILERFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
 		$(srcdir)/config/arm/aarch-common.cc
 
+aarch64-elf-metadata.o: $(srcdir)/config/aarch64/aarch64-elf-metadata.cc \
+    $(CONFIG_H) \
+    $(BACKEND_H) \
+    $(RTL_H) \
+    $(SYSTEM_H) \
+    $(TARGET_H) \
+    $(srcdir)/config/aarch64/aarch64-elf-metadata.h \
+    output.h
+	$(COMPILER) -c $(ALL_COMPILERFLAGS) $(ALL_SPPFLAGS) $(INCLUDES) \
+	  $(srcdir)/config/aarch64/aarch64-elf-metadata.cc
+
 aarch64-c.o: $(srcdir)/config/aarch64/aarch64-c.cc $(CONFIG_H) $(SYSTEM_H) \
     coretypes.h $(TM_H) $(TREE_H) output.h $(C_COMMON_H) $(TARGET_H)
 	$(COMPILER) -c $(ALL_COMPILERFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
@@ -178,12 +190,6 @@ aarch-bti-insert.o: $(srcdir)/config/arm/aarch-bti-insert.cc \
 	$(COMPILER) -c $(ALL_COMPILERFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
 		$(srcdir)/config/arm/aarch-bti-insert.cc
 
-aarch64-cc-fusion.o: $(srcdir)/config/aarch64/aarch64-cc-fusion.cc \
-    $(CONFIG_H) $(SYSTEM_H) $(CORETYPES_H) $(BACKEND_H) $(RTL_H) $(DF_H) \
-    $(RTL_SSA_H) tree-pass.h
-	$(COMPILER) -c $(ALL_COMPILERFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
-		$(srcdir)/config/aarch64/aarch64-cc-fusion.cc
-
 aarch64-early-ra.o: $(srcdir)/config/aarch64/aarch64-early-ra.cc \
     $(CONFIG_H) $(SYSTEM_H) $(CORETYPES_H) $(BACKEND_H) $(RTL_H) $(DF_H) \
     $(RTL_SSA_H) tree-pass.h
@@ -195,6 +201,14 @@ aarch64-ldp-fusion.o: $(srcdir)/config/aarch64/aarch64-ldp-fusion.cc \
     tree-pass.h pair-fusion.h
 	$(COMPILER) -c $(ALL_COMPILERFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
 		$(srcdir)/config/aarch64/aarch64-ldp-fusion.cc
+
+aarch64-sched-dispatch.o: $(srcdir)/config/aarch64/aarch64-sched-dispatch.cc \
+    $(CONFIG_H) $(SYSTEM_H) $(CORETYPES_H) $(BACKEND_H) $(RTL_H) \
+    $(INSN_ATTR_H) $(REGSET_H) sched-int.h $(DUMPFILE_H) \
+    $(srcdir)/config/aarch64/aarch64-protos.h \
+    $(srcdir)/config/aarch64/aarch64-sched-dispatch.h
+	$(COMPILER) -c $(ALL_COMPILERFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
+		$(srcdir)/config/aarch64/aarch64-sched-dispatch.cc
 
 comma=,
 MULTILIB_OPTIONS    = $(subst $(comma),/, $(patsubst %, mabi=%, $(subst $(comma),$(comma)mabi=,$(TM_MULTILIB_CONFIG))))

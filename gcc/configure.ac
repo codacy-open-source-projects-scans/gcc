@@ -1,7 +1,7 @@
 # configure.ac for GCC
 # Process this file with autoconf to generate a configuration script.
 
-# Copyright (C) 1997-2024 Free Software Foundation, Inc.
+# Copyright (C) 1997-2025 Free Software Foundation, Inc.
 
 #This file is part of GCC.
 
@@ -358,7 +358,7 @@ if test x"${DEFAULT_LINKER+set}" = x"set"; then
     AC_MSG_ERROR([cannot execute: $DEFAULT_LINKER: check --with-ld or env. var. DEFAULT_LINKER])
   elif $DEFAULT_LINKER -v < /dev/null 2>&1 | grep GNU > /dev/null; then
     gnu_ld_flag=yes
-  elif $DEFAULT_LINKER -v < /dev/null 2>&1 | grep ld64- > /dev/null; then
+  elif $DEFAULT_LINKER -v < /dev/null 2>&1 | grep 'PROJECT:ld\(64\)*-' > /dev/null; then
     ld64_flag=yes
   fi
   AC_DEFINE_UNQUOTED(DEFAULT_LINKER,"$DEFAULT_LINKER",
@@ -562,35 +562,6 @@ if test $ac_cv_std_swap_in_utility = yes; then
   AC_DEFINE(HAVE_SWAP_IN_UTILITY, 1,
   [Define if <utility> defines std::swap.])
 fi
-
-# Check whether compiler is affected by placement new aliasing bug (PR 29286).
-# If the host compiler is affected by the bug, and we build with optimization
-# enabled (which happens e.g. when cross-compiling), the pool allocator may
-# get miscompiled.  Use -fno-strict-aliasing to work around this problem.
-# Since there is no reliable feature check for the presence of this bug,
-# we simply use a GCC version number check.  (This should never trigger for
-# stages 2 or 3 of a native bootstrap.)
-aliasing_flags=
-if test "$GCC" = yes; then
-  saved_CXXFLAGS="$CXXFLAGS"
-
-  # The following test compilation will succeed if and only if $CXX accepts
-  # -fno-strict-aliasing *and* is older than GCC 4.3.
-  CXXFLAGS="$CXXFLAGS -fno-strict-aliasing"
-  AC_MSG_CHECKING([whether $CXX is affected by placement new aliasing bug])
-  AC_COMPILE_IFELSE([AC_LANG_SOURCE([
-#if (__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3)
-#error compiler not affected by placement new aliasing bug
-#endif
-])],
-    [AC_MSG_RESULT([yes]); aliasing_flags='-fno-strict-aliasing'],
-    [AC_MSG_RESULT([no])])
-
-  CXXFLAGS="$saved_CXXFLAGS"
-fi
-AC_SUBST(aliasing_flags)
-
-
 
 # ---------------------
 # Warnings and checking
@@ -1366,7 +1337,7 @@ AC_HEADER_TIOCGWINSZ
 AC_CHECK_HEADERS(limits.h stddef.h string.h strings.h stdlib.h time.h iconv.h \
 		 fcntl.h ftw.h unistd.h sys/auxv.h sys/file.h sys/time.h sys/mman.h \
 		 sys/resource.h sys/param.h sys/times.h sys/stat.h sys/locking.h \
-		 direct.h malloc.h langinfo.h ldfcn.h locale.h wchar.h)
+		 direct.h malloc.h langinfo.h ldfcn.h locale.h wchar.h libgen.h)
 
 # Check for thread headers.
 AC_CHECK_HEADER(thread.h, [have_thread_h=yes], [have_thread_h=])
@@ -1397,7 +1368,7 @@ AC_CHECK_HEADERS(ext/hash_map)
 ZW_CREATE_DEPDIR
 AC_CONFIG_COMMANDS([gccdepdir],[
   ${CONFIG_SHELL-/bin/sh} $ac_aux_dir/mkinstalldirs build/$DEPDIR
-  for lang in $subdirs c-family common analyzer text-art rtl-ssa sym-exec
+  for lang in $subdirs c-family common analyzer custom-sarif-properties diagnostics text-art rtl-ssa sym-exec
   do
       ${CONFIG_SHELL-/bin/sh} $ac_aux_dir/mkinstalldirs $lang/$DEPDIR
   done], [subdirs="$subdirs" ac_aux_dir=$ac_aux_dir DEPDIR=$DEPDIR])
@@ -1574,7 +1545,7 @@ AC_CHECK_FUNCS(times clock kill getrlimit setrlimit atoq \
 	popen sysconf strsignal getrusage nl_langinfo \
 	gettimeofday mbstowcs wcswidth mmap posix_fallocate setlocale \
 	gcc_UNLOCKED_FUNCS madvise mallinfo mallinfo2 fstatat getauxval \
-	clock_gettime)
+	clock_gettime munmap msync get_current_dir_name memrchr)
 
 # At least for glibc, clock_gettime is in librt.  But don't pull that
 # in if it still doesn't give us the function we want.
@@ -1645,14 +1616,22 @@ CXXFLAGS="$CXXFLAGS -I${srcdir} -I${srcdir}/../include $GMPINC"
 # normal autoconf function for these.  But force definition of
 # HAVE_DECL_BASENAME like gcc_AC_CHECK_DECLS does, to suppress the bizarre
 # basename handling in libiberty.h.
-AC_CHECK_DECLS([basename(const char*), strstr(const char*,const char*)], , ,[
+# Match the configure test in libiberty so that we have a consistent result.
+AC_CHECK_DECLS([basename(char*)], , ,[
 #undef HAVE_DECL_BASENAME
 #define HAVE_DECL_BASENAME 1
+#if HAVE_LIBGEN_H
+# include <libgen.h>
+#endif
+#include "ansidecl.h"
+#include "system.h"])
+
+AC_CHECK_DECLS([strstr(const char*,const char*)], , ,[
 #include "ansidecl.h"
 #include "system.h"])
 
 gcc_AC_CHECK_DECLS(getenv atol atoll asprintf sbrk abort atof getcwd getwd \
-	madvise stpcpy strnlen strsignal strverscmp \
+	madvise mkstemps stpcpy strnlen strsignal strverscmp \
 	strtol strtoul strtoll strtoull setenv unsetenv \
 	errno snprintf vsnprintf vasprintf malloc realloc calloc \
 	free getopt clock getpagesize ffs fmemopen gcc_UNLOCKED_FUNCS, , ,[
@@ -1771,6 +1750,21 @@ AC_CHECK_DECL(O_NONBLOCK,,,[#include <fcntl.h>])
 if test $ac_cv_have_decl_O_NONBLOCK = yes; then
   AC_DEFINE(HOST_HAS_O_NONBLOCK, 1,
   [Define if O_NONBLOCK supported by fcntl.])
+fi
+
+# Check if personality and ADDR_NO_RANDOMIZE are declared
+# in sys/personality.h
+AC_CACHE_CHECK(for personality ADDR_NO_RANDOMIZE,
+	       ac_cv_personality_addr_no_randomize, [
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include <sys/personality.h>]], [[
+personality (personality (0xffffffffU) | ADDR_NO_RANDOMIZE);]])],
+[ac_cv_personality_addr_no_randomize=yes],
+[ac_cv_personality_addr_no_randomize=no])])
+if test $ac_cv_personality_addr_no_randomize = yes; then
+  AC_DEFINE(HOST_HAS_PERSONALITY_ADDR_NO_RANDOMIZE, 1,
+  [Define if personality and ADDR_NO_RANDOMIZE are declared in
+sys/personality.h.])
 fi
 
 
@@ -2445,6 +2439,17 @@ for f in $tm_rust_file; do
     * )
        tm_rust_file_list="${tm_rust_file_list} \$(srcdir)/config/$f"
        tm_rust_include_list="${tm_rust_include_list} config/$f"
+       ;;
+  esac
+done
+
+tm_jit_file_list=
+tm_jit_include_list=
+for f in $tm_jit_file; do
+  case $f in
+    * )
+       tm_jit_file_list="${tm_jit_file_list} \$(srcdir)/config/$f"
+       tm_jit_include_list="${tm_jit_include_list} config/$f"
        ;;
   esac
 done
@@ -3296,6 +3301,8 @@ AC_MSG_RESULT($gcc_cv_ld_ro_rw_mix)
 
 gcc_AC_INITFINI_ARRAY
 
+gcc_CHECK_ATTRIBUTE_ALIAS
+
 # Some assemblers (GNU as for LoongArch) generates relocations for
 # leb128 symbol arithmetic for relaxation, we need to disable relaxation
 # probing leb128 support then.
@@ -3311,8 +3318,8 @@ case $target in
 esac
 
 # Check if we have .[us]leb128, and support symbol arithmetic with it.
-# Older versions of GAS and some non-GNU assemblers, have a bugs handling
-# these directives, even when they appear to accept them.
+# Older versions of GAS and some non-GNU assemblers have bugs in handling
+# of these directives, even when they appear to accept them.
 gcc_GAS_CHECK_FEATURE([.sleb128 and .uleb128], gcc_cv_as_leb128,
 [$check_leb128_asflags],
 [	.data
@@ -3332,6 +3339,11 @@ if test "x$gcc_cv_objdump" != x; then
 elif test "x$gcc_cv_otool" != x; then
   if $gcc_cv_otool -d conftest.o 2>/dev/null \
      | grep '04 80 0a 8e 78 80 80 80 80 80 80 80 80 80 01' >/dev/null; then
+    gcc_cv_as_leb128=yes
+  fi
+elif test "x$gcc_cv_readelf" != x; then
+  if $gcc_cv_readelf -x .data conftest.o 2>/dev/null \
+     | grep '04800a8e 78808080 80808080 808001' >/dev/null; then
     gcc_cv_as_leb128=yes
   fi
 else
@@ -3401,6 +3413,12 @@ gcc_GAS_CHECK_FEATURE([cfi directives], gcc_cv_as_cfi_directive,,
 	  ;;
       esac
     fi
+    ;;
+  x86_64-*-darwin* | i?86-*-darwin* | powerpc*-darwin-*)
+    # Darwin has assemblers that support .cfi_ instructions, but that then
+    # triggers emission of compact unwind which has incompatibilities with
+    # current GCC output.
+    gcc_cv_as_cfi_directive=no
     ;;
   *-*-*)
     gcc_cv_as_cfi_directive=yes
@@ -3612,12 +3630,14 @@ gcc_GAS_CHECK_FEATURE(section merging support, gcc_cv_as_shf_merge,
  [--fatal-warnings],
  [.section .rodata.str, "aMS", @progbits, 1])
 if test $gcc_cv_as_shf_merge = no; then
-  gcc_GAS_CHECK_FEATURE(section merging support, gcc_cv_as_shf_merge,
+  gcc_GAS_CHECK_FEATURE(section merging support (%progbits),
+    gcc_cv_as_shf_merge_percent,
     [--fatal-warnings],
     [.section .rodata.str, "aMS", %progbits, 1])
 fi
 AC_DEFINE_UNQUOTED(HAVE_GAS_SHF_MERGE,
-  [`if test $gcc_cv_as_shf_merge = yes; then echo 1; else echo 0; fi`],
+  [`if test $gcc_cv_as_shf_merge = yes \
+    || test $gcc_cv_as_shf_merge_percent = yes; then echo 1; else echo 0; fi`],
 [Define 0/1 if your assembler supports marking sections with SHF_MERGE flag.])
 
 gcc_GAS_CHECK_FEATURE([COMDAT group support (GNU as)],
@@ -4180,6 +4200,35 @@ else
   [$tls_as_opt], [$conftest_s],,
   [set_have_as_tls=yes])
 fi
+case $target_os in
+  win32 | pe | cygwin* | mingw32*)
+    if test $set_have_as_tls = yes; then
+      # Hack to check whether ld breaks on @secrel32 for Windows
+      if test $in_tree_ld = yes; then
+	if test "$gcc_cv_gld_major_version" -eq 2 -a "$gcc_cv_gld_minor_version" -ge 44 -o "$gcc_cv_gld_major_version" -gt 2; then
+	  : # ld support for @secrel32 was fixed in this version
+	else
+	  AC_MSG_ERROR([ld version is known to have broken secrel32 relocations, configure without --enable-tls or with --disable-tls to remove this error. See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=80881 for more information.])
+	fi
+      elif test x$gcc_cv_as != x -a x$gcc_cv_ld != x -a x$gcc_cv_objdump != x; then
+	echo '.text'          > conftest.s
+	echo 'foo: nop'      >> conftest.s
+	echo '.data'         >> conftest.s
+	echo '.secrel32 foo' >> conftest.s
+	if $gcc_cv_as -o conftest.o conftest.s > /dev/null 2>&1 && $gcc_cv_ld -o conftest.exe conftest.o > /dev/null; then
+	  if $gcc_cv_objdump -h conftest.exe | grep '\.reloc\>' > /dev/null; then
+	    AC_MSG_ERROR([ld has broken secrel32 relocations, configure without --enable-tls or with --disable-tls to remove this error. See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=80881 for more information.])
+	  fi
+	else
+	  AC_MSG_ERROR([Error occurred while checking for broken secrel32 relocations. See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=80881 for more information.])
+	fi
+	rm -f conftest.s conftest.o conftest.exe
+      else
+	AC_MSG_ERROR([Cannot check for broken secrel32 relocations to determine --enable-tls support. See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=80881 for more information.])
+      fi
+    fi
+    ;;
+esac
 if test $set_have_as_tls = yes ; then
   AC_DEFINE(HAVE_AS_TLS, 1,
 	    [Define if your assembler and linker support thread-local storage.])
@@ -4411,6 +4460,15 @@ case "$target" in
 	ldr     x0, [[x2, #:gotpage_lo15:globalsym]]
     ],,[AC_DEFINE(HAVE_AS_SMALL_PIC_RELOCS, 1,
 	[Define if your assembler supports relocs needed by -fpic.])])
+    # Check if we have binutils support for AEABI build attributes.
+    gcc_GAS_CHECK_FEATURE([support of AEABI build attributes], gcc_cv_as_aarch64_aeabi_build_attributes,,
+    [
+	.aeabi_subsection aeabi_feature_and_bits, optional, ULEB128
+	.aeabi_attribute Tag_Feature_BTI, 1
+	.aeabi_attribute Tag_Feature_PAC, 1
+	.aeabi_attribute Tag_Feature_GCS, 1
+    ],,[AC_DEFINE(HAVE_AS_AEABI_BUILD_ATTRIBUTES, 1,
+	[Define if your assembler supports AEABI build attributes.])])
     # Enable Branch Target Identification Mechanism and Return Address
     # Signing by default.
     AC_ARG_ENABLE(standard-branch-protection,
@@ -6099,42 +6157,6 @@ if test x"$gcc_cv_ld_eh_frame_hdr" = xyes; then
 fi
 AC_MSG_RESULT($gcc_cv_ld_eh_frame_hdr)
 
-AC_MSG_CHECKING(linker CIEv3 in .eh_frame support)
-gcc_cv_ld_eh_frame_ciev3=no
-if test $in_tree_ld = yes ; then
-  if test "$gcc_cv_gld_major_version" -eq 2 -a "$gcc_cv_gld_minor_version" -ge 16 -o "$gcc_cv_gld_major_version" -gt 2 \
-     && test $in_tree_ld_is_elf = yes; then
-    gcc_cv_ld_eh_frame_ciev3=yes
-  fi
-elif test x$gcc_cv_ld != x; then
-  if echo "$ld_ver" | grep GNU > /dev/null; then
-    gcc_cv_ld_eh_frame_ciev3=yes
-    if test 0"$ld_date" -lt 20040513; then
-      if test -n "$ld_date"; then
-	# If there was date string, but was earlier than 2004-05-13, fail
-	gcc_cv_ld_eh_frame_ciev3=no
-      elif test "$ld_vers_major" -lt 2; then
-	gcc_cv_ld_eh_frame_ciev3=no
-      elif test "$ld_vers_major" -eq 2 -a "$ld_vers_minor" -lt 16; then
-	gcc_cv_ld_eh_frame_ciev3=no
-      fi
-    fi
-  else
-    case "$target" in
-      *-*-solaris2*)
-        # Sun ld added support for CIE v3 in .eh_frame in Solaris 11.1.
-        if test "$ld_vers_major" -gt 1 || test "$ld_vers_minor" -ge 2324; then
-          gcc_cv_ld_eh_frame_ciev3=yes
-        fi
-        ;;
-    esac
-  fi
-fi
-AC_DEFINE_UNQUOTED(HAVE_LD_EH_FRAME_CIEV3,
-  [`if test x"$gcc_cv_ld_eh_frame_ciev3" = xyes; then echo 1; else echo 0; fi`],
-  [Define 0/1 if your linker supports CIE v3 in .eh_frame.])
-AC_MSG_RESULT($gcc_cv_ld_eh_frame_ciev3)
-
 AC_MSG_CHECKING(linker position independent executable support)
 gcc_cv_ld_pie=no
 if test $in_tree_ld = yes ; then
@@ -6390,7 +6412,9 @@ if test x"$ld64_flag" = x"yes"; then
   # Set defaults for possibly untestable items.
   gcc_cv_ld64_export_dynamic=0
   gcc_cv_ld64_platform_version=0
+  gcc_cv_ld64_macos_version_min=0
   gcc_cv_ld64_demangle=0
+  gcc_cv_ld64_no_deduplicate=0
 
   if test "$build" = "$host"; then
     darwin_try_test=1
@@ -6418,15 +6442,20 @@ if test x"$ld64_flag" = x"yes"; then
     if test "$gcc_cv_ld64_major" -ge 236; then
       gcc_cv_ld64_export_dynamic=1
     fi
+    if test "$gcc_cv_ld64_major" -ge 262; then
+      gcc_cv_ld64_no_deduplicate=1
+    fi
     if test "$gcc_cv_ld64_major" -ge 512; then
       gcc_cv_ld64_platform_version=1
+      gcc_cv_ld64_macos_version_min=1
     fi
   elif test -x "$gcc_cv_ld" -a "$darwin_try_test" -eq 1; then
     # If the version was not specified, try to find it.
     AC_MSG_CHECKING(linker version)
     if test x"${gcc_cv_ld64_version}" = x; then
-      gcc_cv_ld64_version=`$gcc_cv_ld -v 2>&1 | $EGREP 'ld64|dyld' \
-      | sed -e 's/.*ld64-//' -e 's/.*dyld-//'| awk '{print $1}'`
+      gcc_cv_ld64_version=`$gcc_cv_ld -v 2>&1 | $EGREP 'ld64|dyld|PROJECT:ld' \
+      | sed -e 's/.*ld64-//' -e 's/.*dyld-//' -e 's/.*PROJECT:ld-//' \
+      | awk '{print $1}'`
     fi
     AC_MSG_RESULT($gcc_cv_ld64_version)
 
@@ -6444,12 +6473,26 @@ if test x"$ld64_flag" = x"yes"; then
     fi
     AC_MSG_RESULT($gcc_cv_ld64_export_dynamic)
 
+    AC_MSG_CHECKING(linker for -no_deduplicate support)
+    gcc_cv_ld64_no_deduplicate=1
+    if $gcc_cv_ld -no_deduplicate < /dev/null 2>&1 | grep 'unknown option' > /dev/null; then
+      gcc_cv_ld64_no_deduplicate=0
+    fi
+    AC_MSG_RESULT($gcc_cv_ld64_no_deduplicate)
+
     AC_MSG_CHECKING(linker for -platform_version support)
     gcc_cv_ld64_platform_version=1
     if $gcc_cv_ld -platform_version macos 10.5 0.0 < /dev/null 2>&1 | grep 'unknown option' > /dev/null; then
       gcc_cv_ld64_platform_version=0
     fi
     AC_MSG_RESULT($gcc_cv_ld64_platform_version)
+
+    AC_MSG_CHECKING(linker for -macos_version_min)
+    gcc_cv_ld64_macos_version_min=1
+    if $gcc_cv_ld -macos_version_min 10.5 < /dev/null 2>&1 | grep 'unknown option' > /dev/null; then
+      gcc_cv_ld64_macos_version_min=0
+    fi
+    AC_MSG_RESULT($gcc_cv_ld64_macos_version_min)
   fi
 
   if test x"${gcc_cv_ld64_version}" != x; then
@@ -6463,8 +6506,14 @@ if test x"$ld64_flag" = x"yes"; then
   AC_DEFINE_UNQUOTED(LD64_HAS_EXPORT_DYNAMIC, $gcc_cv_ld64_export_dynamic,
   [Define to 1 if ld64 supports '-export_dynamic'.])
 
+  AC_DEFINE_UNQUOTED(LD64_HAS_NO_DEDUPLICATE, $gcc_cv_ld64_no_deduplicate,
+  [Define to 1 if ld64 supports '-no_deduplicate'.])
+
   AC_DEFINE_UNQUOTED(LD64_HAS_PLATFORM_VERSION, $gcc_cv_ld64_platform_version,
   [Define to 1 if ld64 supports '-platform_version'.])
+
+  AC_DEFINE_UNQUOTED(LD64_HAS_MACOS_VERSION_MIN, $gcc_cv_ld64_macos_version_min,
+  [Define to 1 if ld64 supports '-macos_version_min'.])
 fi
 
 if test x"$dsymutil_flag" = x"yes"; then
@@ -6751,7 +6800,7 @@ ie0:	.space 8
 	.global _start
 	.text
 _start:
-	addis 9,13,ie0@got@tprel@ha
+	addis 9,2,ie0@got@tprel@ha
 	ld 9,ie0@got@tprel@l(9)
 EOF
       if $gcc_cv_as -a64 -o conftest.o conftest.s > /dev/null 2>&1 \
@@ -7010,6 +7059,11 @@ if test x$enable_default_ssp = xyes ; then
       [Define if your target supports default stack protector and it is enabled.])
 fi
 AC_SUBST([enable_default_ssp])
+
+if echo " ${TARGET_CONFIGDIRS} " | grep " libatomic " > /dev/null 2>&1 ; then
+  AC_DEFINE(TARGET_PROVIDES_LIBATOMIC, 1,
+	    [Define if libatomic is built for the target.])
+fi
 
 # Test for <sys/sdt.h> on the target.
 GCC_TARGET_TEMPLATE([HAVE_SYS_SDT_H])
@@ -7558,6 +7612,8 @@ AC_SUBST(tm_d_file_list)
 AC_SUBST(tm_d_include_list)
 AC_SUBST(tm_rust_file_list)
 AC_SUBST(tm_rust_include_list)
+AC_SUBST(tm_jit_file_list)
+AC_SUBST(tm_jit_include_list)
 AC_SUBST(xm_file_list)
 AC_SUBST(xm_include_list)
 AC_SUBST(xm_defines)
@@ -7567,6 +7623,7 @@ AC_SUBST(cxx_target_objs)
 AC_SUBST(fortran_target_objs)
 AC_SUBST(d_target_objs)
 AC_SUBST(rust_target_objs)
+AC_SUBST(jit_target_objs)
 AC_SUBST(target_cpu_default)
 
 AC_SUBST_FILE(language_hooks)
@@ -7735,6 +7792,21 @@ echo "gcc_driver_version: ${gcc_driver_version}"
 cat > gcc-driver-name.h <<EOF
 #define GCC_DRIVER_NAME "${target_noncanonical}-gcc-${gcc_driver_version}${exeext}"
 EOF
+
+# Check whether --enable-versioned-jit was given.
+AC_ARG_ENABLE(versioned-jit,
+[AS_HELP_STRING([--enable-versioned-jit],
+  [enable versioned libgccjit build])],
+enable_versioned_jit=$enableval,
+enable_versioned_jit=no)
+if test x$enable_versioned_jit = xyes ; then
+  libgccjit_version=$gcc_driver_version
+elif test x$enable_versioned_jit = xno ; then
+  libgccjit_version=0
+else
+  AC_MSG_ERROR(bad value ${enableval} given for --enable-versioned-jit option)
+fi
+AC_SUBST([libgccjit_version])
 
 # Check whether --enable-default-pie was given.
 AC_ARG_ENABLE(default-pie,
@@ -7914,6 +7986,41 @@ standards-compatible mode on s390 targets.])
   fi
   ;;
 esac
+
+# On x86-64, when profiling is enabled with shrink wrapping, the mcount
+# call may not be placed at the function entry after
+#	pushq %rbp
+#	movq %rsp,%rbp
+# As the result, the profile data may be skewed which makes PGO less
+# effective:
+# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=120881
+# Enable -mfentry by default on x86-64 to put the profiling counter call
+# before the prologue.
+AC_ARG_ENABLE(x86-64-mfentry,
+  [AS_HELP_STRING([--enable-x86-64-mfentry],
+		  [enable -mfentry by default on x86-64 targets])],
+  [case "${enableval}" in
+   yes | no | auto)
+     enable_x86_64_mfentry=$enableval
+     ;;
+   *)
+     AC_MSG_ERROR(['$enable_x86_64_mfentry' is an invalid value for --enable-x86-64-mfentry.  Valid choices are 'yes', 'no' and 'auto'.])
+     ;;
+   esac],
+  [enable_x86_64_mfentry=auto])
+
+if test x"$enable_x86_64_mfentry" = xauto; then
+  case "${target}" in
+  i?86-*-*gnu* | x86_64-*-*gnu*)
+    # Enable -mfentry by default with glibc on x86.
+    enable_x86_64_mfentry=yes
+    ;;
+  esac
+fi
+
+gif=`if test x$enable_x86_64_mfentry = xyes; then echo 1; else echo 0; fi`
+AC_DEFINE_UNQUOTED(ENABLE_X86_64_MFENTRY, $gif,
+[Define to enable -mfentry by default on x86-64.])
 
 # Check if the linker supports '-z now'
 ld_now_support=no

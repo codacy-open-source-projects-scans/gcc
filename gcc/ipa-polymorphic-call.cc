@@ -1,5 +1,5 @@
 /* Analysis of polymorphic call context.
-   Copyright (C) 2013-2024 Free Software Foundation, Inc.
+   Copyright (C) 2013-2025 Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
 This file is part of GCC.
@@ -1353,7 +1353,7 @@ record_known_type (struct type_change_info *tci, tree type, HOST_WIDE_INT offset
 
   /* If we found a constructor of type that is not polymorphic or
      that may contain the type in question as a field (not as base),
-     restrict to the inner class first to make type matching bellow
+     restrict to the inner class first to make type matching below
      happier.  */
   if (type
       && (offset

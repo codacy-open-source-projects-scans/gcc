@@ -1,5 +1,5 @@
 /* Gimple ranger SSA cache implementation.
-   Copyright (C) 2017-2024 Free Software Foundation, Inc.
+   Copyright (C) 2017-2025 Free Software Foundation, Inc.
    Contributed by Andrew MacLeod <amacleod@redhat.com>.
 
 This file is part of GCC.
@@ -1861,7 +1861,7 @@ ranger_cache::apply_inferred_ranges (gimple *s)
   bool update = true;
 
   basic_block bb = gimple_bb (s);
-  gimple_infer_range infer(s);
+  gimple_infer_range infer(s, this);
   if (infer.num () == 0)
     return;
 

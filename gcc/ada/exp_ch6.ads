@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -101,7 +101,20 @@ package Exp_Ch6 is
    --  Adds Extra_Actual as a named parameter association for the formal
    --  Extra_Formal in Subprogram_Call.
 
+   procedure Create_Extra_Actuals (Call_Node : Node_Id);
+   --  Create the extra actuals of the given call and add them to its
+   --  actual parameters list.
+
+   procedure Apply_Access_Discrims_Accessibility_Check
+     (Exp : Node_Id; Func : Entity_Id);
+   --  Exp is an expression being returned from a function Func.
+   --  If the result type of the function has access discriminants, insert
+   --  checks that the accessibility level of each entity designated by an
+   --  access discriminant of the result is not deeper than the level of the
+   --  master of the call.
+
    procedure Apply_CW_Accessibility_Check (Exp : Node_Id; Func : Entity_Id);
+   --  Exp is an expression being returned from a function Func.
    --  Ada 2005 (AI95-344): If the result type is class-wide, insert a check
    --  that the level of the return expression's underlying type is not deeper
    --  than the level of the master enclosing the function. Always generate the
@@ -288,10 +301,8 @@ package Exp_Ch6 is
    --  BIP_Alloc_Form parameter (see type BIP_Formal_Kind).
 
    function Needs_BIP_Collection (Func_Id : Entity_Id) return Boolean;
-   --  Ada 2005 (AI-318-02): Return True if the result subtype of function
-   --  Func_Id might need finalization actions. This includes build-in-place
-   --  functions with tagged result types, since they can be invoked via
-   --  dispatching calls, and descendant types may require finalization.
+   --  Ada 2005 (AI-318-02): Return True if the function needs an implicit
+   --  BIP_Collection parameter (see type BIP_Formal_Kind).
 
    function Needs_BIP_Task_Actuals (Func_Id : Entity_Id) return Boolean;
    --  Return True if the function returns an object of a type that has tasks.

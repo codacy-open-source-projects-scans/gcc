@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2024 Free Software Foundation, Inc.
+// Copyright (C) 2020-2025 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -21,7 +21,7 @@
 #include "rust-lex.h"
 #include "rust-diagnostics.h"
 #include "rust-linemap.h"
-#include "rust-session-manager.h"
+#include "rust-edition.h"
 #include "safe-ctype.h"
 #include "cpplib.h"
 #include "rust-keyword-values.h"
@@ -236,10 +236,11 @@ Lexer::dump_and_skip (int n)
 
 	  out << "<id=";
 	  out << tok->token_id_to_str ();
-	  out << (tok->has_str () ? (std::string (", text=") + tok->get_str ()
-				     + std::string (", typehint=")
-				     + std::string (tok->get_type_hint_str ()))
-				  : "")
+	  out << (tok->should_have_str ()
+		    ? (std::string (", text=") + tok->get_str ()
+		       + std::string (", typehint=")
+		       + std::string (tok->get_type_hint_str ()))
+		    : "")
 	      << " ";
 	  out << Linemap::location_to_string (loc) << '\n';
 	}
@@ -277,9 +278,7 @@ Lexer::classify_keyword (const std::string &str)
   // https://doc.rust-lang.org/reference/keywords.html#reserved-keywords
 
   // `try` is not a reserved keyword before 2018
-  if (Session::get_instance ().options.get_edition ()
-	== CompileOptions::Edition::E2015
-      && id == TRY)
+  if (get_rust_edition () == Edition::E2015 && id == TRY)
     return IDENTIFIER;
 
   return id;
@@ -589,7 +588,8 @@ Lexer::build_token ()
 		  if (current_char.is_eof ())
 		    {
 		      rust_error_at (
-			loc, "unexpected EOF while looking for end of comment");
+			loc, ErrorCode::E0758,
+			"unexpected EOF while looking for end of comment");
 		      break;
 		    }
 		  str += current_char;
@@ -644,7 +644,8 @@ Lexer::build_token ()
 		  if (current_char.is_eof ())
 		    {
 		      rust_error_at (
-			loc, "unexpected EOF while looking for end of comment");
+			loc, ErrorCode::E0758,
+			"unexpected EOF while looking for end of comment");
 		      break;
 		    }
 
@@ -708,7 +709,8 @@ Lexer::build_token ()
 		  if (current_char.is_eof ())
 		    {
 		      rust_error_at (
-			loc, "unexpected EOF while looking for end of comment");
+			loc, ErrorCode::E0758,
+			"unexpected EOF while looking for end of comment");
 		      break;
 		    }
 
@@ -1316,7 +1318,8 @@ Lexer::parse_escape (char opening_char)
 
   switch (current_char.value)
     {
-      case 'x': {
+    case 'x':
+      {
 	auto hex_escape_pair = parse_partial_hex_escape ();
 	long hexLong = hex_escape_pair.first;
 	additional_length_offset += hex_escape_pair.second;
@@ -1399,7 +1402,8 @@ Lexer::parse_utf8_escape ()
 
   switch (current_char.value)
     {
-      case 'x': {
+    case 'x':
+      {
 	auto hex_escape_pair = parse_partial_hex_escape ();
 	long hexLong = hex_escape_pair.first;
 	additional_length_offset += hex_escape_pair.second;
@@ -1437,7 +1441,8 @@ Lexer::parse_utf8_escape ()
     case '"':
       output_char = '"';
       break;
-      case 'u': {
+    case 'u':
+      {
 	auto unicode_escape_pair = parse_partial_unicode_escape ();
 	output_char = unicode_escape_pair.first;
 	additional_length_offset += unicode_escape_pair.second;
@@ -1893,17 +1898,17 @@ Lexer::parse_raw_byte_string (location_t loc)
 	      break;
 	    }
 	}
+      else if (current_char.is_eof ())
+	{
+	  rust_error_at (string_begin_locus, "unended raw byte string literal");
+	  return Token::make (END_OF_FILE, get_current_location ());
+	}
       else if (current_char.value > 127)
 	{
 	  rust_error_at (get_current_location (),
 			 "character %qs in raw byte string out of range",
 			 current_char.as_string ().c_str ());
 	  current_char = 0;
-	}
-      else if (current_char.is_eof ())
-	{
-	  rust_error_at (string_begin_locus, "unended raw byte string literal");
-	  return Token::make (END_OF_FILE, get_current_location ());
 	}
 
       length++;
@@ -2218,7 +2223,7 @@ Lexer::parse_raw_string (location_t loc, int initial_hash_count)
 
   str.shrink_to_fit ();
 
-  return Token::make_string (loc, std::move (str));
+  return Token::make_raw_string (loc, std::move (str));
 }
 
 template <typename IsDigitFunc>

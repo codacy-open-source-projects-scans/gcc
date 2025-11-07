@@ -1,5 +1,5 @@
 /* Definitions for GCC.  Part of the machine description for CRIS.
-   Copyright (C) 1998-2024 Free Software Foundation, Inc.
+   Copyright (C) 1998-2025 Free Software Foundation, Inc.
    Contributed by Axis Communications.  Written by Hans-Peter Nilsson.
 
 This file is part of GCC.
@@ -2692,8 +2692,7 @@ cris_split_movdx (rtx *operands)
   else
     internal_error ("unknown dest");
 
-  val = get_insns ();
-  end_sequence ();
+  val = end_sequence ();
   return val;
 }
 
@@ -3712,9 +3711,11 @@ cris_md_asm_adjust (vec<rtx> &outputs, vec<rtx> &inputs,
   /* Determine if the source using MOF.  If it is, automatically
      clobbering MOF would cause it to have impossible constraints.  */
 
-  /* Look for a use of the MOF constraint letter: h.  */
+  /* Look for a use of the MOF constraint letter h or a hard register
+     constraint.  */
   for (unsigned i = 0, n = constraints.length(); i < n; ++i)
-    if (strchr (constraints[i], 'h') != NULL)
+    if (strchr (constraints[i], 'h') != NULL
+	|| strstr (constraints[i], "{mof}") != NULL)
       return NULL;
 
   /* Look for an output or an input that touches MOF.  */

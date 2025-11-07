@@ -1,5 +1,5 @@
 /* Get CPU type and Features for x86 processors.
-   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+   Copyright (C) 2012-2025 Free Software Foundation, Inc.
    Contributed by Sriraman Tallam (tmsriram@google.com)
 
 This file is part of GCC.
@@ -312,7 +312,8 @@ get_amd_cpu (struct __processor_model *cpu_model,
       break;
     case 0x1a:
       cpu_model->__cpu_type = AMDFAM1AH;
-      if (model <= 0x77)
+      if (model <= 0x4f || (model >= 0x60 && model <= 0x77) ||
+	  (model >= 0xd0 && model <= 0xd7))
 	{
 	  cpu = "znver5";
 	  CHECK___builtin_cpu_is ("znver5");
@@ -627,6 +628,8 @@ get_intel_cpu (struct __processor_model *cpu_model,
 	break;
       case 0xcc:
 	/* Panther Lake.  */
+      case 0xd5:
+	/* Wildcat Lake.  */
 	cpu = "pantherlake";
 	CHECK___builtin_cpu_is ("corei7");
 	CHECK___builtin_cpu_is ("pantherlake");
@@ -636,11 +639,26 @@ get_intel_cpu (struct __processor_model *cpu_model,
       default:
 	break;
       }
+  /* Parse family and model for family 0x12.  */
+  else if (cpu_model2->__cpu_family == 0x12)
+    switch (cpu_model2->__cpu_model)
+      {
+      case 0x01:
+      case 0x03:
+	/* Nova Lake.  */
+	cpu = "novalake";
+	CHECK___builtin_cpu_is ("corei7");
+	CHECK___builtin_cpu_is ("novalake");
+	cpu_model->__cpu_type = INTEL_COREI7;
+	cpu_model->__cpu_subtype = INTEL_COREI7_NOVALAKE;
+	break;
+      default:
+	break;
+      }
   /* Parse family and model for family 0x13.  */
   else if (cpu_model2->__cpu_family == 0x13)
     switch (cpu_model2->__cpu_model)
       {
-      case 0x00:
       case 0x01:
 	/* Diamond Rapids.  */
 	cpu = "diamondrapids";
@@ -1024,8 +1042,6 @@ get_available_features (struct __processor_model *cpu_model,
 	    set_feature (FEATURE_AMX_AVX512);
 	  if (eax & bit_AMX_TF32)
 	    set_feature (FEATURE_AMX_TF32);
-	  if (eax & bit_AMX_TRANSPOSE)
-	    set_feature (FEATURE_AMX_TRANSPOSE);
 	  if (eax & bit_AMX_FP8)
 	    set_feature (FEATURE_AMX_FP8);
 	  if (eax & bit_AMX_MOVRS)
@@ -1038,32 +1054,18 @@ get_available_features (struct __processor_model *cpu_model,
     {
       __cpuid_count (0x24, 0, eax, ebx, ecx, edx);
       version = ebx & 0xff;
-      if (ebx & bit_AVX10_256)
-	switch (version)
-	  {
-	  case 2:
-	    set_feature (FEATURE_AVX10_2_256);
-	    /* Fall through.  */
-	  case 1:
-	    set_feature (FEATURE_AVX10_1_256);
-	    break;
-	  default:
-	    set_feature (FEATURE_AVX10_1_256);
-	    break;
-	  }
-      if (ebx & bit_AVX10_512)
-	switch (version)
-	  {
-	  case 2:
-	    set_feature (FEATURE_AVX10_2_512);
-	    /* Fall through.  */
-	  case 1:
-	    set_feature (FEATURE_AVX10_1_512);
-	    break;
-	  default:
-	    set_feature (FEATURE_AVX10_1_512);
-	    break;
-	  }
+      switch (version)
+	{
+	case 2:
+	  set_feature (FEATURE_AVX10_2);
+	  /* Fall through.  */
+	case 1:
+	  set_feature (FEATURE_AVX10_1);
+	  break;
+	default:
+	  set_feature (FEATURE_AVX10_1);
+	  break;
+	}
     }
 
   /* Check cpuid level of extended features.  */
@@ -1115,6 +1117,15 @@ get_available_features (struct __processor_model *cpu_model,
 	set_feature (FEATURE_CLZERO);
       if (ebx & bit_WBNOINVD)
 	set_feature (FEATURE_WBNOINVD);
+    }
+
+  if (ext_level >= 0x80000021)
+    {
+      __cpuid (0x80000021, eax, ebx, ecx, edx);
+      if (eax & bit_AMD_PREFETCHI)
+	{
+	  set_feature (FEATURE_PREFETCHI);
+	}
     }
 
 #undef set_feature

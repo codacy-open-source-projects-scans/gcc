@@ -1,3 +1,358 @@
+2025-11-03  Sam James  <sam@gentoo.org>
+
+	* configure: Regenerate.
+
+2025-10-30  Robin Dapp  <rdapp@ventanamicro.com>
+
+	* MAINTAINERS: Add myself to reviewers/maintainers.
+
+2025-10-28  Richard Earnshaw  <rearnsha@arm.com>
+
+	* .editorconfig: Explicitly set tab_width whenever a
+	config rule has indent_style = tab and indent_size != 8.
+
+2025-10-28  Artemiy Volkov  <artemiy.volkov@arm.com>
+
+	* MAINTAINERS: Add myself to write after approval.
+
+2025-10-27  Jennifer Schmitz  <jschmitz@nvidia.com>
+
+	* MAINTAINERS: Change email address.
+
+2025-10-24  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	PR driver/81358
+	* Makefile.tpl: Move generation of dependencies for libatomic out
+	of loop over 'target_modules'.
+	* Makefile.in: Regenerate.
+
+2025-10-22  Josef Melcr  <jmelcr02@gmail.com>
+
+	* MAINTAINERS: Update my contact information.
+
+2025-10-20  Tamar Christina  <tamar.christina@arm.com>
+
+	* MAINTAINERS (Various Maintainers): Add myself for the vectorizer.
+
+2025-10-20  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* .forgejo/workflows/sanity-checks.yaml: New file.
+
+2025-10-20  Richard Biener  <rguenther@suse.de>
+
+	* MAINTAINERS (auto-vectorizer): Change attribution to
+	vectorizer (+ tree-if-conv).
+
+2025-10-15  Basil Milanich  <bmilanich@gmail.com>
+
+	* Makefile.tpl (distclean): Remove extraenous semicolon.
+	* Makefile.in: Rebuilt.
+
+2025-10-11  Ben Boeckel  <ben.boeckel@kitware.com>
+
+	* config-ml.in: Update patch email address.
+	* symlink-tree: Ditto.
+
+2025-10-09  Prathamesh Kulkarni  <prathameshk@nvidia.com>
+	    Matthew Malcolmson  <mmalcolmson@nvidia.com>
+
+	PR driver/81358
+	* Makefile.def: Add no_atomic=true for libraries that don't depend on
+	libatomic.
+	* Makefile.tpl: Export TARGET_CONFIGDIRS and create rule to
+	add dependencies for libatomic.
+	* configure.ac: Add libatomic to bootstrap_target_libs.
+	* Makefile.in: Regenerate.
+	* configure: Regenerate.
+
+2025-10-02  H.J. Lu  <hjl.tools@gmail.com>
+
+	* Makefile.in: Regenerated.
+	* configure: Likewise.
+	* Makefile.tpl: Synced from binutils-gdb.
+	* configure.ac: Likewise.
+	* libtool.m4: Likewise.
+
+2025-10-01  Richard Earnshaw  <rearnsha@arm.com>
+
+	* .editorconfig: Unify the GCC and GDB/binutils root config.
+
+2025-09-23  Richard Earnshaw  <rearnsha@arm.com>
+
+	* .editorconfig: Fix glob patterns.
+
+2025-09-22  Jonathan Wakely  <jwakely@redhat.com>
+
+	* .editorconfig: New file.
+
+2025-09-04  Wilco Dijkstra  <wilco.dijkstra@arm.com>
+
+	* MAINTAINERS (Reviewers): Add myself for the aarch64 port.
+
+2025-09-03  Alice Carlotti  <alice.carlotti@arm.com>
+
+	* MAINTAINERS: Add myself as an aarch64 port reviewer.
+
+2025-08-28  Yuao Ma  <c8ef@outlook.com>
+
+	* MAINTAINERS: add myself to write after approval
+
+2025-08-21  Richard Sandiford  <rdsandiford@googlemail.com>
+
+	* MAINTAINERS: Update my email address and stand down as AArch64
+	maintainer.
+
+2025-08-18  Spencer Abson  <spencer.abson@student.manchester.ac.uk>
+
+	* MAINTAINERS: Update my email address.
+
+2025-08-17  Filip Kastl  <fkastl@suse.cz>
+
+	* MAINTAINERS: Switch around Andrew Pinski's entries in
+	Contributing under DCO.
+
+2025-08-16  Mikael Pettersson  <mikpelinux@gmail.com>
+
+	* MAINTAINERS: Add myself to write after approval.
+
+2025-08-14  Avinash Jayakar  <avinashd@linux.ibm.com>
+
+	* MAINTAINERS: Add myself to write after approval.
+
+2025-08-08  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* MAINTAINERS (Andrew Pinski): Update email address.
+
+2025-08-07  Pengfei Li  <Pengfei.Li2@arm.com>
+
+	* MAINTAINERS: Add myself.
+
+2025-08-05  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	* .gitignore: Remove 'libgrust/*/target/'.
+
+2025-08-01  Luis Machado  <luis.machado.foss@gmail.com>
+
+	* MAINTAINERS: Update my e-mail address.
+
+2025-07-22  Patrick Palka  <ppalka@redhat.com>
+
+	* MAINTAINERS: Add myself as C++ front end reviewer.
+
+2025-07-07  Tamar Christina  <tamar.christina@arm.com>
+
+	* MAINTAINERS: Add myself to AArch64 pot.
+
+2025-07-04  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	* MAINTAINERS: Replace tabs with spaces.
+
+2025-07-04  Alex Coplan  <alex.coplan@arm.com>
+
+	* MAINTAINERS (Reviewers): Add myself for the aarch64 port.
+
+2025-07-03  Andrew Pinski  <quic_apinski@quicinc.com>
+
+	* MAINTAINERS: Add myself as an aarch64 port reviewer.
+
+2025-06-22  Nicolas Boulenguez  <nicolas@debian.org>
+
+	PR ada/120106
+	* Makefile.tpl: Add GNATMAKE_FOR_BUILD to {HOST,BASE_TARGET}_EXPORTS
+	* Makefile.in: Regenerate.
+	* configure.ac: Set the default and substitute the variable.
+	* configure: Regenerate.
+
+2025-06-09  Kugan Vivekanandarajah  <kvivekananda@nvidia.com>
+
+	* configure.ac: Special case cpu_type for x86_64.
+	* configure: Regenerate.
+
+2025-06-09  Peter Bergner  <bergner@tenstorrent.com>
+
+	* MAINTAINERS: Update my email address and add myself to DCO.
+
+2025-05-28  Kugan Vivekanandarajah  <kvivekananda@nvidia.com>
+
+	* Makefile.def: Fix typo in cpu_type
+	* Makefile.tpl: Add cpu_type
+
+2025-05-26  Kugan Vivekanandarajah  <kvivekananda@nvidia.com>
+
+	* Makefile.def: AUTO_PROFILE based on cpu_type.
+	* Makefile.in: Likewise.
+	* configure: Regenerate.
+	* configure.ac: Set autofdo_target.
+
+2025-05-23  Kishan Parmar  <kishan@linux.ibm.com>
+
+	* MAINTAINERS: Add myself to write after approval.
+
+2025-05-23  Dhruv Chawla  <dhruvc@nvidia.com>
+
+	* MAINTAINERS: Add myself to write after approval and DCO.
+
+2025-05-21  Stephanos Ioannidis  <root@stephanos.io>
+
+	* configure.ac: Always add pre-installed heades to search path.
+	* configure: Regenerate.
+
+2025-05-16  Spencer Abson  <spencer.abson@arm.com>
+
+	* MAINTAINERS: Add myself to write after approval.
+
+2025-05-14  Richard Earnshaw  <rearnsha@arm.com>
+
+	* MAINTAINERS: Marcus Shawcroft has resigned from the project.
+
+2025-04-28  Kwok Cheung Yeung  <kcyeung@baylibre.com>
+
+	* MAINTAINERS (kcy): Add gcc.gnu.org username.
+
+2025-04-22  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	PR cobol/119217
+	* configure.ac: Restrict cobol to aarch64-*-linux*,
+	x86_64-*-linux*.
+	Fix indentation.
+	* configure: Regenerate.
+
+2025-04-16  Waffl3x  <waffl3x@baylibre.com>
+
+	* MAINTAINERS: Add myself.
+
+2025-04-02  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* configure: Regenerate.
+	* configure.ac: Use -B instead of -L to specifiy the C++ runtime
+	paths on Darwin.
+
+2025-03-31  Alice Carlotti  <alice.carlotti@arm.com>
+
+	* MAINTAINERS: Update my name.
+
+2025-03-28  Richard Biener  <rguenther@suse.de>
+
+	PR bootstrap/119513
+	* configure.ac (compare_exclusions): Add gcc/cobol/parse\$(objext).
+	* configure: Regenerated.
+
+2025-03-25  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR cobol/119244
+	* Makefile.def: libgcobol configure depends on libquadmath build.
+	* Makefile.in: Regenerate.
+
+2025-03-23  Iain Sandoe  <iain@sandoe.co.uk>
+
+	PR libitm/88319
+	* Makefile.in: Regenerate.
+	* Makefile.tpl: Add CXX_FOR_TARGET to NORMAL_TARGET_EXPORTS.
+
+2025-03-23  James K. Lowden  <jklowden@cobolworx.com>
+
+	* MAINTAINERS: Add myself.
+
+2025-03-17  Arthur Cohen  <arthur.cohen@embecosm.com>
+
+	* .gitignore: Add libgrust target folders to the ignore list.
+
+2025-03-14  Thomas Schwinge  <thomas@codesourcery.com>
+
+	PR target/92713
+	PR target/101544
+	* configure.ac [GCN, nvptx] (noconfigdirs): Don't add
+	'target-libstdc++-v3'.  Add 'target-libgrust'.
+	* configure: Regenerate.
+
+2025-03-13  Matthias Klose  <doko@ubuntu.com>
+
+	* config-ml.in (multi-do): Remove extra argument from subst macro.
+
+2025-03-12  Robert Dubner  <rdubner@symas.com>
+
+	* MAINTAINERS: Remove extraneous entries for "Robert Dubner"
+
+2025-03-11  Bob Dubner  <rdubner@symas.com>
+
+	* MAINTAINERS: Add myself.
+
+2025-03-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR cobol/119216
+	* configure.ac: Check for UNSUPPORTED set by libgcobol/configure.tgt
+	rather than LIBGCOBOL_SUPPORTED.
+	* configure: Regenerate.
+
+2025-03-11  Iain Sandoe  <iain@sandoe.co.uk>
+
+	* configure: Regenerate.
+	* configure.ac: Do not build COBOL on Darwin by default,
+	even for --enable-languages=all.
+
+2025-03-11  James K. Lowden  <jklowden@symas.com>
+
+	* Makefile.def: Add libgcobol module and cobol language.
+	* Makefile.in: Regenerate.
+	* configure.ac: Add libgcobol module and cobol language.
+	* configure: Regenerate.
+
+2025-03-05  Tomasz Kamiński  <tkaminsk@redhat.com>
+
+	* MAINTAINERS: Add myself.
+
+2025-02-28  Giuseppe D'Angelo  <giuseppe.dangelo@kdab.com>
+
+	* MAINTAINERS: Added myself as write after approval and DCO.
+
+2025-02-19  Thomas Schwinge  <tschwinge@baylibre.com>
+
+	* configure.ac (unsupported_languages) [GCN, nvptx]: Add 'ada'.
+	(noconfigdirs) [GCN, nvptx]: Add 'target-libobjc',
+	'target-libffi', 'target-libgo'.
+	* configure: Regenerate.
+
+2025-02-05  Jin Ma  <jinma@linux.alibaba.com>
+
+	* MAINTAINERS: Add myself.
+
+2025-01-21  Alfie Richards  <alfie.richards@arm.com>
+
+	* MAINTAINERS: Add myself to write after approval.
+
+2025-01-13  Martin Jambor  <mjambor@suse.cz>
+
+	* MAINTAINERS: Fix the name order of the Write After Approval section.
+
+2024-12-23  Mark Harmstone  <mark@harmstone.com>
+
+	* MAINTAINERS: Add myself to write after approval.
+
+2024-12-18  Prathamesh Kulkarni  <prathameshk@nvidia.com>
+
+	Revert:
+	2024-12-18  Prathamesh Kulkarni  <prathameshk@nvidia.com>
+		    Matthew Malcolmson  <mmalcolmson@nvidia.com>
+
+	PR driver/81358
+	* Makefile.def: Add dependencies so libatomic is built before target
+	libraries are configured.
+	* Makefile.tpl: Export TARGET_CONFIGDIRS.
+	* configure.ac: Add libatomic to bootstrap_target_libs.
+	* Makefile.in: Regenerate.
+	* configure: Regenerate.
+
+2024-12-18  Prathamesh Kulkarni  <prathameshk@nvidia.com>
+	    Matthew Malcolmson  <mmalcolmson@nvidia.com>
+
+	PR driver/81358
+	* Makefile.def: Add dependencies so libatomic is built before target
+	libraries are configured.
+	* Makefile.tpl: Export TARGET_CONFIGDIRS.
+	* configure.ac: Add libatomic to bootstrap_target_libs.
+	* Makefile.in: Regenerate.
+	* configure: Regenerate.
+
 2024-12-11  Matthieu Longo  <matthieu.longo@arm.com>
 
 	* MAINTAINERS: Add myself to write after approval.

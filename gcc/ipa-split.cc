@@ -1,5 +1,5 @@
 /* Function splitting pass
-   Copyright (C) 2010-2024 Free Software Foundation, Inc.
+   Copyright (C) 2010-2025 Free Software Foundation, Inc.
    Contributed by Jan Hubicka  <jh@suse.cz>
 
 This file is part of GCC.
@@ -1400,6 +1400,15 @@ split_function (basic_block return_bb, class split_point *split_point,
   if (fndecl_built_in_p (node->decl))
     set_decl_built_in_function (node->decl, NOT_BUILT_IN, 0);
 
+  /* Drop "clobber *this" attribute from first argument of the split
+     function if any.  Code before that might be initializing the
+     members.  */
+  if (tree arg = DECL_ARGUMENTS (node->decl))
+    if (lookup_attribute ("clobber *this", DECL_ATTRIBUTES (arg)))
+      DECL_ATTRIBUTES (arg)
+	= remove_attribute ("clobber *this",
+			    copy_list (DECL_ATTRIBUTES (arg)));
+
   /* If return_bb contains any clobbers that refer to SSA_NAMEs
      set in the split part, remove them.  Also reset debug stmts that
      refer to SSA_NAMEs set in the split part.  */
@@ -1473,6 +1482,8 @@ split_function (basic_block return_bb, class split_point *split_point,
 	args_to_pass[i] = arg;
       }
   call = gimple_build_call_vec (node->decl, args_to_pass);
+  if (cur_node->get_fun ()->has_musttail && !add_tsan_func_exit)
+    gimple_call_set_must_tail (call, true);
   gimple_set_block (call, DECL_INITIAL (current_function_decl));
   args_to_pass.release ();
 
@@ -1990,6 +2001,10 @@ public:
       return execute_feedback_split_functions ();
     }
 
+  opt_pass * clone () final override
+  {
+    return new pass_feedback_split_functions (m_ctxt);
+  }
 }; // class pass_feedback_split_functions
 
 bool

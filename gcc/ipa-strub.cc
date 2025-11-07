@@ -1,5 +1,5 @@
 /* strub (stack scrubbing) support.
-   Copyright (C) 2021-2024 Free Software Foundation, Inc.
+   Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Alexandre Oliva <oliva@adacore.com>.
 
 This file is part of GCC.
@@ -1770,8 +1770,7 @@ const pass_data pass_data_ipa_strub = {
   0,	    // properties_start
   TODO_update_ssa
   | TODO_cleanup_cfg
-  | TODO_rebuild_cgraph_edges
-  | TODO_verify_il, // properties_finish
+  | TODO_rebuild_cgraph_edges, // properties_finish
 };
 
 class pass_ipa_strub : public simple_ipa_opt_pass
@@ -2881,12 +2880,13 @@ pass_ipa_strub::execute (function *)
 		   && (tree_to_uhwi (TYPE_SIZE_UNIT (TREE_TYPE (nparm)))
 		       <= 4 * UNITS_PER_WORD))))
 	{
-	  /* No point in indirecting pointer types.  Presumably they
-	     won't ever pass the size-based test above, but check the
-	     assumption here, because getting this wrong would mess
-	     with attribute access and possibly others.  We deal with
-	     fn spec below.  */
-	  gcc_checking_assert (!POINTER_TYPE_P (TREE_TYPE (nparm)));
+	  /* No point in indirecting pointer types, unless they're
+	     volatile.  Presumably they won't ever pass the size-based
+	     test above, but check the assumption here, because
+	     getting this wrong would mess with attribute access and
+	     possibly others.  We deal with fn spec below.  */
+	  gcc_checking_assert (!POINTER_TYPE_P (TREE_TYPE (nparm))
+			       || TREE_THIS_VOLATILE (parm));
 
 	  indirect_nparms.add (nparm);
 
@@ -3059,6 +3059,8 @@ pass_ipa_strub::execute (function *)
 			 TYPE_ATTRIBUTES (TREE_TYPE (nnode->decl)));
 	}
     }
+#else
+    (void) named_args;
 #endif
 
     {

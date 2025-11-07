@@ -1,5 +1,5 @@
 /* Data structures and function exported by the C++ Parser.
-   Copyright (C) 2010-2024 Free Software Foundation, Inc.
+   Copyright (C) 2010-2025 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -328,14 +328,16 @@ struct GTY(()) cp_parser {
 
   /* Set to IN_ITERATION_STMT if parsing an iteration-statement,
      to IN_OMP_BLOCK if parsing OpenMP structured block and
-     IN_OMP_FOR if parsing OpenMP loop.  If parsing a switch statement,
+     IN_OMP_FOR if parsing OpenMP loop, IN_EXPANSION_STMT if parsing an
+     expansion-statement.  If parsing a switch statement,
      this is bitwise ORed with IN_SWITCH_STMT, unless parsing an
      iteration-statement, OpenMP block or loop within that switch.  */
 #define IN_SWITCH_STMT		1
 #define IN_ITERATION_STMT	2
 #define IN_OMP_BLOCK		4
 #define IN_OMP_FOR		8
-#define IN_IF_STMT             16
+#define IN_IF_STMT	       16
+#define IN_EXPANSION_STMT      32
   unsigned char in_statement;
 
   /* TRUE if we are presently parsing the body of a switch statement.
@@ -450,6 +452,12 @@ struct GTY(()) cp_parser {
   /* Pointer to state for parsing omp_loops.  Managed by
      cp_parser_omp_for_loop in parser.cc and not used outside that file.  */
   struct omp_for_parse_data * GTY((skip)) omp_for_parse_state;
+
+  /* Non-null only when parsing the body of an OpenMP metadirective.
+     Managed by cp_parser_omp_metadirective in parser.cc and not used
+     outside that file.  */
+  struct omp_metadirective_parse_data * GTY((skip))
+    omp_metadirective_state;
 };
 
 /* In parser.cc  */

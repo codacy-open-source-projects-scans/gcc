@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -190,15 +190,23 @@ package body Exp_Ch5 is
    --  specification and Container is either the Container (for OF) or the
    --  iterator (for IN).
 
+   procedure Expand_Loop_Flow_Statement (N : N_Loop_Flow_Statement_Id);
+   --  Common processing for expansion of "loop flow" statements
+
    procedure Expand_Predicated_Loop (N : Node_Id);
    --  Expand for loop over predicated subtype
 
    function Make_Tag_Ctrl_Assignment (N : Node_Id) return List_Id;
    --  Generate the necessary code for controlled and tagged assignment, that
    --  is to say, finalization of the target before, adjustment of the target
-   --  after and save and restore of the tag and finalization pointers which
-   --  are not 'part of the value' and must not be changed upon assignment. N
-   --  is the original Assignment node.
+   --  after, and save and restore of the tag. N is the original assignment.
+
+   --  Note that the function relocates N and adds it to the list result, which
+   --  means that the subtrees of N are effectively detached from the main tree
+   --  until after the list result is inserted into it. That's why inserting
+   --  actions in them and, in particular, removing side effects will not work
+   --  properly. Therefore, this must be done before invoking the function, and
+   --  it assumes that side effects have been removed from the Name of N.
 
    --------------------------------------
    -- Build_Formal_Container_Iteration --
@@ -275,14 +283,11 @@ package body Exp_Ch5 is
           Statements => Stats,
           End_Label  => Empty);
 
-      --  If the contruct has a specified loop name, preserve it in the new
-      --  loop, for possible use in exit statements.
+      --  Preserve the construct's loop name in the new loop, for possible use
+      --  in exit statements.
 
-      if Present (Identifier (N))
-        and then Comes_From_Source (Identifier (N))
-      then
-         Set_Identifier (New_Loop, Identifier (N));
-      end if;
+      pragma Assert (Present (Identifier (N)));
+      Set_Identifier (New_Loop, Identifier (N));
    end Build_Formal_Container_Iteration;
 
    ------------------------------
@@ -529,9 +534,14 @@ package body Exp_Ch5 is
          Loop_Required := True;
 
       --  Arrays with controlled components are expanded into a loop to force
-      --  calls to Adjust at the component level.
+      --  calls to Adjust at the component level, except for a function call
+      --  that requires no controlling actions (see Expand_Ctrl_Function_Call).
 
       elsif Has_Controlled_Component (L_Type) then
+         if Nkind (Rhs) = N_Function_Call and then No_Ctrl_Actions (N) then
+            return;
+         end if;
+
          Loop_Required := True;
 
       --  If object is full access, we cannot tolerate a loop
@@ -1029,7 +1039,8 @@ package body Exp_Ch5 is
                          Prefix =>
                            Make_Indexed_Component (Loc,
                              Prefix =>
-                               Duplicate_Subexpr_Move_Checks (Larray, True),
+                               Duplicate_Subexpr_Move_Checks
+                                 (Larray, Name_Req => True),
                              Expressions => New_List (
                                Make_Attribute_Reference (Loc,
                                  Prefix =>
@@ -1044,7 +1055,8 @@ package body Exp_Ch5 is
                          Prefix =>
                            Make_Indexed_Component (Loc,
                              Prefix =>
-                               Duplicate_Subexpr_Move_Checks (Rarray, True),
+                               Duplicate_Subexpr_Move_Checks
+                                 (Rarray, Name_Req => True),
                              Expressions => New_List (
                                Make_Attribute_Reference (Loc,
                                  Prefix =>
@@ -1142,7 +1154,7 @@ package body Exp_Ch5 is
 
    exception
       when RE_Not_Available =>
-         return;
+         null;
    end Expand_Assign_Array;
 
    ------------------------------
@@ -1386,7 +1398,7 @@ package body Exp_Ch5 is
           Prefix =>
             Make_Indexed_Component (Loc,
               Prefix =>
-                Duplicate_Subexpr (Larray, True),
+                Duplicate_Subexpr (Larray, Name_Req => True),
               Expressions => New_List (New_Copy_Tree (Left_Lo))),
           Attribute_Name => Name_Address);
 
@@ -1395,7 +1407,7 @@ package body Exp_Ch5 is
           Prefix =>
             Make_Indexed_Component (Loc,
               Prefix =>
-                Duplicate_Subexpr (Larray, True),
+                Duplicate_Subexpr (Larray, Name_Req => True),
               Expressions => New_List (New_Copy_Tree (Left_Lo))),
           Attribute_Name => Name_Bit);
 
@@ -1404,7 +1416,7 @@ package body Exp_Ch5 is
           Prefix =>
             Make_Indexed_Component (Loc,
               Prefix =>
-                Duplicate_Subexpr (Rarray, True),
+                Duplicate_Subexpr (Rarray, Name_Req => True),
               Expressions => New_List (New_Copy_Tree (Right_Lo))),
           Attribute_Name => Name_Address);
 
@@ -1413,7 +1425,7 @@ package body Exp_Ch5 is
           Prefix =>
             Make_Indexed_Component (Loc,
               Prefix =>
-                Duplicate_Subexpr (Rarray, True),
+                Duplicate_Subexpr (Rarray, Name_Req => True),
               Expressions => New_List (New_Copy_Tree (Right_Lo))),
           Attribute_Name => Name_Bit);
 
@@ -1429,11 +1441,11 @@ package body Exp_Ch5 is
         Make_Op_Multiply (Loc,
           Make_Attribute_Reference (Loc,
             Prefix =>
-              Duplicate_Subexpr (Name (N), True),
+              Duplicate_Subexpr (Name (N), Name_Req => True),
             Attribute_Name => Name_Length),
           Make_Attribute_Reference (Loc,
             Prefix =>
-              Duplicate_Subexpr (Name (N), True),
+              Duplicate_Subexpr (Name (N), Name_Req => True),
             Attribute_Name => Name_Component_Size));
 
    begin
@@ -1517,11 +1529,11 @@ package body Exp_Ch5 is
         Make_Op_Multiply (Loc,
           Make_Attribute_Reference (Loc,
             Prefix =>
-              Duplicate_Subexpr (Name (N), True),
+              Duplicate_Subexpr (Name (N), Name_Req => True),
             Attribute_Name => Name_Length),
           Make_Attribute_Reference (Loc,
             Prefix =>
-              Duplicate_Subexpr (Larray, True),
+              Duplicate_Subexpr (Larray, Name_Req => True),
             Attribute_Name => Name_Component_Size));
 
       L_Arg, R_Arg, Call : Node_Id;
@@ -1572,7 +1584,7 @@ package body Exp_Ch5 is
       end if;
 
       return Make_Assignment_Statement (Loc,
-        Name => Duplicate_Subexpr (Larray, True),
+        Name => Duplicate_Subexpr (Larray, Name_Req => True),
         Expression => Unchecked_Convert_To (L_Typ, Call));
    end Expand_Assign_Array_Bitfield_Fast;
 
@@ -2242,7 +2254,8 @@ package body Exp_Ch5 is
       function Replace_Target (N : Node_Id) return Traverse_Result;
       --  Replace occurrences of the target name by the proper entity: either
       --  the entity of the LHS in simple cases, or the formal of the
-      --  constructed procedure otherwise.
+      --  constructed procedure otherwise. Mark all nodes as Analyzed=False
+      --  so reanalysis will occur.
 
       --------------------
       -- Replace_Target --
@@ -2252,20 +2265,6 @@ package body Exp_Ch5 is
       begin
          if Nkind (N) = N_Target_Name then
             Rewrite (N, New_Occurrence_Of (Ent, Sloc (N)));
-
-         --  The expression will be reanalyzed when the enclosing assignment
-         --  is reanalyzed, so reset the entity, which may be a temporary
-         --  created during analysis, e.g. a loop variable for an iterated
-         --  component association. However, if entity is callable then
-         --  resolution has established its proper identity (including in
-         --  rewritten prefixed calls) so we must preserve it.
-
-         elsif Is_Entity_Name (N) then
-            if Present (Entity (N))
-              and then not Is_Overloadable (Entity (N))
-            then
-               Set_Entity (N, Empty);
-            end if;
          end if;
 
          Set_Analyzed (N, False);
@@ -2963,19 +2962,13 @@ package body Exp_Ch5 is
         or else (Needs_Finalization (Typ) and then not Is_Array_Type (Typ))
       then
          Tagged_Case : declare
-            L                   : List_Id := No_List;
             Expand_Ctrl_Actions : constant Boolean :=
               not No_Ctrl_Actions (N)
                 and then not No_Finalize_Actions (N);
 
+            L :  List_Id := No_List;
+
          begin
-            --  In the controlled case, we ensure that function calls are
-            --  evaluated before finalizing the target. In all cases, it makes
-            --  the expansion easier if the side effects are removed first.
-
-            Remove_Side_Effects (Lhs);
-            Remove_Side_Effects (Rhs);
-
             --  Avoid recursion in the mechanism
 
             Set_Analyzed (N);
@@ -3162,40 +3155,70 @@ package body Exp_Ch5 is
                   end;
                end;
 
+            --  Untagged case
+
             else
-               L := Make_Tag_Ctrl_Assignment (N);
+               declare
+                  Needs_Self_Protection : constant Boolean :=
+                    Expand_Ctrl_Actions
+                      and then not Restriction_Active (No_Finalization)
+                      and then not Statically_Different (Lhs, Rhs);
+                  --  We can't afford to have destructive finalization actions
+                  --  in the self-assignment case, so if the target and source
+                  --  are not obviously different, we generate code to avoid
+                  --  the self-assignment case altogether.
 
-               --  We can't afford to have destructive Finalization Actions in
-               --  the Self assignment case, so if the target and the source
-               --  are not obviously different, code is generated to avoid the
-               --  self assignment case:
+               begin
+                  --  See the description of Make_Tag_Ctrl_Assignment
 
-               --    if lhs'address /= rhs'address then
-               --       <code for controlled and/or tagged assignment>
-               --    end if;
+                  Remove_Side_Effects (Lhs);
 
-               --  Skip this if Restriction (No_Finalization) is active
+                  --  Logically we would only need to remove side effects from
+                  --  the RHS when the protection against self-assignment will
+                  --  be generated below. However, in some very specific cases
+                  --  like Present (Unqual_BIP_Iface_Function_Call (Rhs)), the
+                  --  creation of the temporary is necessary to enable further
+                  --  expansion of the RHS. Therefore, we take a conservative
+                  --  stance and always do it for the time being, except when
+                  --  Expand_Ctrl_Function_Call does not do it either.
 
-               if not Statically_Different (Lhs, Rhs)
-                 and then Expand_Ctrl_Actions
-                 and then not Restriction_Active (No_Finalization)
-               then
-                  L := New_List (
-                    Make_Implicit_If_Statement (N,
-                      Condition =>
-                        Make_Op_Ne (Loc,
-                          Left_Opnd =>
-                            Make_Attribute_Reference (Loc,
-                              Prefix         => Duplicate_Subexpr (Lhs),
-                              Attribute_Name => Name_Address),
+                  if Nkind (Rhs) = N_Function_Call
+                    and then No_Ctrl_Actions (N)
+                  then
+                     --  We should not need protection against self-assignment
+                     --  in the case of a function call
 
-                           Right_Opnd =>
-                            Make_Attribute_Reference (Loc,
-                              Prefix         => Duplicate_Subexpr (Rhs),
-                              Attribute_Name => Name_Address)),
+                     pragma Assert (not Needs_Self_Protection);
 
-                      Then_Statements => L));
-               end if;
+                  else
+                     Remove_Side_Effects (Rhs);
+                  end if;
+
+                  L := Make_Tag_Ctrl_Assignment (N);
+
+                  --  Generate:
+                  --    if Lhs'Address /= Rhs'Address then
+                  --       <code for controlled and/or tagged assignment>
+                  --    end if;
+
+                  if Needs_Self_Protection then
+                     L := New_List (
+                       Make_Implicit_If_Statement (N,
+                         Condition =>
+                           Make_Op_Ne (Loc,
+                             Left_Opnd =>
+                               Make_Attribute_Reference (Loc,
+                                 Prefix         => New_Copy_Tree (Lhs),
+                                 Attribute_Name => Name_Address),
+
+                             Right_Opnd =>
+                               Make_Attribute_Reference (Loc,
+                                 Prefix         => New_Copy_Tree (Rhs),
+                                 Attribute_Name => Name_Address)),
+
+                         Then_Statements => L));
+                  end if;
+               end;
 
                --  We need to set up an exception handler for implementing
                --  7.6.1(18), but this is skipped if the type has relaxed
@@ -3215,11 +3238,16 @@ package body Exp_Ch5 is
                end if;
             end if;
 
+            --  No need for a block if there are no controlling actions
+
+            if No_Ctrl_Actions (N) and then List_Length (L) = 1 then
+               Rewrite (N, Remove_Head (L));
+
             --  We will analyze the block statement with all checks suppressed
             --  below, but we need elaboration checks for the primitives in the
             --  case of an assignment created by the expansion of an aggregate.
 
-            if No_Finalize_Actions (N) then
+            elsif No_Finalize_Actions (N) then
                Rewrite (N,
                  Make_Unsuppress_Block (Loc, Name_Elaboration_Check, L));
 
@@ -3414,7 +3442,7 @@ package body Exp_Ch5 is
 
    exception
       when RE_Not_Available =>
-         return;
+         null;
    end Expand_N_Assignment_Statement;
 
    ------------------------------
@@ -4077,7 +4105,7 @@ package body Exp_Ch5 is
 
       if Compile_Time_Known_Value (Expr)
         and then Has_Predicates (Etype (Expr))
-        and then not Predicates_Ignored (Etype (Expr))
+        and then not Predicates_Ignored_In_Codegen (Etype (Expr))
         and then not Is_OK_Static_Expression (Expr)
       then
          Rewrite (N,
@@ -4162,7 +4190,7 @@ package body Exp_Ch5 is
          --  generated case statements).
 
          if Validity_Check_Default
-           and then not Predicates_Ignored (Etype (Expr))
+           and then not Predicates_Ignored_In_Codegen (Etype (Expr))
          then
             --  Recognize the simple case where Expr is an object reference
             --  and the case statement is directly preceded by an
@@ -4337,7 +4365,7 @@ package body Exp_Ch5 is
             --  predicate, and there is no Others choice, Constraint_Error
             --  must be raised (RM 4.5.7 (21/3) and 5.4 (13)).
 
-            if Predicates_Ignored (Etype (Expr)) then
+            if Predicates_Ignored_In_Codegen (Etype (Expr)) then
                declare
                   Except  : constant Node_Id :=
                               Make_Raise_Constraint_Error (Loc,
@@ -4384,16 +4412,98 @@ package body Exp_Ch5 is
       end;
    end Expand_N_Case_Statement;
 
+   ---------------------------------
+   -- Expand_N_Continue_Statement --
+   ---------------------------------
+
+   procedure Expand_N_Continue_Statement (N : Node_Id) is
+      X : constant Node_Id := Call_Or_Target_Loop (N);
+
+      Loc : constant Source_Ptr := Sloc (N);
+
+      Label : E_Label_Id;
+   begin
+      if No (X) then
+         return;
+      end if;
+
+      if Nkind (X) = N_Procedure_Call_Statement then
+         Replace (N, X);
+         Analyze (N);
+         return;
+      end if;
+
+      Expand_Loop_Flow_Statement (N);
+
+      declare
+         L : constant E_Loop_Id := Call_Or_Target_Loop (N);
+         M : constant Node_Id := Continue_Mark (L);
+         A : constant Node_Id := Next (M);
+      begin
+         if not (Present (A) and then Nkind (A) = N_Label) then
+            --  This is the first continue statement that is expanded for this
+            --  loop; we set up the label that the goto statement will target.
+            declare
+               P : constant Node_Id := Atree.Node_Parent (L);
+
+               Decl_List : constant List_Id :=
+                 (if Nkind (P) = N_Implicit_Label_Declaration
+                  then List_Containing (P)
+                  else Declarations (Parent (Parent (P))));
+
+               Label_Entity : constant Entity_Id :=
+                 Make_Defining_Identifier
+                   (Loc, New_External_Name (Chars (L), 'C'));
+               Label_Id     : constant N_Identifier_Id :=
+                 Make_Identifier (Loc, Chars (Label_Entity));
+               Label_Node   : constant N_Label_Id :=
+                 Make_Label (Loc, Label_Id);
+               Label_Decl   : constant N_Implicit_Label_Declaration_Id :=
+                 Make_Implicit_Label_Declaration
+                   (Loc, Label_Entity, Label_Node);
+            begin
+               Mutate_Ekind (Label_Entity, E_Label);
+               Set_Etype (Label_Entity, Standard_Void_Type);
+
+               Set_Entity (Label_Id, Label_Entity);
+               Set_Etype (Label_Id, Standard_Void_Type);
+
+               Insert_After (Node => Label_Node, After => M);
+
+               Append (Node => Label_Decl, To => Decl_List);
+
+               Label := Label_Entity;
+            end;
+         else
+            --  Some other continue statement for this loop was expanded
+            --  already, so we can reuse the label that is already set up.
+            Label := Entity (Identifier (A));
+         end if;
+      end;
+
+      declare
+         C       : constant Opt_N_Subexpr_Id := Condition (N);
+         Goto_St : constant N_Goto_Statement_Id :=
+           Make_Goto_Statement (Loc, New_Occurrence_Of (Label, Loc));
+
+         New_St : constant Node_Id :=
+           (if Present (C)
+            then Make_If_Statement (Sloc (N), C, New_List (Goto_St))
+            else Goto_St);
+      begin
+         Set_Parent (New_St, Parent (N));
+         Replace (N, New_St);
+      end;
+
+   end Expand_N_Continue_Statement;
+
    -----------------------------
    -- Expand_N_Exit_Statement --
    -----------------------------
 
-   --  The only processing required is to deal with a possible C/Fortran
-   --  boolean value used as the condition for the exit statement.
-
    procedure Expand_N_Exit_Statement (N : Node_Id) is
    begin
-      Adjust_Condition (Condition (N));
+      Expand_Loop_Flow_Statement (N);
    end Expand_N_Exit_Statement;
 
    ----------------------------------
@@ -5715,7 +5825,6 @@ package body Exp_Ch5 is
       Loc    : constant Source_Ptr := Sloc (N);
       Scheme : constant Node_Id    := Iteration_Scheme (N);
       Stmt   : Node_Id;
-
    begin
       --  Delete null loop
 
@@ -5939,8 +6048,7 @@ package body Exp_Ch5 is
       --       ...
       --    end loop
 
-      elsif Present (Scheme)
-        and then Present (Condition_Actions (Scheme))
+      elsif Present (Condition_Actions (Scheme))
         and then Present (Condition (Scheme))
       then
          declare
@@ -5972,9 +6080,7 @@ package body Exp_Ch5 is
 
       --  Here to deal with iterator case
 
-      elsif Present (Scheme)
-        and then Present (Iterator_Specification (Scheme))
-      then
+      elsif Present (Iterator_Specification (Scheme)) then
          Expand_Iterator_Loop (N);
 
          --  An iterator loop may generate renaming declarations for elements
@@ -6004,6 +6110,18 @@ package body Exp_Ch5 is
 
       Process_Statements_For_Controlled_Objects (Stmt);
    end Expand_N_Loop_Statement;
+
+   --------------------------------
+   -- Expand_Loop_Flow_Statement --
+   --------------------------------
+
+   --  The only processing required is to deal with a possible C/Fortran
+   --  boolean value used as the condition for the statement.
+
+   procedure Expand_Loop_Flow_Statement (N : N_Loop_Flow_Statement_Id) is
+   begin
+      Adjust_Condition (Condition (N));
+   end Expand_Loop_Flow_Statement;
 
    ----------------------------
    -- Expand_Predicated_Loop --
@@ -6332,7 +6450,6 @@ package body Exp_Ch5 is
    ------------------------------
 
    function Make_Tag_Ctrl_Assignment (N : Node_Id) return List_Id is
-      Asn : constant Node_Id    := Relocate_Node (N);
       L   : constant Node_Id    := Name (N);
       Loc : constant Source_Ptr := Sloc (N);
       Res : constant List_Id    := New_List;
@@ -6355,9 +6472,12 @@ package body Exp_Ch5 is
                                        and then Tagged_Type_Expansion;
       Adj_Call : Node_Id;
       Fin_Call : Node_Id;
+      New_N    : Node_Id;
       Tag_Id   : Entity_Id;
 
    begin
+      pragma Assert (Side_Effect_Free (L));
+
       --  Finalize the target of the assignment when controlled
 
       --  We have two exceptions here:
@@ -6389,9 +6509,7 @@ package body Exp_Ch5 is
 
       else
          Fin_Call :=
-           Make_Final_Call
-             (Obj_Ref => Duplicate_Subexpr_No_Checks (L),
-              Typ     => Etype (L));
+           Make_Final_Call (Obj_Ref => New_Copy_Tree (L), Typ => Etype (L));
 
          if Present (Fin_Call) then
             Append_To (Res, Fin_Call);
@@ -6409,7 +6527,7 @@ package body Exp_Ch5 is
              Object_Definition   => New_Occurrence_Of (RTE (RE_Tag), Loc),
              Expression          =>
                Make_Selected_Component (Loc,
-                 Prefix        => Duplicate_Subexpr_No_Checks (L),
+                 Prefix        => New_Copy_Tree (L),
                  Selector_Name =>
                    New_Occurrence_Of (First_Tag_Component (T), Loc))));
 
@@ -6424,12 +6542,14 @@ package body Exp_Ch5 is
       --  generate the proper code and propagate this scenario by setting a
       --  flag to avoid infinite recursion.
 
+      New_N := Relocate_Node (N);
+
       if Comp_Asn then
-         Set_Analyzed (Asn, False);
-         Set_Componentwise_Assignment (Asn, True);
+         Set_Analyzed (New_N, False);
+         Set_Componentwise_Assignment (New_N, True);
       end if;
 
-      Append_To (Res, Asn);
+      Append_To (Res, New_N);
 
       --  Restore the tag
 
@@ -6438,7 +6558,7 @@ package body Exp_Ch5 is
            Make_Assignment_Statement (Loc,
              Name       =>
                Make_Selected_Component (Loc,
-                 Prefix        => Duplicate_Subexpr_No_Checks (L),
+                 Prefix        => New_Copy_Tree (L),
                  Selector_Name =>
                    New_Occurrence_Of (First_Tag_Component (T), Loc)),
              Expression => New_Occurrence_Of (Tag_Id, Loc)));
@@ -6447,8 +6567,7 @@ package body Exp_Ch5 is
 
       elsif Set_Tag then
          Append_To (Res,
-           Make_Tag_Assignment_From_Type
-             (Loc, Duplicate_Subexpr_No_Checks (L), T));
+           Make_Tag_Assignment_From_Type (Loc, New_Copy_Tree (L), T));
       end if;
 
       --  Adjust the target after the assignment when controlled (not in the
@@ -6456,9 +6575,7 @@ package body Exp_Ch5 is
 
       if Ctrl_Act or else Adj_Act then
          Adj_Call :=
-           Make_Adjust_Call
-             (Obj_Ref => Duplicate_Subexpr_Move_Checks (L),
-              Typ     => Etype (L));
+           Make_Adjust_Call (Obj_Ref => New_Copy_Tree (L), Typ => Etype (L));
 
          if Present (Adj_Call) then
             Append_To (Res, Adj_Call);

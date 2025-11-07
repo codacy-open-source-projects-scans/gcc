@@ -1,5 +1,5 @@
 /* Loop manipulation code for GNU compiler.
-   Copyright (C) 2002-2024 Free Software Foundation, Inc.
+   Copyright (C) 2002-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -32,6 +32,8 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-ssa-loop-manip.h"
 #include "dumpfile.h"
 #include "sreal.h"
+#include "tree-cfg.h"
+#include "tree-pass.h"
 
 static void copy_loops_to (class loop **, int,
 			   class loop *);
@@ -123,7 +125,8 @@ fix_bb_placement (basic_block bb)
    invalidate the information about irreducible regions.  */
 
 static bool
-fix_loop_placement (class loop *loop, bool *irred_invalidated)
+fix_loop_placement (class loop *loop, bool *irred_invalidated,
+		    bitmap loop_closed_ssa_invalidated)
 {
   unsigned i;
   edge e;
@@ -153,6 +156,17 @@ fix_loop_placement (class loop *loop, bool *irred_invalidated)
 	  if (e->flags & EDGE_IRREDUCIBLE_LOOP)
 	    *irred_invalidated = true;
 	  rescan_loop_exit (e, false, false);
+	}
+      /* Any LC SSA PHIs on e->dest might now be on the wrong edge
+	 if their defs were in a former outer loop.  Also all uses
+	 in the original inner loop of defs in the outer loop(s) now
+	 require LC PHI nodes.  */
+      if (loop_closed_ssa_invalidated)
+	{
+	  basic_block *bbs = get_loop_body (loop);
+	  for (unsigned i = 0; i < loop->num_nodes; ++i)
+	    bitmap_set_bit (loop_closed_ssa_invalidated, bbs[i]->index);
+	  free (bbs);
 	}
 
       ret = true;
@@ -224,16 +238,10 @@ fix_bb_placements (basic_block from,
       if (from->loop_father->header == from)
 	{
 	  /* Subloop header, maybe move the loop upward.  */
-	  if (!fix_loop_placement (from->loop_father, irred_invalidated))
+	  if (!fix_loop_placement (from->loop_father, irred_invalidated,
+				   loop_closed_ssa_invalidated))
 	    continue;
 	  target_loop = loop_outer (from->loop_father);
-	  if (loop_closed_ssa_invalidated)
-	    {
-	      basic_block *bbs = get_loop_body (from->loop_father);
-	      for (unsigned i = 0; i < from->loop_father->num_nodes; ++i)
-		bitmap_set_bit (loop_closed_ssa_invalidated, bbs[i]->index);
-	      free (bbs);
-	    }
 	}
       else
 	{
@@ -1057,7 +1065,8 @@ fix_loop_placements (class loop *loop, bool *irred_invalidated,
   while (loop_outer (loop))
     {
       outer = loop_outer (loop);
-      if (!fix_loop_placement (loop, irred_invalidated))
+      if (!fix_loop_placement (loop, irred_invalidated,
+			       loop_closed_ssa_invalidated))
 	break;
 
       /* Changing the placement of a loop in the loop tree may alter the
@@ -1447,9 +1456,9 @@ duplicate_loop_body_to_header_edge (class loop *loop, edge e,
 	}
       else
 	{
+	  redirect_edge_and_branch_force (e, new_bbs[0]);
 	  redirect_edge_and_branch_force (new_spec_edges[SE_LATCH],
 					  loop->header);
-	  redirect_edge_and_branch_force (e, new_bbs[0]);
 	  set_immediate_dominator (CDI_DOMINATORS, new_bbs[0], e->src);
 	  e = new_spec_edges[SE_LATCH];
 	}
@@ -1608,7 +1617,15 @@ create_preheader (class loop *loop, int flags)
 	     just a single successor and a normal edge.  */
           if ((flags & CP_SIMPLE_PREHEADERS)
 	      && ((single_entry->flags & EDGE_COMPLEX)
-		  || !single_succ_p (single_entry->src)))
+		  || !single_succ_p (single_entry->src)
+		  /* We document LOOPS_HAVE_PREHEADERS as to forming a
+		     natural place to move code outside of the loop, so it
+		     should not end with a control instruction.  */
+		  /* ???  This, and below JUMP_P check needs to be a new
+		     CFG hook.  */
+		  || (cfun->curr_properties & PROP_gimple
+		      && !gsi_end_p (gsi_last_bb (single_entry->src))
+		      && stmt_ends_bb_p (*gsi_last_bb (single_entry->src)))))
             need_forwarder_block = true;
           /* If we want fallthru preheaders, also create forwarder block when
              preheader ends with a jump or has predecessors from loop.  */

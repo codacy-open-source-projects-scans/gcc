@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -43,6 +43,14 @@ package Sem_Ch12 is
    procedure End_Generic;
    --  Must be invoked just at the end of the end of the processing of a
    --  generic spec or body.
+
+   function Build_Structural_Instantiation
+     (N        : Node_Id;
+      Gen_Unit : Entity_Id;
+      Actuals  : List_Id) return Entity_Id;
+   --  Build a structural instantiation of Gen_Unit on Actuals at N and return
+   --  its defining entity, after either having inserted it at the appropriate
+   --  place in the tree or turned it into a renaming of a previous instance.
 
    procedure Check_Generic_Child_Unit
      (Gen_Id           : Node_Id;
@@ -113,6 +121,9 @@ package Sem_Ch12 is
    function Is_Abbreviated_Instance (E : Entity_Id) return Boolean;
    --  Return true if E is a package created for an abbreviated instantiation
    --  to check conformance between formal package and corresponding actual.
+
+   procedure Mark_Link_Once (Decls : List_Id);
+   --  Mark all the structural instances present in Decls as Link Once
 
    function Need_Subprogram_Instance_Body
      (N    : Node_Id;

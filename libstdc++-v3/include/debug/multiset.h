@@ -1,6 +1,6 @@
 // Debugging multiset implementation -*- C++ -*-
 
-// Copyright (C) 2003-2024 Free Software Foundation, Inc.
+// Copyright (C) 2003-2025 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -132,6 +132,25 @@ namespace __debug
 	: _Base(__gnu_debug::__base(
 		  __glibcxx_check_valid_constructor_range(__first, __last)),
 		__gnu_debug::__base(__last), __a) { }
+
+#if __glibcxx_containers_ranges // C++ >= 23
+      /**
+       * @brief Construct a multiset from a range.
+       * @since C++23
+       */
+      template<std::__detail::__container_compatible_range<value_type> _Rg>
+	multiset(std::from_range_t __t, _Rg&& __rg,
+		 const _Compare& __c,
+		 const allocator_type& __a = allocator_type())
+	: _Base(__t, std::forward<_Rg>(__rg), __c, __a)
+	{ }
+
+      template<std::__detail::__container_compatible_range<value_type> _Rg>
+	multiset(std::from_range_t __t, _Rg&& __rg,
+		 const allocator_type& __a = allocator_type())
+	: _Base(__t, std::forward<_Rg>(__rg), __a)
+	{ }
+#endif
 
       ~multiset() = default;
 #endif
@@ -292,7 +311,7 @@ namespace __debug
       { _Base::insert(__l); }
 #endif
 
-#if __cplusplus > 201402L
+#ifdef __glibcxx_node_extract // >= C++17 && HOSTED
       using node_type = typename _Base::node_type;
 
       node_type
@@ -438,7 +457,7 @@ namespace __debug
       find(const key_type& __x) const
       { return const_iterator(_Base::find(__x), this); }
 
-#if __cplusplus > 201103L
+#ifdef __glibcxx_generic_associative_lookup // C++ >= 14
       template<typename _Kt,
 	       typename _Req =
 		 typename __has_is_transparent<_Compare, _Kt>::type>
@@ -466,7 +485,7 @@ namespace __debug
       lower_bound(const key_type& __x) const
       { return const_iterator(_Base::lower_bound(__x), this); }
 
-#if __cplusplus > 201103L
+#ifdef __glibcxx_generic_associative_lookup // C++ >= 14
       template<typename _Kt,
 	       typename _Req =
 		 typename __has_is_transparent<_Compare, _Kt>::type>
@@ -492,7 +511,7 @@ namespace __debug
       upper_bound(const key_type& __x) const
       { return const_iterator(_Base::upper_bound(__x), this); }
 
-#if __cplusplus > 201103L
+#ifdef __glibcxx_generic_associative_lookup // C++ >= 14
       template<typename _Kt,
 	       typename _Req =
 		 typename __has_is_transparent<_Compare, _Kt>::type>
@@ -528,7 +547,7 @@ namespace __debug
 			      const_iterator(__res.second, this));
       }
 
-#if __cplusplus > 201103L
+#ifdef __glibcxx_generic_associative_lookup // C++ >= 14
       template<typename _Kt,
 	       typename _Req =
 		 typename __has_is_transparent<_Compare, _Kt>::type>
@@ -594,6 +613,17 @@ namespace __debug
     multiset(initializer_list<_Key>, _Allocator)
     -> multiset<_Key, less<_Key>, _Allocator>;
 
+#if __glibcxx_containers_ranges // C++ >= 23
+  template<ranges::input_range _Rg,
+	   __not_allocator_like _Compare = less<ranges::range_value_t<_Rg>>,
+	   __allocator_like _Alloc = std::allocator<ranges::range_value_t<_Rg>>>
+    multiset(from_range_t, _Rg&&, _Compare = _Compare(), _Alloc = _Alloc())
+      -> multiset<ranges::range_value_t<_Rg>, _Compare, _Alloc>;
+
+  template<ranges::input_range _Rg, __allocator_like _Alloc>
+    multiset(from_range_t, _Rg&&, _Alloc)
+      -> multiset<ranges::range_value_t<_Rg>, less<ranges::range_value_t<_Rg>>, _Alloc>;
+#endif
 #endif // deduction guides
 
   template<typename _Key, typename _Compare, typename _Allocator>

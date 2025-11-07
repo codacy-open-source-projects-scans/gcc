@@ -1,5 +1,5 @@
 /* Exception handling semantics and decomposition for trees.
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -2538,6 +2538,13 @@ operation_could_trap_helper_p (enum tree_code op,
       /* Constructing an object cannot trap.  */
       return false;
 
+    case FIX_TRUNC_EXPR:
+    case VEC_PACK_FIX_TRUNC_EXPR:
+    case VEC_UNPACK_FIX_TRUNC_HI_EXPR:
+    case VEC_UNPACK_FIX_TRUNC_LO_EXPR:
+      /* The FIX_TRUNC family are always potentially trapping.  */
+      return flag_trapping_math;
+
     case COND_EXPR:
     case VEC_COND_EXPR:
       /* Whether *COND_EXPR can trap depends on whether the
@@ -2646,6 +2653,46 @@ range_in_array_bounds_p (tree ref)
   return true;
 }
 
+/* Return true iff a BIT_FIELD_REF <(TYPE)???, SIZE, OFFSET> would access a bit
+   range that is known to be in bounds for TYPE.  */
+
+bool
+access_in_bounds_of_type_p (tree type, poly_uint64 size, poly_uint64 offset)
+{
+  tree type_size_tree;
+  poly_uint64 type_size_max, min = offset, wid = size, max;
+
+  type_size_tree = TYPE_SIZE (type);
+  if (!type_size_tree || !poly_int_tree_p (type_size_tree, &type_size_max))
+    return false;
+
+  max = min + wid;
+  if (maybe_lt (max, min)
+      || maybe_lt (type_size_max, max))
+    return false;
+
+  return true;
+}
+
+/* Return whether an access at [off, refsz[ to an object spanning [0, size[
+   accesses storage outside of the object.  */
+
+static bool
+ref_outside_object_p (tree size, poly_offset_int off, tree refsz)
+{
+  if (size == NULL_TREE
+      || refsz == NULL_TREE
+      || !poly_int_tree_p (size)
+      || !poly_int_tree_p (refsz)
+      || maybe_le (wi::to_poly_offset (size), off)
+      || maybe_gt (off + wi::to_poly_offset (refsz),
+		   wi::to_poly_offset (size)))
+    return true;
+  /* Now we are sure the whole base of the access is inside
+     the object.  */
+  return false;
+}
+
 /* Return true if EXPR can trap, as in dereferencing an invalid pointer
    location or floating point arithmetic.  C.f. the rtl version, may_trap_p.
    This routine expects only GIMPLE lhs or rhs input.  */
@@ -2688,10 +2735,17 @@ tree_could_trap_p (tree expr)
  restart:
   switch (code)
     {
+    case BIT_FIELD_REF:
+      if (DECL_P (TREE_OPERAND (expr, 0))
+	  && !access_in_bounds_of_type_p (TREE_TYPE (TREE_OPERAND (expr, 0)),
+					  bit_field_size (expr),
+					  bit_field_offset (expr)))
+	return true;
+      /* Fall through.  */
+
     case COMPONENT_REF:
     case REALPART_EXPR:
     case IMAGPART_EXPR:
-    case BIT_FIELD_REF:
     case VIEW_CONVERT_EXPR:
     case WITH_SIZE_EXPR:
       expr = TREE_OPERAND (expr, 0);
@@ -2735,13 +2789,24 @@ tree_could_trap_p (tree expr)
 	  if (TREE_CODE (base) == STRING_CST)
 	    return maybe_le (TREE_STRING_LENGTH (base), off);
 	  tree size = DECL_SIZE_UNIT (base);
-	  if (size == NULL_TREE
-	      || !poly_int_tree_p (size)
-	      || maybe_le (wi::to_poly_offset (size), off))
+	  tree refsz = TYPE_SIZE_UNIT (TREE_TYPE (expr));
+	  return ref_outside_object_p (size, off, refsz);
+	}
+      if (cfun
+	  && TREE_CODE (TREE_TYPE (cfun->decl)) == METHOD_TYPE
+	  && ((TREE_CODE (TREE_OPERAND (expr, 0)) == SSA_NAME
+	       && SSA_NAME_IS_DEFAULT_DEF (TREE_OPERAND (expr, 0))
+	       && (SSA_NAME_VAR (TREE_OPERAND (expr, 0))
+		   == DECL_ARGUMENTS (cfun->decl)))
+	      || TREE_OPERAND (expr, 0) == DECL_ARGUMENTS (cfun->decl)))
+	{
+	  poly_offset_int off = mem_ref_offset (expr);
+	  if (maybe_lt (off, 0))
 	    return true;
-	  /* Now we are sure the first byte of the access is inside
-	     the object.  */
-	  return false;
+	  tree size = TYPE_SIZE_UNIT
+			(TYPE_METHOD_BASETYPE (TREE_TYPE (cfun->decl)));
+	  tree refsz = TYPE_SIZE_UNIT (TREE_TYPE (expr));
+	  return ref_outside_object_p (size, off, refsz);
 	}
       return true;
 

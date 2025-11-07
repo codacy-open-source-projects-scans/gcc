@@ -1,5 +1,5 @@
 /* LoongArch definitions.
-   Copyright (C) 2021-2024 Free Software Foundation, Inc.
+   Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Loongson Ltd.
 
 This file is part of GCC.
@@ -78,12 +78,10 @@ extern loongarch_def_array<const char *, N_ISA_EXT_TYPES>
 
 
 /* Base ABI */
-enum {
-  ABI_BASE_LP64D	= 0,
-  ABI_BASE_LP64F	= 1,
-  ABI_BASE_LP64S	= 2,
-  N_ABI_BASE_TYPES	= 3
-};
+#define ABI_BASE_LP64D	  0
+#define ABI_BASE_LP64F	  1
+#define ABI_BASE_LP64S	  2
+#define N_ABI_BASE_TYPES  3
 
 extern loongarch_def_array<const char *, N_ABI_BASE_TYPES>
   loongarch_abi_base_strings;

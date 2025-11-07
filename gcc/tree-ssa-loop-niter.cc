@@ -1,5 +1,5 @@
 /* Functions to determine/estimate number of iterations of a loop.
-   Copyright (C) 2004-2024 Free Software Foundation, Inc.
+   Copyright (C) 2004-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -41,6 +41,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "cfgloop.h"
 #include "tree-chrec.h"
 #include "tree-scalar-evolution.h"
+#include "tree-data-ref.h"
 #include "tree-dfa.h"
 #include "internal-fn.h"
 #include "gimple-range.h"
@@ -1751,14 +1752,21 @@ dump_affine_iv (FILE *file, affine_iv *iv)
   if (!integer_zerop (iv->step))
     fprintf (file, "[");
 
-  print_generic_expr (dump_file, iv->base, TDF_SLIM);
+  print_generic_expr (file, iv->base, TDF_SLIM);
 
   if (!integer_zerop (iv->step))
     {
       fprintf (file, ", + , ");
-      print_generic_expr (dump_file, iv->step, TDF_SLIM);
+      print_generic_expr (file, iv->step, TDF_SLIM);
       fprintf (file, "]%s", iv->no_overflow ? "(no_overflow)" : "");
     }
+}
+
+DEBUG_FUNCTION void
+debug (affine_iv *iv)
+{
+  dump_affine_iv (stderr, iv);
+  fputc ('\n', stderr);
 }
 
 /* Determine the number of iterations according to condition (for staying
@@ -2237,6 +2245,8 @@ build_cltz_expr (tree src, bool leading, bool define_at_zero)
 			      build_int_cst (integer_type_node, prec));
 	}
     }
+  else if (fn == NULL_TREE)
+    return NULL_TREE;
   else if (prec == 2 * lli_prec)
     {
       tree src1 = fold_convert (long_long_unsigned_type_node,
@@ -2317,6 +2327,48 @@ is_rshift_by_1 (gassign *stmt)
     return true;
   return false;
 }
+
+/* Helper for number_of_iterations_cltz that uses ranger to determine
+   if SRC's range, shifted left (when LEFT_SHIFT is true) or right
+   by NUM_IGNORED_BITS, is guaranteed to be != 0 on LOOP's preheader
+   edge.
+   Return true if so or false otherwise.  */
+
+static bool
+shifted_range_nonzero_p (loop_p loop, tree src,
+			 bool left_shift, int num_ignored_bits)
+{
+  int_range_max r (TREE_TYPE (src));
+  gcc_assert (num_ignored_bits >= 0);
+
+  if (get_range_query (cfun)->range_on_edge
+      (r, loop_preheader_edge (loop), src)
+      && !r.varying_p ()
+      && !r.undefined_p ())
+    {
+      if (num_ignored_bits)
+	{
+	  range_op_handler op (left_shift ? LSHIFT_EXPR : RSHIFT_EXPR);
+	  int_range_max shifted_range (TREE_TYPE (src));
+	  wide_int shift_count = wi::shwi (num_ignored_bits,
+					   TYPE_PRECISION (TREE_TYPE
+							   (src)));
+	  int_range_max shift_amount
+	    (TREE_TYPE (src), shift_count, shift_count);
+
+	  if (op.fold_range (shifted_range, TREE_TYPE (src), r,
+			     shift_amount))
+	    r = shifted_range;
+	}
+
+      /* If the range does not contain zero we are good.  */
+      if (!range_includes_zero_p (r))
+	return true;
+    }
+
+  return false;
+}
+
 
 /* See comment below for number_of_iterations_bitcount.
    For c[lt]z, we have:
@@ -2435,6 +2487,9 @@ number_of_iterations_cltz (loop_p loop, edge exit,
   tree src = gimple_phi_arg_def (phi, loop_preheader_edge (loop)->dest_idx);
   int src_precision = TYPE_PRECISION (TREE_TYPE (src));
 
+  /* Save the original SSA name before preprocessing for ranger queries.  */
+  tree unshifted_src = src;
+
   /* Apply any needed preprocessing to src.  */
   int num_ignored_bits;
   if (left_shift)
@@ -2460,10 +2515,52 @@ number_of_iterations_cltz (loop_p loop, edge exit,
 
   expr = fold_convert (unsigned_type_node, expr);
 
-  tree assumptions = fold_build2 (NE_EXPR, boolean_type_node, src,
-				  build_zero_cst (TREE_TYPE (src)));
+  /* If the copy-header (ch) pass peeled one iteration we're shifting
+     SRC by preprocessing it above.
 
-  niter->assumptions = simplify_using_initial_conditions (loop, assumptions);
+     A loop like
+      if (bits)
+	{
+	  while (!(bits & 1))
+	    {
+	      bits >>= 1;
+	      cnt += 1;
+	    }
+	  return cnt;
+	}
+     ch (roughly) transforms into:
+      if (bits)
+	{
+	  if (!(bits & 1)
+	    {
+	      do
+		{
+		  bits >>= 1;
+		  cnt += 1;
+		} while (!(bits & 1));
+	    }
+	   else
+	     cnt = 1;
+	  return cnt;
+	}
+
+     Then, our preprocessed SRC (that is used for c[tl]z computation)
+     will be bits >> 1, and the assumption is bits >> 1 != 0.  */
+
+  tree assumptions;
+  if (shifted_range_nonzero_p (loop, unshifted_src,
+			       left_shift, num_ignored_bits))
+    assumptions = boolean_true_node;
+  else
+    {
+      /* If ranger couldn't prove the assumption, try
+	 simplify_using_initial_conditions.  */
+      assumptions = fold_build2 (NE_EXPR, boolean_type_node, src,
+				 build_zero_cst (TREE_TYPE (src)));
+      assumptions = simplify_using_initial_conditions (loop, assumptions);
+    }
+
+  niter->assumptions = assumptions;
   niter->may_be_zero = boolean_false_node;
   niter->niter = simplify_using_initial_conditions (loop, expr);
 
@@ -3594,7 +3691,51 @@ loop_niter_by_eval (class loop *loop, edge exit)
 	{
 	  phi = get_base_for (loop, op[j]);
 	  if (!phi)
-	    return chrec_dont_know;
+	    {
+	      gassign *def;
+	      if (j == 0
+		  && (cmp == NE_EXPR || cmp == EQ_EXPR)
+		  && TREE_CODE (op[0]) == SSA_NAME
+		  && TREE_CODE (op[1]) == INTEGER_CST
+		  && (def = dyn_cast <gassign *> (SSA_NAME_DEF_STMT (op[0])))
+		  && gimple_assign_rhs_code (def) == MEM_REF)
+		{
+		  tree mem = gimple_assign_rhs1 (def);
+		  affine_iv iv;
+		  if (TYPE_MODE (TREE_TYPE (mem)) == TYPE_MODE (char_type_node)
+		      && simple_iv (loop, loop,
+				    TREE_OPERAND (mem, 0), &iv, false)
+		      && tree_fits_uhwi_p (TREE_OPERAND (mem, 1))
+		      && tree_fits_uhwi_p (iv.step))
+		    {
+		      tree str, off;
+		      /* iv.base can be &"Foo" but also (char *)&"Foo" + 1.  */
+		      split_constant_offset (iv.base, &str, &off);
+		      STRIP_NOPS (str);
+		      if (TREE_CODE (str) == ADDR_EXPR
+			  && TREE_CODE (TREE_OPERAND (str, 0)) == STRING_CST
+			  && tree_fits_uhwi_p (off))
+			{
+			  str = TREE_OPERAND (str, 0);
+			  unsigned i = 0;
+			  for (unsigned HOST_WIDE_INT idx
+			       = (tree_to_uhwi (TREE_OPERAND (mem, 1))
+				  + tree_to_uhwi (off));
+			       idx < (unsigned)TREE_STRING_LENGTH (str)
+			       && i < MAX_ITERATIONS_TO_TRACK;
+			       idx += tree_to_uhwi (iv.step), ++i)
+			    {
+			      int res = compare_tree_int
+				(op[1], TREE_STRING_POINTER (str)[idx]);
+			      if ((cmp == NE_EXPR && res == 0)
+				  || (cmp == EQ_EXPR && res != 0))
+				return build_int_cst (unsigned_type_node, i);
+			    }
+			}
+		    }
+		}
+	      return chrec_dont_know;
+	    }
 	  val[j] = PHI_ARG_DEF_FROM_EDGE (phi, loop_preheader_edge (loop));
 	  next[j] = PHI_ARG_DEF_FROM_EDGE (phi, loop_latch_edge (loop));
 	}
@@ -4654,7 +4795,7 @@ maybe_lower_iteration_bound (class loop *loop)
 
      TODO: Due to the way record_estimate choose estimates to store, the bounds
      will be always nb_iterations_upper_bound-1.  We can change this to record
-     also statements not dominating the loop latch and update the walk bellow
+     also statements not dominating the loop latch and update the walk below
      to the shortest path algorithm.  */
   for (elt = loop->bounds; elt; elt = elt->next)
     {
@@ -4712,7 +4853,14 @@ maybe_lower_iteration_bound (class loop *loop)
           FOR_EACH_EDGE (e, ei, bb->succs)
 	    {
 	      if (loop_exit_edge_p (loop, e)
-		  || e == loop_latch_edge (loop))
+		  || e == loop_latch_edge (loop)
+		  /* When exiting an inner loop, verify it is finite.  */
+		  || (!flow_bb_inside_loop_p (bb->loop_father, e->dest)
+		      && !finite_loop_p (bb->loop_father))
+		  /* When we enter an irreducible region and the entry
+		     does not contain a bounding stmt assume it might be
+		     infinite.  */
+		  || (bb->flags & BB_IRREDUCIBLE_LOOP))
 		{
 		  found_exit = true;
 		  break;

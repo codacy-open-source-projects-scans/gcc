@@ -2,7 +2,7 @@
    Generated automatically by gen-h.sh from nvptx-sm.def.
 */
 
-/* Copyright (C) 2022-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2022-2025 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -26,6 +26,7 @@
 #define TARGET_SM37 (ptx_isa_option >= PTX_ISA_SM37)
 #define TARGET_SM52 (ptx_isa_option >= PTX_ISA_SM52)
 #define TARGET_SM53 (ptx_isa_option >= PTX_ISA_SM53)
+#define TARGET_SM61 (ptx_isa_option >= PTX_ISA_SM61)
 #define TARGET_SM70 (ptx_isa_option >= PTX_ISA_SM70)
 #define TARGET_SM75 (ptx_isa_option >= PTX_ISA_SM75)
 #define TARGET_SM80 (ptx_isa_option >= PTX_ISA_SM80)

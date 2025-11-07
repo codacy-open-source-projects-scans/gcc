@@ -1,5 +1,5 @@
 /* ACLE support for AArch64 SVE (function_base classes)
-   Copyright (C) 2018-2024 Free Software Foundation, Inc.
+   Copyright (C) 2018-2025 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -630,7 +630,10 @@ public:
   rtx
   expand (function_expander &e) const override
   {
-    insn_code icode = code_for_aarch64_sve (m_unspec, e.vector_mode (0));
+    auto mode = e.vector_mode (0);
+    insn_code icode = (e.type_suffix (0).bool_p
+		       ? code_for_aarch64_sve_acle (m_unspec, mode)
+		       : code_for_aarch64_sve (m_unspec, mode));
     return e.use_exact_insn (icode);
   }
 
@@ -838,7 +841,8 @@ public:
 
     machine_mode pred_mode = e.vector_mode (0);
     scalar_mode reg_mode = GET_MODE_INNER (e.vector_mode (1));
-    return e.use_exact_insn (code_for_while (unspec, reg_mode, pred_mode));
+    auto icode = code_for_aarch64_sve_while_acle (unspec, reg_mode, pred_mode);
+    return e.use_exact_insn (icode);
   }
 
   /* The unspec codes associated with signed and unsigned operations

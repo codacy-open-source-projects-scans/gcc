@@ -1,5 +1,5 @@
 /* d-diagnostics.cc -- D frontend interface to gcc diagnostics.
-   Copyright (C) 2017-2024 Free Software Foundation, Inc.
+   Copyright (C) 2017-2025 Free Software Foundation, Inc.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -183,22 +183,23 @@ escape_d_format (const char *format)
    front-end, which does not get translated by the gcc diagnostic routines.  */
 
 static void ATTRIBUTE_GCC_DIAG(3,0)
-d_diagnostic_report_diagnostic (const Loc &loc, int opt, const char *format,
-				va_list ap, diagnostic_t kind, bool verbatim)
+d_diagnostic_report_diagnostic (const SourceLoc &loc, int opt,
+				const char *format, va_list ap,
+				enum diagnostics::kind kind, bool verbatim)
 {
   va_list argp;
   va_copy (argp, ap);
 
-  if (loc.filename () || !verbatim)
+  if (loc.filename.length != 0 || !verbatim)
     {
       rich_location rich_loc (line_table, make_location_t (loc));
-      diagnostic_info diagnostic;
+      diagnostics::diagnostic_info diagnostic;
       char *xformat = expand_d_format (format);
 
       diagnostic_set_info_translated (&diagnostic, xformat, &argp,
 				      &rich_loc, kind);
       if (opt != 0)
-	diagnostic.option_id = opt;
+	diagnostic.m_option_id = opt;
 
       diagnostic_report_diagnostic (global_dc, &diagnostic);
     }
@@ -220,10 +221,10 @@ d_diagnostic_report_diagnostic (const Loc &loc, int opt, const char *format,
    error count depending on how KIND is treated.  */
 
 void D_ATTRIBUTE_FORMAT(2,0) ATTRIBUTE_GCC_DIAG(2,0)
-verrorReport (const Loc& loc, const char *format, va_list ap, ErrorKind kind,
-	      const char *prefix1, const char *prefix2)
+verrorReport (const SourceLoc loc, const char *format, va_list ap,
+	      ErrorKind kind, const char *prefix1, const char *prefix2)
 {
-  diagnostic_t diag_kind = DK_UNSPECIFIED;
+  enum diagnostics::kind diag_kind = diagnostics::kind::unspecified;
   int opt = 0;
   bool verbatim = false;
   char *xformat;
@@ -237,11 +238,13 @@ verrorReport (const Loc& loc, const char *format, va_list ap, ErrorKind kind,
       if (global.gag && !global.params.v.showGaggedErrors)
 	return;
 
-      diag_kind = global.gag ? DK_ANACHRONISM : DK_ERROR;
+      diag_kind = (global.gag
+		   ? diagnostics::kind::anachronism
+		   : diagnostics::kind::error);
     }
   else if (kind == ErrorKind::warning)
     {
-      if (global.gag || global.params.warnings == DIAGNOSTICoff)
+      if (global.gag || global.params.useWarnings == DIAGNOSTICoff)
 	{
 	  if (global.gag)
 	    global.gaggedWarnings++;
@@ -250,10 +253,10 @@ verrorReport (const Loc& loc, const char *format, va_list ap, ErrorKind kind,
 	}
 
       /* Warnings don't count if not treated as errors.  */
-      if (global.params.warnings == DIAGNOSTICerror)
+      if (global.params.useWarnings == DIAGNOSTICerror)
 	global.warnings++;
 
-      diag_kind = DK_WARNING;
+      diag_kind = diagnostics::kind::warning;
     }
   else if (kind == ErrorKind::deprecation)
     {
@@ -269,11 +272,11 @@ verrorReport (const Loc& loc, const char *format, va_list ap, ErrorKind kind,
 	}
 
       opt = OPT_Wdeprecated;
-      diag_kind = DK_WARNING;
+      diag_kind = diagnostics::kind::warning;
     }
   else if (kind == ErrorKind::message)
     {
-      diag_kind = DK_NOTE;
+      diag_kind = diagnostics::kind::note;
       verbatim = true;
     }
   else if (kind == ErrorKind::tip)
@@ -281,7 +284,7 @@ verrorReport (const Loc& loc, const char *format, va_list ap, ErrorKind kind,
       if (global.gag)
 	return;
 
-      diag_kind = DK_DEBUG;
+      diag_kind = diagnostics::kind::debug;
       verbatim = true;
     }
   else
@@ -304,7 +307,7 @@ verrorReport (const Loc& loc, const char *format, va_list ap, ErrorKind kind,
    explicit location LOC.  This doesn't increase the global error count.  */
 
 void D_ATTRIBUTE_FORMAT(2,0) ATTRIBUTE_GCC_DIAG(2,0)
-verrorReportSupplemental (const Loc& loc, const char* format, va_list ap,
+verrorReportSupplemental (const SourceLoc loc, const char* format, va_list ap,
 			  ErrorKind kind)
 {
   if (kind == ErrorKind::error)
@@ -314,7 +317,7 @@ verrorReportSupplemental (const Loc& loc, const char* format, va_list ap,
     }
   else if (kind == ErrorKind::warning)
     {
-      if (global.params.warnings == DIAGNOSTICoff || global.gag)
+      if (global.params.useWarnings == DIAGNOSTICoff || global.gag)
 	return;
     }
   else if (kind == ErrorKind::deprecation)
@@ -327,7 +330,8 @@ verrorReportSupplemental (const Loc& loc, const char* format, va_list ap,
   else
     gcc_unreachable ();
 
-  d_diagnostic_report_diagnostic (loc, 0, format, ap, DK_NOTE, false);
+  d_diagnostic_report_diagnostic (loc, 0, format, ap, diagnostics::kind::note,
+				  false);
 }
 
 /* Call this after printing out fatal error messages to clean up and

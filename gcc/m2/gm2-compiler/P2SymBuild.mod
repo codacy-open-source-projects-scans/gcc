@@ -1,6 +1,6 @@
 (* P2SymBuild.mod pass 2 symbol creation.
 
-Copyright (C) 2001-2024 Free Software Foundation, Inc.
+Copyright (C) 2001-2025 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -182,13 +182,16 @@ PROCEDURE stop ; BEGIN END stop ;
    Debug - call stop if symbol name is name.
 *)
 
-PROCEDURE Debug (sym: CARDINAL; name: ARRAY OF CHAR) ;
+(*
+PROCEDURE Debug (tok: CARDINAL; sym: CARDINAL; name: ARRAY OF CHAR) ;
 BEGIN
    IF MakeKey (name) = GetSymName (sym)
    THEN
       stop
-   END
+   END ;
+   MetaErrorT1 (tok, 'procedure {%1Wa}', sym)
 END Debug ;
+*)
 
 
 (*
@@ -353,7 +356,7 @@ BEGIN
    END ;
    IF NameStart#NameEnd
    THEN
-      WriteFormat2('inconsistant definition module name, module began as (%a) and ended with (%a)', NameStart, NameEnd)
+      WriteFormat2('inconsistent definition module name, module began as (%a) and ended with (%a)', NameStart, NameEnd)
    END ;
    M2Error.LeaveErrorScope
 END P2EndBuildDefModule ;
@@ -422,7 +425,7 @@ BEGIN
    PopT (NameEnd) ;
    IF NameStart#NameEnd
    THEN
-      WriteFormat1('inconsistant implementation module name %a', NameStart)
+      WriteFormat1('inconsistent implementation module name %a', NameStart)
    END ;
    M2Error.LeaveErrorScope
 END P2EndBuildImplementationModule ;
@@ -496,7 +499,7 @@ BEGIN
    END ;
    IF NameStart#NameEnd
    THEN
-      WriteFormat2('inconsistant program module name %a does not match %a', NameStart, NameEnd)
+      WriteFormat2('inconsistent program module name %a does not match %a', NameStart, NameEnd)
    END ;
    M2Error.LeaveErrorScope
 END P2EndBuildProgramModule ;
@@ -561,7 +564,7 @@ BEGIN
    PopT(NameEnd) ;
    IF NameStart#NameEnd
    THEN
-      WriteFormat2('inconsistant inner module name %a does not match %a',
+      WriteFormat2('inconsistent inner module name %a does not match %a',
                    NameStart, NameEnd)
    END ;
    M2Error.LeaveErrorScope
@@ -906,14 +909,13 @@ END StartBuildEnumeration ;
                       |------------|        |------------|
 *)
 
-PROCEDURE BuildSubrange (Base: CARDINAL) ;
+PROCEDURE BuildSubrange (tok: CARDINAL; Base: CARDINAL) ;
 VAR
    name: Name ;
    Type: CARDINAL ;
-   tok : CARDINAL ;
 BEGIN
-   PopTtok(name, tok) ;
-   Type := MakeSubrange(tok, name) ;
+   PopT (name) ;
+   Type := MakeSubrange (tok, name) ;
    PutSubrangeIntoFifoQueue(Type) ;   (* Store Subrange away so that we can fill in *)
                                       (* its bounds during pass 3.                  *)
    PutSubrangeIntoFifoQueue(Base) ;   (* store Base type of subrange away as well.  *)
@@ -1177,8 +1179,8 @@ BEGIN
    PopT (n) ;
    i := 1 ;
    WHILE i <= n DO
-      CheckVariableAgainstKeyword (OperandT (n+1-i)) ;
       tok := OperandTok (n+1-i) ;
+      CheckVariableAgainstKeyword (tok, OperandT (n+1-i)) ;
       Var := MakeVar (tok, OperandT (n+1-i)) ;
       AtAddress := OperandA (n+1-i) ;
       IF AtAddress # NulSym
@@ -1223,7 +1225,8 @@ VAR
    Sym,
    Type     : CARDINAL ;
    name     : Name ;
-   tokno    : CARDINAL ;
+   nametokno,
+   typetokno: CARDINAL ;
 BEGIN
    (*
       Two cases
@@ -1232,8 +1235,8 @@ BEGIN
       - when type with a name that is different to Name. In which case
         we create a new type.
    *)
-   PopTtok(Type, tokno) ;
-   PopT(name) ;
+   PopTtok (Type, typetokno) ;
+   PopTtok (name, nametokno) ;
    IF Debugging
    THEN
       n1 := GetSymName(GetCurrentModule()) ;
@@ -1262,11 +1265,11 @@ BEGIN
 
       *)
       (* WriteString('Blank name type') ; WriteLn ; *)
-      PushTFtok(Type, name, tokno) ;
+      PushTFtok(Type, name, typetokno) ;
       Annotate("%1s(%1d)|%2n|%3d||type|type name|token no")
    ELSIF IsError(Type)
    THEN
-      PushTFtok(Type, name, tokno) ;
+      PushTFtok(Type, name, typetokno) ;
       Annotate("%1s(%1d)|%2n|%3d||error type|error type name|token no")
    ELSIF GetSymName(Type)=name
    THEN
@@ -1274,13 +1277,14 @@ BEGIN
       IF isunknown OR
          (NOT IsDeclaredIn(GetCurrentScope(), Type))
       THEN
-         Sym := MakeType(tokno, name) ;
+         Sym := MakeType (typetokno, name) ;
          IF NOT IsError(Sym)
          THEN
             IF Sym=Type
             THEN
                IF isunknown
                THEN
+                  (* --fixme-- spellcheck.  *)      
                   MetaError2('attempting to declare a type {%1ad} to a type which is itself and also unknown {%2ad}',
                              Sym, Type)
                ELSE
@@ -1293,19 +1297,23 @@ BEGIN
                CheckForEnumerationInCurrentModule(Type)
             END
          END ;
-         PushTFtok(Sym, name, tokno) ;
+         PushTFtok(Sym, name, typetokno) ;
          Annotate("%1s(%1d)|%2n|%3d||type|type name|token no")
       ELSE
-         PushTFtok(Type, name, tokno) ;
+         PushTFtok(Type, name, typetokno) ;
          Annotate("%1s(%1d)|%2n|%3d||type|type name|token no")
       END
    ELSE
       (* example   TYPE a = CARDINAL *)
-      Sym := MakeType(tokno, name) ;
-      PutType(Sym, Type) ;
-      CheckForExportedImplementation(Sym) ;   (* May be an exported hidden type *)
-      PushTFtok(Sym, name, tokno) ;
-      Annotate("%1s(%1d)|%2n|%3d||type|type name|token no")
+      Sym := MakeType (nametokno, name) ;
+      PutType (Sym, Type) ;
+      CheckForExportedImplementation (Sym) ;   (* May be an exported hidden type *)
+      PushTFtok (Sym, name, nametokno) ;
+      Annotate ("%1s(%1d)|%2n|%3d||type|type name|token no") ;
+      IF Debugging
+      THEN
+         MetaErrorT1 (nametokno, 'type pos {%1Wa}', Sym)
+      END
    END
 END BuildType ;
 
@@ -1503,7 +1511,7 @@ BEGIN
    PopT (ParamTotal) ;
    ProcSym := CARDINAL (OperandT (3 + CARDINAL (OperandT (3)) + 2)) ;
    tok := CARDINAL (OperandTok (3 + CARDINAL (OperandT (3)) + 2)) ;
-   Debug (ProcSym, 'foo') ;
+   (* Debug (tok, ProcSym, 'foo') ;   *)
    curkind := GetProcedureKind (ProcSym, tok) ;
    PushT (ParamTotal) ;
    Annotate ("%1d||running total of no. of parameters") ;
@@ -1828,13 +1836,13 @@ BEGIN
          (* WarnStringAt (InitString ('parampos?'), OperandTok (pi)) ;  *)
          IF Unbounded AND (NOT IsUnboundedParam (ProcSym, prevkind, ParamTotal+i))
          THEN
-            ParameterError ('declaration of procedure {%%1a} in the %s differs from the %s, {%%2N} parameter is inconsistant, %s',
+            ParameterError ('declaration of procedure {%%1a} in the %s differs from the %s, {%%2N} parameter is inconsistent, %s',
                             'the parameter {%3EHa} was not declared as an ARRAY OF type',
                             'the parameter {%3EVa} was declared as an ARRAY OF type',
                             ParamTotal+i, ProcSym, curkind, prevkind)
          ELSIF (NOT Unbounded) AND IsUnboundedParam (ProcSym, prevkind, ParamTotal+i)
          THEN
-            ParameterError ('declaration of procedure {%%1a} in the %s differs from the %s, {%%2N} parameter is inconsistant, %s',
+            ParameterError ('declaration of procedure {%%1a} in the %s differs from the %s, {%%2N} parameter is inconsistent, %s',
                             'the parameter {%3EHa} was declared as an ARRAY OF type',
                             'the parameter {%3EVa} was not declared as an ARRAY OF type',
                             ParamTotal+i, ProcSym, curkind, prevkind)
@@ -1843,7 +1851,7 @@ BEGIN
          THEN
             IF GetDimension (GetNthParam (ProcSym, prevkind, ParamTotal+1)) # ndim
             THEN
-               ParameterError ('declaration of procedure {%%1a} in the %s differs from the %s, {%%2N} parameter is inconsistant, %s',
+               ParameterError ('declaration of procedure {%%1a} in the %s differs from the %s, {%%2N} parameter is inconsistent, %s',
                                'the dynamic array parameter {%3EHa} was declared with a different of dimensions',
                                'the dynamic array parameter {%3EVa} was declared with a different of dimensions',
                                ParamTotal+i, ProcSym, curkind, prevkind)
@@ -1852,14 +1860,14 @@ BEGIN
          IF isVarParam AND (NOT IsVarParam (ProcSym, prevkind, ParamTotal+i))
          THEN
             (* Expecting non VAR parameter.  *)
-            ParameterError ('declaration of procedure {%%1a} in the %s differs from the %s, {%%2N} parameter is inconsistant, %s',
+            ParameterError ('declaration of procedure {%%1a} in the %s differs from the %s, {%%2N} parameter is inconsistent, %s',
                             '{%3EHa} was not declared as a {%kVAR} parameter',
                             '{%3EVa} was declared as a {%kVAR} parameter',
                             ParamTotal+i, ProcSym, curkind, prevkind)
          ELSIF (NOT isVarParam) AND IsVarParam (ProcSym, prevkind, ParamTotal+i)
          THEN
             (* Expecting VAR pamarater.  *)
-            ParameterError ('declaration of procedure {%%1a} in the %s differs from the %s, {%%2N} parameter is inconsistant, %s',
+            ParameterError ('declaration of procedure {%%1a} in the %s differs from the %s, {%%2N} parameter is inconsistent, %s',
                             '{%3EHa} was declared as a {%kVAR} parameter',
                             '{%3EVa} was not declared as a {%kVAR} parameter',
                             ParamTotal+i, ProcSym, curkind, prevkind)
@@ -1870,7 +1878,7 @@ BEGIN
             IF GetSymName (ParamI) # OperandT (pi)
             THEN
                (* Different parameter names.  *)
-               ParameterError ('procedure {%%1a} in the %s differs from the %s, {%%2N} parameter name is inconsistant, %s',
+               ParameterError ('procedure {%%1a} in the %s differs from the %s, {%%2N} parameter name is inconsistent, %s',
                             'named as {%3EVa}',
                             'named as {%3EVa}',
                             ParamTotal+i, ProcSym, curkind, prevkind)
@@ -1890,7 +1898,7 @@ BEGIN
             (NOT IsUnknown(SkipType(ParamIType)))
          THEN
             (* Different parameter types.  *)
-            ParameterError ('declaration in the %s differs from the %s, {%%2N} parameter is inconsistant, %s',
+            ParameterError ('declaration in the %s differs from the %s, {%%2N} parameter is inconsistent, %s',
                             'the parameter {%3EHa} was declared with a different type',
                             'the parameter {%3EVa} was declared with a different type',
                             ParamTotal+i, ProcSym, curkind, prevkind)
@@ -2582,7 +2590,7 @@ BEGIN
          Field := PutFieldRecord(Record, OperandT(NoOfPragmas*2+NoOfFields+3-i), Type, Varient) ;
          HandleRecordFieldPragmas(Record, Field, NoOfPragmas)
       ELSE
-         MetaErrors2('record field {%1ad} has already been declared inside a {%2Dd} {%2a}',
+         MetaErrors2('record field {%1ad} has already been declared inside a {%2Ddv} {%2a}',
                      'attempting to declare a duplicate record field', fsym, Parent)
       END ;
       (* adjust the location of declaration to the one on the stack (rather than GetTokenNo).  *)
@@ -3065,10 +3073,10 @@ BEGIN
    IF Var=VarTok
    THEN
       (* VAR parameter *)
-      PutProcTypeVarParam(ProcTypeSym, TypeSym, IsUnbounded(TypeSym))
+      PutProcTypeVarParam (tok, ProcTypeSym, TypeSym, IsUnbounded (TypeSym))
    ELSE
       (* Non VAR parameter *)
-      PutProcTypeParam(ProcTypeSym, TypeSym, IsUnbounded(TypeSym))
+      PutProcTypeParam (tok, ProcTypeSym, TypeSym, IsUnbounded (TypeSym))
    END ;
    PushT(ProcTypeSym) ;
    Annotate("%1s(%1d)||proc type")

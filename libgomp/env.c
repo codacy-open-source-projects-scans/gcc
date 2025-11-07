@@ -1,4 +1,4 @@
-/* Copyright (C) 2005-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2005-2025 Free Software Foundation, Inc.
    Contributed by Richard Henderson <rth@redhat.com>.
 
    This file is part of the GNU Offloading and Multi Processing Library
@@ -2455,7 +2455,7 @@ initialize_env (void)
       const char *env = getenv ("GOMP_STACKSIZE");
       if (env != NULL
 	  && parse_stacksize ("GOMP_STACKSIZE", env,
-			      (void *[3]) {&none->icvs.stacksize}))
+			      (void *[]) {&none->icvs.stacksize}))
 	gomp_set_icv_flag (&none->flags, GOMP_ICV_STACKSIZE);
     }
   if (none != NULL && gomp_get_icv_flag (none->flags, GOMP_ICV_STACKSIZE))

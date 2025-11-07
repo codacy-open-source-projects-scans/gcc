@@ -1,5 +1,5 @@
 # Top level -*- makefile -*- fragment for GNU C++.
-#   Copyright (C) 1994-2024 Free Software Foundation, Inc.
+#   Copyright (C) 1994-2025 Free Software Foundation, Inc.
 
 #This file is part of GCC.
 
@@ -123,6 +123,8 @@ CXX_OBJS = cp/cp-lang.o c-family/stub-objc.o $(CXX_AND_OBJCXX_OBJS)
 
 c++_OBJS = $(CXX_OBJS) cc1plus-checksum.o cp/g++spec.o
 
+c++_FDAS = cc1plus.fda
+
 # Use strict warnings for this front end.
 cp-warn = $(STRICT_WARN)
 
@@ -168,8 +170,8 @@ $(srcdir)/cp/std-name-hint.h: $(srcdir)/cp/std-name-hint.gperf
 else
 $(srcdir)/cp/std-name-hint.h: | $(srcdir)/cp/std-name-hint.gperf
 endif
-	gperf -o -C -E -k '1,2,7,11,$$' -D -N find -L C++ \
-		$(srcdir)/cp/std-name-hint.gperf --output-file $(srcdir)/cp/std-name-hint.h
+	cd $(srcdir)/cp; gperf -o -C -E -k '1,2,7,11,$$' -D -N find -L C++ \
+		std-name-hint.gperf --output-file std-name-hint.h
 
 # The std-name-hint.gperf file itself is generated from a general
 # C++ API description.
@@ -199,7 +201,7 @@ create_fdas_for_cc1plus: ../stage1-gcc/cc1plus$(exeext) ../prev-gcc/$(PERF_DATA)
 	  echo $$perf_path; \
 	  if [ -f $$perf_path ]; then \
 	    profile_name=cc1plus_$$component_in_prev.fda; \
-	    $(CREATE_GCOV) -binary ../stage1-gcc/cc1plus$(exeext) -gcov $$profile_name -profile $$perf_path -gcov_version 2; \
+	    $(CREATE_GCOV) -binary ../stage1-gcc/cc1plus$(exeext) -gcov $$profile_name -profile $$perf_path -gcov_version 2 || exit 1; \
 	  fi; \
 	done;
 
@@ -209,7 +211,7 @@ create_fdas_for_cc1plus: ../stage1-gcc/cc1plus$(exeext) ../prev-gcc/$(PERF_DATA)
 	  echo $$perf_path; \
 	  if [ -f $$perf_path ]; then \
 	    profile_name=cc1plus_$$component_in_prev_target.fda; \
-	    $(CREATE_GCOV) -binary ../prev-gcc/cc1plus$(exeext) -gcov $$profile_name -profile $$perf_path -gcov_version 2; \
+	    $(CREATE_GCOV) -binary ../prev-gcc/cc1plus$(exeext) -gcov $$profile_name -profile $$perf_path -gcov_version 2 || exit 1; \
 	  fi; \
 	done;
 

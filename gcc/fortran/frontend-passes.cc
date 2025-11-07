@@ -1,5 +1,5 @@
 /* Pass manager for Fortran front end.
-   Copyright (C) 2010-2024 Free Software Foundation, Inc.
+   Copyright (C) 2010-2025 Free Software Foundation, Inc.
    Contributed by Thomas König.
 
 This file is part of GCC.
@@ -1481,7 +1481,8 @@ optimize_namespace (gfc_namespace *ns)
       gfc_code_walker (&ns->code, convert_elseif, dummy_expr_callback, NULL);
       gfc_code_walker (&ns->code, cfe_code, cfe_expr_0, NULL);
       gfc_code_walker (&ns->code, optimize_code, optimize_expr, NULL);
-      if (flag_inline_matmul_limit != 0 || flag_external_blas)
+      if (flag_inline_matmul_limit != 0 || flag_external_blas
+	  || flag_external_blas64)
 	{
 	  bool found;
 	  do
@@ -1496,7 +1497,7 @@ optimize_namespace (gfc_namespace *ns)
 			   NULL);
 	}
 
-      if (flag_external_blas)
+      if (flag_external_blas || flag_external_blas64)
 	gfc_code_walker (&ns->code, call_external_blas, dummy_expr_callback,
 			 NULL);
 
@@ -2552,7 +2553,7 @@ doloop_code (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
       break;
 
     case EXEC_INQUIRE:
-      if (co->ext.filepos->err)
+      if (co->ext.inquire->err)
 	seen_goto = true;
       break;
 
@@ -4644,6 +4645,7 @@ call_external_blas (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
   enum matrix_case m_case;
   bool realloc_c;
   gfc_code **next_code_point;
+  int arg_kind;
 
   /* Many of the tests for inline matmul also apply here.  */
 
@@ -4929,13 +4931,20 @@ call_external_blas (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
 				       transb, 1);
   actual->next = next;
 
-  c1 = get_array_inq_function (GFC_ISYM_SIZE, gfc_copy_expr (a->expr), 1,
-			       gfc_integer_4_kind);
-  c2 = get_array_inq_function (GFC_ISYM_SIZE, gfc_copy_expr (b->expr), 2,
-			       gfc_integer_4_kind);
+  if (flag_external_blas)
+    arg_kind = gfc_integer_4_kind;
+  else
+    {
+      gcc_assert (flag_external_blas64);
+      arg_kind = gfc_integer_8_kind;
+    }
 
+  c1 = get_array_inq_function (GFC_ISYM_SIZE, gfc_copy_expr (a->expr), 1,
+			       arg_kind);
+  c2 = get_array_inq_function (GFC_ISYM_SIZE, gfc_copy_expr (b->expr), 2,
+			       arg_kind);
   b1 = get_array_inq_function (GFC_ISYM_SIZE, gfc_copy_expr (b->expr), 1,
-			       gfc_integer_4_kind);
+			       arg_kind);
 
   /* Argument M. */
   actual = next;
@@ -4975,7 +4984,7 @@ call_external_blas (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
   actual = next;
   next = gfc_get_actual_arglist ();
   next->expr = get_array_inq_function (GFC_ISYM_SIZE, gfc_copy_expr (matrix_a),
-				       1, gfc_integer_4_kind);
+				       1, arg_kind);
   actual->next = next;
 
   /* Argument B.  */
@@ -4988,7 +4997,7 @@ call_external_blas (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
   actual = next;
   next = gfc_get_actual_arglist ();
   next->expr = get_array_inq_function (GFC_ISYM_SIZE, gfc_copy_expr (matrix_b),
-				       1, gfc_integer_4_kind);
+				       1, arg_kind);
   actual->next = next;
 
   /* Argument BETA - set to zero.  */
@@ -5012,7 +5021,7 @@ call_external_blas (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
   actual = next;
   next = gfc_get_actual_arglist ();
   next->expr = get_array_inq_function (GFC_ISYM_SIZE, gfc_copy_expr (expr1),
-				       1, gfc_integer_4_kind);
+				       1, arg_kind);
   actual->next = next;
 
   return 0;
@@ -5132,7 +5141,7 @@ index_interchange (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
     return 0;
 
   n_iter = 0;
-  for (fa = co->ext.forall_iterator; fa; fa = fa->next)
+  for (fa = co->ext.concur.forall_iterator; fa; fa = fa->next)
     n_iter ++;
 
   /* Nothing to reorder. */
@@ -5142,7 +5151,7 @@ index_interchange (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
   ind = XALLOCAVEC (ind_type, n_iter + 1);
 
   i = 0;
-  for (fa = co->ext.forall_iterator; fa; fa = fa->next)
+  for (fa = co->ext.concur.forall_iterator; fa; fa = fa->next)
     {
       ind[i].sym = fa->var->symtree->n.sym;
       ind[i].fa = fa;
@@ -5158,7 +5167,7 @@ index_interchange (gfc_code **c, int *walk_subtrees ATTRIBUTE_UNUSED,
   qsort ((void *) ind, n_iter, sizeof (ind_type), loop_comp);
 
   /* Do the actual index interchange.  */
-  co->ext.forall_iterator = fa = ind[0].fa;
+  co->ext.concur.forall_iterator = fa = ind[0].fa;
   for (i=1; i<n_iter; i++)
     {
       fa->next = ind[i].fa;
@@ -5217,6 +5226,11 @@ gfc_expr_walker (gfc_expr **e, walk_expr_fn_t exprfn, void *data)
 	  case EXPR_FUNCTION:
 	    for (a = (*e)->value.function.actual; a; a = a->next)
 	      WALK_SUBEXPR (a->expr);
+	    break;
+	  case EXPR_CONDITIONAL:
+	    WALK_SUBEXPR ((*e)->value.conditional.condition);
+	    WALK_SUBEXPR ((*e)->value.conditional.true_expr);
+	    WALK_SUBEXPR ((*e)->value.conditional.false_expr);
 	    break;
 	  case EXPR_COMPCALL:
 	  case EXPR_PPC:
@@ -5340,6 +5354,7 @@ gfc_code_walker (gfc_code **c, walk_code_fn_t codefn, walk_expr_fn_t exprfn,
 	    {
 
 	    case EXEC_BLOCK:
+	    case EXEC_CHANGE_TEAM:
 	      WALK_SUBCODE (co->ext.block.ns->code);
 	      if (co->ext.block.assoc)
 		{
@@ -5410,7 +5425,7 @@ gfc_code_walker (gfc_code **c, walk_code_fn_t codefn, walk_expr_fn_t exprfn,
 	    case EXEC_DO_CONCURRENT:
 	      {
 		gfc_forall_iterator *fa;
-		for (fa = co->ext.forall_iterator; fa; fa = fa->next)
+		for (fa = co->ext.concur.forall_iterator; fa; fa = fa->next)
 		  {
 		    WALK_SUBEXPR (fa->var);
 		    WALK_SUBEXPR (fa->start);
@@ -5630,6 +5645,8 @@ gfc_code_walker (gfc_code **c, walk_code_fn_t codefn, walk_expr_fn_t exprfn,
 		  WALK_SUBEXPR (co->ext.omp_clauses->num_tasks);
 		  WALK_SUBEXPR (co->ext.omp_clauses->priority);
 		  WALK_SUBEXPR (co->ext.omp_clauses->detach);
+		  WALK_SUBEXPR (co->ext.omp_clauses->novariants);
+		  WALK_SUBEXPR (co->ext.omp_clauses->nocontext);
 		  for (idx = 0; idx < ARRAY_SIZE (list_types); idx++)
 		    for (n = co->ext.omp_clauses->lists[list_types[idx]];
 			 n; n = n->next)
@@ -5702,6 +5719,9 @@ check_externals_procedure (gfc_symbol *sym, locus *loc,
   if (gsym->ns)
     gfc_find_symbol (sym->name, gsym->ns, 0, &def_sym);
 
+  if (gsym->bind_c && def_sym && def_sym->binding_label == NULL)
+    return 0;
+
   if (def_sym)
     {
       gfc_compare_actual_formal (&actual, def_sym->formal, 0, 0, 0, loc);
@@ -5722,6 +5742,7 @@ check_externals_procedure (gfc_symbol *sym, locus *loc,
   gcc_assert (new_sym);
   new_sym->attr = sym->attr;
   new_sym->attr.if_source = IFSRC_DECL;
+  new_sym->ts = sym->ts;
   gfc_current_ns = gsym->ns;
 
   gfc_get_formal_from_actual_arglist (new_sym, actual);
@@ -5793,11 +5814,16 @@ check_against_globals (gfc_symbol *sym)
   char buf  [200];
 
   if (sym->attr.if_source != IFSRC_IFBODY || sym->attr.flavor != FL_PROCEDURE
-      || sym->attr.generic || sym->error)
+      || sym->attr.generic || sym->error || sym->attr.abstract
+      || sym->attr.dummy)
     return;
 
   if (sym->binding_label)
     sym_name = sym->binding_label;
+  else if (sym->attr.use_rename
+	   && sym->ns->use_stmts->rename
+	   && sym->ns->use_stmts->rename->local_name[0] != '\0')
+    sym_name = sym->ns->use_stmts->rename->local_name;
   else
     sym_name = sym->name;
 

@@ -1,7 +1,7 @@
 /* Scalar Replacement of Aggregates (SRA) converts some structure
    references into scalar references, exposing them to the scalar
    optimizers.
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
    Contributed by Martin Jambor <mjambor@suse.cz>
 
 This file is part of GCC.
@@ -100,6 +100,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "builtins.h"
 #include "tree-sra.h"
 #include "opts.h"
+#include "tree-ssa-alias-compare.h"
 
 /* Enumeration of all aggregate reductions we can do.  */
 enum sra_mode { SRA_MODE_EARLY_IPA,   /* early call regularization */
@@ -979,6 +980,7 @@ create_access (tree expr, gimple *stmt, bool write)
   access->type = TREE_TYPE (expr);
   access->write = write;
   access->grp_unscalarizable_region = unscalarizable_region;
+  access->grp_same_access_path = true;
   access->stmt = stmt;
   access->reverse = reverse;
 
@@ -1289,19 +1291,16 @@ build_access_from_expr_1 (tree expr, gimple *stmt, bool write)
       return NULL;
     }
 
-  /* We need to dive through V_C_Es in order to get the size of its parameter
-     and not the result type.  Ada produces such statements.  We are also
-     capable of handling the topmost V_C_E but not any of those buried in other
-     handled components.  */
-  if (TREE_CODE (expr) == VIEW_CONVERT_EXPR)
-    expr = TREE_OPERAND (expr, 0);
-
-  if (contains_view_convert_expr_p (expr))
+  /* We are capable of handling the topmost V_C_E but not any of those
+     buried in other handled components.  */
+  if (contains_view_convert_expr_p (TREE_CODE (expr) == VIEW_CONVERT_EXPR
+				    ? TREE_OPERAND (expr, 0) : expr))
     {
       disqualify_base_of_expr (expr, "V_C_E under a different handled "
 			       "component.");
       return NULL;
     }
+
   if (TREE_THIS_VOLATILE (expr))
     {
       disqualify_base_of_expr (expr, "part of a volatile reference.");
@@ -1321,6 +1320,7 @@ build_access_from_expr_1 (tree expr, gimple *stmt, bool write)
     case ARRAY_REF:
     case ARRAY_RANGE_REF:
     case BIT_FIELD_REF:
+    case VIEW_CONVERT_EXPR:
       ret = create_access (expr, stmt, write);
       break;
 
@@ -1522,6 +1522,9 @@ build_accesses_from_assign (gimple *stmt)
   racc = build_access_from_expr_1 (rhs, stmt, false);
   lacc = build_access_from_expr_1 (lhs, stmt, true);
 
+  bool tbaa_hazard
+    = !types_equal_for_same_type_for_tbaa_p (TREE_TYPE (lhs), TREE_TYPE (rhs));
+
   if (lacc)
     {
       lacc->grp_assignment_write = 1;
@@ -1536,6 +1539,8 @@ build_accesses_from_assign (gimple *stmt)
 	    bitmap_set_bit (cannot_scalarize_away_bitmap,
 			    DECL_UID (lacc->base));
 	}
+      if (tbaa_hazard)
+	lacc->grp_same_access_path = false;
     }
 
   if (racc)
@@ -1555,6 +1560,8 @@ build_accesses_from_assign (gimple *stmt)
 	}
       if (storage_order_barrier_p (lhs))
 	racc->grp_unscalarizable_region = 1;
+      if (tbaa_hazard)
+	racc->grp_same_access_path = false;
     }
 
   if (lacc && racc
@@ -1671,7 +1678,13 @@ scan_function (void)
 		  /* If the STMT is a call to DEFERRED_INIT, avoid setting
 		     cannot_scalarize_away_bitmap.  */
 		  if (gimple_call_internal_p (stmt, IFN_DEFERRED_INIT))
-		    ret |= !!build_access_from_expr_1 (t, stmt, true);
+		    {
+		      struct access *access
+			= build_access_from_expr_1 (t, stmt, true);
+		      if (access)
+			access->grp_assignment_write = 1;
+		      ret |= access != NULL;
+		    }
 		  else
 		    ret |= build_access_from_expr (t, stmt, true);
 		}
@@ -1875,7 +1888,7 @@ make_fancy_name (tree expr)
    the current one as specified by INSERT_AFTER.  This function is not capable
    of handling bitfields.  */
 
-tree
+static tree
 build_ref_for_offset (location_t loc, tree base, poly_int64 offset,
 		      bool reverse, tree exp_type, gimple_stmt_iterator *gsi,
 		      bool insert_after)
@@ -2396,7 +2409,7 @@ sort_and_splice_var_accesses (tree var)
       bool grp_partial_lhs = access->grp_partial_lhs;
       bool first_scalar = is_gimple_reg_type (access->type);
       bool unscalarizable_region = access->grp_unscalarizable_region;
-      bool grp_same_access_path = true;
+      bool grp_same_access_path = access->grp_same_access_path;
       bool bf_non_full_precision
 	= (INTEGRAL_TYPE_P (access->type)
 	   && TYPE_PRECISION (access->type) != access->size
@@ -2432,7 +2445,8 @@ sort_and_splice_var_accesses (tree var)
 	  return NULL;
 	}
 
-      grp_same_access_path = path_comparable_for_same_access (access->expr);
+      if (grp_same_access_path)
+	grp_same_access_path = path_comparable_for_same_access (access->expr);
 
       j = i + 1;
       while (j < access_count)
@@ -2494,9 +2508,16 @@ sort_and_splice_var_accesses (tree var)
 		}
 	      unscalarizable_region = true;
 	    }
+	  /* If there the same place is accessed with two incompatible
+	     aggregate types, trying to base total scalarization on either of
+	     them can be wrong.  */
+	  if (!first_scalar && !types_compatible_p (access->type, ac2->type))
+	    bitmap_set_bit (cannot_scalarize_away_bitmap,
+			    DECL_UID (access->base));
 
 	  if (grp_same_access_path
-	      && !same_access_path_p (access->expr, ac2->expr))
+	      && (!ac2->grp_same_access_path
+		  || !same_access_path_p (access->expr, ac2->expr)))
 	    grp_same_access_path = false;
 
 	  ac2->group_representative = access;
@@ -2878,7 +2899,10 @@ analyze_access_subtree (struct access *root, struct access *parent,
 
   for (child = root->first_child; child; child = child->next_sibling)
     {
-      hole |= covered_to < child->offset;
+      if (totally)
+	covered_to = child->offset;
+      else
+	hole |= covered_to < child->offset;
       sth_created |= analyze_access_subtree (child, root,
 					     allow_replacements && !scalar
 					     && !root->grp_partial_lhs,
@@ -2889,6 +2913,8 @@ analyze_access_subtree (struct access *root, struct access *parent,
 	covered_to += child->size;
       else
 	hole = true;
+      if (totally && !hole)
+	covered_to = limit;
     }
 
   if (allow_replacements && scalar && !root->first_child
@@ -2961,7 +2987,7 @@ analyze_access_subtree (struct access *root, struct access *parent,
 	root->grp_total_scalarization = 0;
     }
 
-  if (!hole || totally)
+  if (!hole)
     root->grp_covered = 1;
   else if (root->grp_write || comes_initialized_p (root->base))
     root->grp_unscalarized_data = 1; /* not covered and written to */
@@ -3451,7 +3477,7 @@ create_total_scalarization_access (struct access *parent, HOST_WIDE_INT pos,
   access->grp_write = parent->grp_write;
   access->grp_total_scalarization = 1;
   access->grp_hint = 1;
-  access->grp_same_access_path = path_comparable_for_same_access (expr);
+  access->grp_same_access_path = 0;
   access->reverse = reverse_storage_order_for_component_p (expr);
 
   access->next_sibling = next_sibling;
@@ -3749,7 +3775,7 @@ sra_get_max_scalarization_size (void)
   /* If the user didn't set PARAM_SRA_MAX_SCALARIZATION_SIZE_<...>,
      fall back to a target default.  */
   unsigned HOST_WIDE_INT max_scalarization_size
-    = get_move_ratio (optimize_speed_p) * UNITS_PER_WORD;
+    = get_move_ratio (optimize_speed_p) * MOVE_MAX;
 
   if (optimize_speed_p)
     {
@@ -4064,12 +4090,6 @@ get_access_for_expr (tree expr)
   tree base;
   bool reverse;
 
-  /* FIXME: This should not be necessary but Ada produces V_C_Es with a type of
-     a different size than the size of its argument and we need the latter
-     one.  */
-  if (TREE_CODE (expr) == VIEW_CONVERT_EXPR)
-    expr = TREE_OPERAND (expr, 0);
-
   base = get_ref_base_and_extent (expr, &poffset, &psize, &pmax_size,
 				  &reverse);
   if (!known_size_p (pmax_size)
@@ -4194,8 +4214,10 @@ sra_modify_expr (tree *expr, bool write, gimple_stmt_iterator *stmt_gsi,
 	    }
 	  else
 	    {
-	      gassign *stmt;
+	      if (TREE_READONLY (access->base))
+		return false;
 
+	      gassign *stmt;
 	      if (access->grp_partial_lhs)
 		repl = force_gimple_operand_gsi (stmt_gsi, repl, true,
 						 NULL_TREE, true,

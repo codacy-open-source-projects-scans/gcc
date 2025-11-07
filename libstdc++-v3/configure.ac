@@ -399,6 +399,8 @@ dnl # rather than hardcoding that information.
         AC_DEFINE(HAVE_ALIGNED_ALLOC)
         AC_DEFINE(HAVE_AT_QUICK_EXIT)
         AC_DEFINE(HAVE_LINK)
+        AC_DEFINE(HAVE_SYS_STAT_H)
+        AC_DEFINE(HAVE_SYS_TYPES_H)
         AC_DEFINE(HAVE_QUICK_EXIT)
         AC_DEFINE(HAVE_READLINK)
         AC_DEFINE(HAVE_SETENV)
@@ -406,7 +408,16 @@ dnl # rather than hardcoding that information.
         AC_DEFINE(HAVE_SOCKATMARK)
         AC_DEFINE(HAVE_STRERROR_L)
         AC_DEFINE(HAVE_SYMLINK)
+        AC_DEFINE(HAVE_S_ISREG)
         AC_DEFINE(HAVE_TRUNCATE)
+        AC_DEFINE(HAVE_UNISTD_H)
+        AC_DEFINE(HAVE_UNLINKAT)
+        AC_DEFINE(HAVE_USLEEP)
+        AC_DEFINE(_GLIBCXX_USE_CHMOD)
+        AC_DEFINE(_GLIBCXX_USE_MKDIR)
+        AC_DEFINE(_GLIBCXX_USE_CHDIR)
+        AC_DEFINE(_GLIBCXX_USE_GETCWD)
+        AC_DEFINE(_GLIBCXX_USE_UTIME)
         AC_DEFINE(HAVE_USLEEP)
 
         # These functions are defined in librtemscpu.  We don't use
@@ -572,6 +583,9 @@ GLIBCXX_EMERGENCY_EH_ALLOC
 # For src/c++20/tzdb.cc defaults.
 GLIBCXX_ZONEINFO_DIR
 
+# For std::chrono formatters to use tm::tm_zone
+GLIBCXX_STRUCT_TM_TM_ZONE
+
 # For src/c++11/shared_ptr.cc alignment.
 GLIBCXX_CHECK_ALIGNAS_CACHELINE
 
@@ -583,6 +597,12 @@ GLIBCXX_CHECK_FILEBUF_NATIVE_HANDLES
 
 # For std::text_encoding
 GLIBCXX_CHECK_TEXT_ENCODING
+
+# For std::is_debugger_present
+GLIBCXX_CHECK_DEBUGGING
+
+# For std::print
+GLIBCXX_CHECK_STDIO_LOCKING
 
 # Define documentation rules conditionally.
 

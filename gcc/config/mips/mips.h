@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler.  MIPS version.
-   Copyright (C) 1989-2024 Free Software Foundation, Inc.
+   Copyright (C) 1989-2025 Free Software Foundation, Inc.
    Contributed by A. Lichnewsky (lich@inria.inria.fr).
    Changed by Michael Meissner	(meissner@osf.org).
    64-bit r4000 support by Ian Lance Taylor (ian@cygnus.com) and
@@ -1264,6 +1264,10 @@ struct mips_cpu_info {
 
 #define ISA_HAS_FMIN_FMAX	(mips_isa_rev >= 6)
 
+#define ISA_HAS_FRINT		(mips_isa_rev >= 6)
+
+#define ISA_HAS_FCLASS		(mips_isa_rev >= 6)
+
 /* ISA has data indexed prefetch instructions.  This controls use of
    'prefx', along with TARGET_HARD_FLOAT and TARGET_DOUBLE_FLOAT.
    (prefx is a cop1x instruction, so can only be used if FP is
@@ -2359,8 +2363,14 @@ enum reg_class
 
 #define STACK_GROWS_DOWNWARD 1
 
-#define FRAME_GROWS_DOWNWARD (flag_stack_protect != 0			\
-			      || (flag_sanitize & SANITIZE_ADDRESS) != 0)
+/* Growing the frame downwards allows us to put spills closest to
+   the stack pointer which is good as they are likely to be accessed
+   frequently.  We can also arrange for normal stack usage to place
+   scalars last so that they too are close to the stack pointer.  */
+#define FRAME_GROWS_DOWNWARD ((TARGET_MIPS16			    \
+			       && TARGET_FRAME_GROWS_DOWNWARDS)     \
+			      || (flag_stack_protect != 0	    \
+				  || (flag_sanitize & SANITIZE_ADDRESS) != 0))
 
 /* Size of the area allocated in the frame to save the GP.  */
 

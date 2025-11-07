@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -596,9 +596,10 @@ package body Checks is
       --  Note: we do not check for checks suppressed here, since that check
       --  was done in Sem_Ch13 when the address clause was processed. We are
       --  only called if checks were not suppressed. The reason for this is
-      --  that we have to delay the call to Apply_Alignment_Check till freeze
-      --  time (so that all types etc are elaborated), but we have to check
-      --  the status of check suppressing at the point of the address clause.
+      --  that we have to delay the call to Apply_Address_Clause_Check till
+      --  freeze time (so that all types etc are elaborated), but we have to
+      --  check the status of check suppressing at the point of the address
+      --  clause.
 
       if No (AC)
         or else not Check_Address_Alignment (AC)
@@ -750,7 +751,7 @@ package body Checks is
       --  mode then just skip the check (it is not required in any case).
 
       when RE_Not_Available =>
-         return;
+         null;
    end Apply_Address_Clause_Check;
 
    -------------------------------------
@@ -970,15 +971,61 @@ package body Checks is
          --  we use a different approach, expanding to:
 
          --    typ (xxx_With_Ovflo_Check (Integer_NN (x), Integer_NN (y)))
+         --  or
+         --    typ (xxx_With_Ovflo_Check (Unsigned_NN (x), Unsigned_NN (y)))
 
          --  where xxx is Add, Multiply or Subtract as appropriate
 
          --  Find check type if one exists
 
          if Dsiz <= System_Max_Integer_Size then
-            Ctyp := Integer_Type_For (Dsiz, Uns => False);
+            Ctyp := Integer_Type_For (Dsiz,
+                      Uns => Has_Unsigned_Base_Range_Aspect (Base_Type (Typ)));
 
-         --  No check type exists, use runtime call
+         --  No check type exists, and the type has the unsigned base range
+         --  aspect; use runtime call.
+
+         elsif Has_Unsigned_Base_Range_Aspect (Base_Type (Typ)) then
+            if System_Max_Integer_Size = 64 then
+               Ctyp := RTE (RE_Unsigned_64);
+            else
+               Ctyp := RTE (RE_Unsigned_128);
+            end if;
+
+            if Nkind (N) = N_Op_Add then
+               if System_Max_Integer_Size = 64 then
+                  Cent := RE_Uns_Add_With_Ovflo_Check64;
+               else
+                  Cent := RE_Uns_Add_With_Ovflo_Check128;
+               end if;
+
+            elsif Nkind (N) = N_Op_Subtract then
+               if System_Max_Integer_Size = 64 then
+                  Cent := RE_Uns_Subtract_With_Ovflo_Check64;
+               else
+                  Cent := RE_Uns_Subtract_With_Ovflo_Check128;
+               end if;
+
+            else pragma Assert (Nkind (N) = N_Op_Multiply);
+               if System_Max_Integer_Size = 64 then
+                  Cent := RE_Uns_Multiply_With_Ovflo_Check64;
+               else
+                  Cent := RE_Uns_Multiply_With_Ovflo_Check128;
+               end if;
+            end if;
+
+            Rewrite (N,
+              OK_Convert_To (Typ,
+                Make_Function_Call (Loc,
+                  Name => New_Occurrence_Of (RTE (Cent), Loc),
+                  Parameter_Associations => New_List (
+                    OK_Convert_To (Ctyp, Left_Opnd  (N)),
+                    OK_Convert_To (Ctyp, Right_Opnd (N))))));
+
+            Analyze_And_Resolve (N, Typ);
+            return;
+
+         --  No check type exists, use runtime call (common case)
 
          else
             if System_Max_Integer_Size = 64 then
@@ -1078,7 +1125,7 @@ package body Checks is
 
       exception
          when RE_Not_Available =>
-            return;
+            null;
       end;
    end Apply_Arithmetic_Overflow_Strict;
 
@@ -1539,21 +1586,18 @@ package body Checks is
          return;
       end if;
 
-      --  Suppress checks if the subtypes are the same. The check must be
-      --  preserved in an assignment to a formal, because the constraint is
-      --  given by the actual.
+      --  Suppress checks if the subtypes are the same and constrained. The
+      --  check must be preserved in an assignment to a formal, because the
+      --  constraint is given by the actual.
 
       if Nkind (Original_Node (N)) /= N_Allocator
+        and then (if Do_Access then Designated_Type (Typ) else Typ) = S_Typ
+        and then Is_Constrained (S_Typ)
         and then (No (Lhs)
                    or else not Is_Entity_Name (Lhs)
                    or else No (Param_Entity (Lhs)))
       then
-         if (Etype (N) = Typ
-              or else (Do_Access and then Designated_Type (Typ) = S_Typ))
-           and then (No (Lhs) or else not Is_Aliased_View (Lhs))
-         then
-            return;
-         end if;
+         return;
 
       --  We can also eliminate checks on allocators with a subtype mark that
       --  coincides with the context type. The context type may be a subtype
@@ -2076,7 +2120,7 @@ package body Checks is
          Lo := Succ (Expr_Type, UR_From_Uint (Ifirst - 1));
          Lo_OK := True;
 
-      elsif abs (Ifirst) < Max_Bound then
+      elsif abs Ifirst < Max_Bound then
          Lo := UR_From_Uint (Ifirst) - Ureal_Half;
          Lo_OK := (Ifirst > 0);
 
@@ -2120,7 +2164,7 @@ package body Checks is
          Hi := Pred (Expr_Type, UR_From_Uint (Ilast + 1));
          Hi_OK := True;
 
-      elsif abs (Ilast) < Max_Bound then
+      elsif abs Ilast < Max_Bound then
          Hi := UR_From_Uint (Ilast) + Ureal_Half;
          Hi_OK := (Ilast < 0);
       else
@@ -2893,6 +2937,10 @@ package body Checks is
 
       if Deref then
          Expr := Make_Explicit_Dereference (Loc, Prefix => Expr);
+
+         --  Preserve Comes_From_Source for Predicate_Check_In_Scope
+
+         Preserve_Comes_From_Source (Expr, N);
       end if;
 
       --  Disable checks to prevent an infinite recursion
@@ -5488,7 +5536,9 @@ package body Checks is
          --  bound, because that means the result could wrap.
          --  Same applies for the lower bound if it is negative.
 
-         if Is_Modular_Integer_Type (Typ) then
+         if Is_Modular_Integer_Type (Typ)
+           and then not Has_Unsigned_Base_Range_Aspect (Btyp)
+         then
             if Lor > Lo and then Hir <= Hbound then
                Lo := Lor;
             end if;
@@ -6219,7 +6269,9 @@ package body Checks is
 
       --  Nothing to do for unsigned integer types, which do not overflow
 
-      elsif Is_Modular_Integer_Type (Typ) then
+      elsif Is_Modular_Integer_Type (Typ)
+        and then not Has_Unsigned_Base_Range_Aspect (Typ)
+      then
          return;
       end if;
 
@@ -6239,7 +6291,7 @@ package body Checks is
       --  do the corresponding optimizations later on when applying the checks.
 
       if Mode in Minimized_Or_Eliminated then
-         if not (Overflow_Checks_Suppressed (Etype (N)))
+         if not Overflow_Checks_Suppressed (Etype (N))
            and then not (Is_Entity_Name (N)
                           and then Overflow_Checks_Suppressed (Entity (N)))
          then
@@ -6433,8 +6485,6 @@ package body Checks is
          if Debug_Flag_CC then
             w ("  exception occurred, overflow flag set");
          end if;
-
-         return;
    end Enable_Overflow_Check;
 
    ------------------------
@@ -6682,8 +6732,6 @@ package body Checks is
          if Debug_Flag_CC then
             w ("  exception occurred, range flag set");
          end if;
-
-         return;
    end Enable_Range_Check;
 
    ------------------
@@ -7087,8 +7135,6 @@ package body Checks is
       end loop;
 
       --  If we fall through entry was not found
-
-      return;
    end Find_Check;
 
    ---------------------------------
@@ -7302,9 +7348,7 @@ package body Checks is
       --  Delay the generation of the check until 'Loop_Entry has been properly
       --  expanded. This is done in Expand_Loop_Entry_Attributes.
 
-      elsif Nkind (Prefix (N)) = N_Attribute_Reference
-        and then Attribute_Name (Prefix (N)) = Name_Loop_Entry
-      then
+      elsif Is_Attribute_Loop_Entry (Prefix (N)) then
          return;
       end if;
 
@@ -8118,7 +8162,9 @@ package body Checks is
 
       elsif Nkind (Expr) = N_Selected_Component
         and then Present (Component_Clause (Entity (Selector_Name (Expr))))
-        and then Is_Modular_Integer_Type (Typ)
+        and then
+          (Is_Modular_Integer_Type (Typ)
+             and then not Has_Unsigned_Base_Range_Aspect (Base_Type (Typ)))
         and then Modulus (Typ) = 2 ** Esize (Entity (Selector_Name (Expr)))
       then
          return;
@@ -8161,6 +8207,7 @@ package body Checks is
       end if;
 
       declare
+         Decl   : Node_Id;
          CE     : Node_Id;
          PV     : Node_Id;
          Var_Id : Entity_Id;
@@ -8213,12 +8260,20 @@ package body Checks is
             Mutate_Ekind (Var_Id, E_Variable);
             Set_Etype (Var_Id, Typ);
 
-            Insert_Action (Exp,
+            Decl :=
               Make_Object_Declaration (Loc,
                 Defining_Identifier => Var_Id,
                 Object_Definition   => New_Occurrence_Of (Typ, Loc),
-                Expression          => New_Copy_Tree (Exp)),
-              Suppress => Validity_Check);
+                Expression          => New_Copy_Tree (Exp));
+
+            --  We might be validity-checking object whose type is declared as
+            --  limited but completion is a scalar type. We need to explicitly
+            --  flag its assignment as OK, as otherwise it would be rejected by
+            --  the language rules.
+
+            Set_Assignment_OK (Decl);
+
+            Insert_Action (Exp, Decl, Suppress => Validity_Check);
 
             Set_Validated_Object (Var_Id, New_Copy_Tree (Exp));
 
@@ -8891,6 +8946,8 @@ package body Checks is
    function Make_Bignum_Block (Loc : Source_Ptr) return Node_Id is
       M : constant Entity_Id := Make_Defining_Identifier (Loc, Name_uM);
    begin
+      Check_Restriction (No_Secondary_Stack, M);
+
       return
         Make_Block_Statement (Loc,
           Declarations               =>

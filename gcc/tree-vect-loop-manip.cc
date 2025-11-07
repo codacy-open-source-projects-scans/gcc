@@ -1,5 +1,5 @@
 /* Vectorizer Specific Loop Manipulations
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
    Contributed by Dorit Naishlos <dorit@il.ibm.com>
    and Ira Rosen <irar@il.ibm.com>
 
@@ -1686,6 +1686,16 @@ slpeel_tree_duplicate_loop_to_edge_cfg (class loop *loop, edge loop_exit,
 
 	  set_immediate_dominator (CDI_DOMINATORS, new_preheader,
 				   loop->header);
+
+	  /* Fix up the profile counts of the new exit blocks.
+	     main_loop_exit_block was created by duplicating the
+	     preheader, so needs its count scaling according to the main
+	     exit edge's probability.  The remaining count from the
+	     preheader goes to the alt_loop_exit_block, since all
+	     alternative exits have been redirected there.  */
+	  main_loop_exit_block->count = loop_exit->count ();
+	  alt_loop_exit_block->count
+	    = preheader->count - main_loop_exit_block->count;
 	}
 
       /* Adjust the epilog loop PHI entry values to continue iteration.
@@ -2326,7 +2336,7 @@ vect_update_ivs_after_vectorizer (loop_vec_info loop_vinfo,
   gphi_iterator gsi, gsi1;
   class loop *loop = LOOP_VINFO_LOOP (loop_vinfo);
   basic_block update_bb = update_e->dest;
-  basic_block exit_bb = LOOP_VINFO_IV_EXIT (loop_vinfo)->dest;
+  basic_block exit_bb = update_e->src;
   gimple_stmt_iterator last_gsi = gsi_last_bb (exit_bb);
 
   for (gsi = gsi_start_phis (loop->header), gsi1 = gsi_start_phis (update_bb);
@@ -2444,10 +2454,7 @@ get_misalign_in_elems (gimple **seq, loop_vec_info loop_vinfo)
   else
     {
       tree vla = build_int_cst (type, target_align);
-      tree vla_align = fold_build2 (BIT_AND_EXPR, type, vla,
-				    fold_build2 (MINUS_EXPR, type,
-						 build_int_cst (type, 0), vla));
-      target_align_minus_1 = fold_build2 (MINUS_EXPR, type, vla_align,
+      target_align_minus_1 = fold_build2 (MINUS_EXPR, type, vla,
 					  build_int_cst (type, 1));
     }
 
@@ -2500,7 +2507,7 @@ get_misalign_in_elems (gimple **seq, loop_vec_info loop_vinfo)
 
 static tree
 vect_gen_prolog_loop_niters (loop_vec_info loop_vinfo,
-			     basic_block bb, int *bound)
+			     basic_block bb, poly_int64 *bound)
 {
   dr_vec_info *dr_info = LOOP_VINFO_UNALIGNED_DR (loop_vinfo);
   tree var;
@@ -2548,11 +2555,7 @@ vect_gen_prolog_loop_niters (loop_vec_info loop_vinfo,
 			     misalign_in_elems);
       iters = fold_build2 (BIT_AND_EXPR, type, iters, align_in_elems_minus_1);
       iters = fold_convert (niters_type, iters);
-      unsigned HOST_WIDE_INT align_in_elems_c;
-      if (align_in_elems.is_constant (&align_in_elems_c))
-	*bound = align_in_elems_c - 1;
-      else
-	*bound = -1;
+      *bound = align_in_elems;
     }
 
   if (dump_enabled_p ())
@@ -2721,8 +2724,8 @@ vect_build_loop_niters (loop_vec_info loop_vinfo, bool *new_var_p)
 
 static tree
 vect_gen_scalar_loop_niters (tree niters_prolog, int int_niters_prolog,
-			     int bound_prolog, poly_int64 bound_epilog, int th,
-			     poly_uint64 *bound_scalar,
+			     poly_int64 bound_prolog, poly_int64 bound_epilog,
+			     int th, poly_uint64 *bound_scalar,
 			     bool check_profitability)
 {
   tree type = TREE_TYPE (niters_prolog);
@@ -2784,7 +2787,6 @@ vect_gen_vector_loop_niters (loop_vec_info loop_vinfo, tree niters,
   tree niters_vector, step_vector, type = TREE_TYPE (niters);
   poly_uint64 vf = LOOP_VINFO_VECT_FACTOR (loop_vinfo);
   edge pe = loop_preheader_edge (LOOP_VINFO_LOOP (loop_vinfo));
-  tree log_vf = NULL_TREE;
 
   /* If epilogue loop is required because of data accesses with gaps, we
      subtract one iteration from the total number of iterations here for
@@ -2810,22 +2812,25 @@ vect_gen_vector_loop_niters (loop_vec_info loop_vinfo, tree niters,
   if (vf.is_constant (&const_vf)
       && !LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo))
     {
-      /* Create: niters >> log2(vf) */
+      /* Create: niters / vf, which is equivalent to niters >> log2(vf) when
+		 vf is a power of two, and when not we approximate using a
+		 truncating division.  */
       /* If it's known that niters == number of latch executions + 1 doesn't
-	 overflow, we can generate niters >> log2(vf); otherwise we generate
-	 (niters - vf) >> log2(vf) + 1 by using the fact that we know ratio
+	 overflow, we can generate niters / vf; otherwise we generate
+	 (niters - vf) / vf + 1 by using the fact that we know ratio
 	 will be at least one.  */
-      log_vf = build_int_cst (type, exact_log2 (const_vf));
+      tree var_vf = build_int_cst (type, const_vf);
       if (niters_no_overflow)
-	niters_vector = fold_build2 (RSHIFT_EXPR, type, ni_minus_gap, log_vf);
+	niters_vector = fold_build2 (TRUNC_DIV_EXPR, type, ni_minus_gap,
+				     var_vf);
       else
 	niters_vector
 	  = fold_build2 (PLUS_EXPR, type,
-			 fold_build2 (RSHIFT_EXPR, type,
+			 fold_build2 (TRUNC_DIV_EXPR, type,
 				      fold_build2 (MINUS_EXPR, type,
 						   ni_minus_gap,
-						   build_int_cst (type, vf)),
-				      log_vf),
+						   var_vf),
+				      var_vf),
 			 build_int_cst (type, 1));
       step_vector = build_one_cst (type);
     }
@@ -2844,16 +2849,29 @@ vect_gen_vector_loop_niters (loop_vec_info loop_vinfo, tree niters,
       /* Peeling algorithm guarantees that vector loop bound is at least ONE,
 	 we set range information to make niters analyzer's life easier.
 	 Note the number of latch iteration value can be TYPE_MAX_VALUE so
-	 we have to represent the vector niter TYPE_MAX_VALUE + 1 >> log_vf.  */
-      if (stmts != NULL && log_vf)
+	 we have to represent the vector niter TYPE_MAX_VALUE + 1 / vf.  */
+      if (stmts != NULL && const_vf > 0 && !LOOP_VINFO_EPILOGUE_P (loop_vinfo))
 	{
-	  if (niters_no_overflow)
+	  if (niters_no_overflow
+	      && LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo))
 	    {
 	      int_range<1> vr (type,
 			       wi::one (TYPE_PRECISION (type)),
-			       wi::rshift (wi::max_value (TYPE_PRECISION (type),
-							  TYPE_SIGN (type)),
-					   exact_log2 (const_vf),
+			       wi::div_ceil (wi::max_value
+							(TYPE_PRECISION (type),
+							 TYPE_SIGN (type)),
+					     const_vf,
+					     TYPE_SIGN (type)));
+	      set_range_info (niters_vector, vr);
+	    }
+	  else if (niters_no_overflow)
+	    {
+	      int_range<1> vr (type,
+			       wi::one (TYPE_PRECISION (type)),
+			       wi::div_trunc (wi::max_value
+							(TYPE_PRECISION (type),
+							 TYPE_SIGN (type)),
+					   const_vf,
 					   TYPE_SIGN (type)));
 	      set_range_info (niters_vector, vr);
 	    }
@@ -2891,13 +2909,12 @@ vect_gen_vector_loop_niters_mult_vf (loop_vec_info loop_vinfo,
   /* We should be using a step_vector of VF if VF is variable.  */
   int vf = LOOP_VINFO_VECT_FACTOR (loop_vinfo).to_constant ();
   tree type = TREE_TYPE (niters_vector);
-  tree log_vf = build_int_cst (type, exact_log2 (vf));
   tree tree_vf = build_int_cst (type, vf);
   basic_block exit_bb = LOOP_VINFO_IV_EXIT (loop_vinfo)->dest;
 
   gcc_assert (niters_vector_mult_vf_ptr != NULL);
-  tree niters_vector_mult_vf = fold_build2 (LSHIFT_EXPR, type,
-					    niters_vector, log_vf);
+  tree niters_vector_mult_vf = fold_build2 (MULT_EXPR, type,
+					    niters_vector, tree_vf);
 
   /* If we've peeled a vector iteration then subtract one full vector
      iteration.  */
@@ -3128,12 +3145,6 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
   int estimated_vf;
   int prolog_peeling = 0;
   bool vect_epilogues = loop_vinfo->epilogue_vinfo != NULL;
-  /* We currently do not support prolog peeling if the target alignment is not
-     known at compile time.  'vect_gen_prolog_loop_niters' depends on the
-     target alignment being constant.  */
-  dr_vec_info *dr_info = LOOP_VINFO_UNALIGNED_DR (loop_vinfo);
-  if (dr_info && !DR_TARGET_ALIGNMENT (dr_info).is_constant ())
-    return NULL;
 
   if (!vect_use_loop_mask_for_alignment_p (loop_vinfo))
     prolog_peeling = LOOP_VINFO_PEELING_FOR_ALIGNMENT (loop_vinfo);
@@ -3203,7 +3214,7 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
   prob_prolog = prob_epilog = profile_probability::guessed_always ()
 			.apply_scale (estimated_vf - 1, estimated_vf);
 
-  class loop *prolog, *epilog = NULL;
+  class loop *prolog = NULL, *epilog = NULL;
   class loop *first_loop = loop;
   bool irred_flag = loop_preheader_edge (loop)->flags & EDGE_IRREDUCIBLE_LOOP;
 
@@ -3242,11 +3253,11 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
   /* Generate the number of iterations for the prolog loop.  We do this here
      so that we can also get the upper bound on the number of iterations.  */
   tree niters_prolog;
-  int bound_prolog = 0;
+  poly_int64 bound_prolog = 0;
   if (prolog_peeling)
     {
       niters_prolog = vect_gen_prolog_loop_niters (loop_vinfo, anchor,
-						    &bound_prolog);
+						   &bound_prolog);
       /* If algonment peeling is known, we will always execute prolog.  */
       if (TREE_CODE (niters_prolog) == INTEGER_CST)
 	prob_prolog = profile_probability::always ();
@@ -3277,7 +3288,7 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
   bool skip_vector = (LOOP_VINFO_NITERS_KNOWN_P (loop_vinfo)
 		      ? maybe_lt (LOOP_VINFO_INT_NITERS (loop_vinfo),
 				  bound_prolog + bound_epilog)
-		      : (!LOOP_REQUIRES_VERSIONING (loop_vinfo)
+		      : (!LOOP_VINFO_USE_VERSIONING_WITHOUT_PEELING (loop_vinfo)
 			 || vect_epilogues));
 
   /* Epilog loop must be executed if the number of iterations for epilog
@@ -3389,7 +3400,8 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
 	  slpeel_update_phi_nodes_for_guard1 (prolog, loop, guard_e, e);
 
 	  scale_bbs_frequencies (&bb_after_prolog, 1, prob_prolog);
-	  scale_loop_profile (prolog, prob_prolog, bound_prolog - 1);
+	  scale_loop_profile (prolog, prob_prolog,
+			      estimated_poly_value (bound_prolog) - 1);
 	}
 
       /* Update init address of DRs.  */
@@ -3414,7 +3426,9 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
 
       /* Prolog iterates at most bound_prolog times, latch iterates at
 	 most bound_prolog - 1 times.  */
-      record_niter_bound (prolog, bound_prolog - 1, false, true);
+      if (bound_prolog.is_constant ())
+	record_niter_bound (prolog, bound_prolog.to_constant () - 1, false,
+			    true);
       delete_update_ssa ();
       adjust_vec_debug_stmts ();
       scev_reset ();
@@ -3470,6 +3484,30 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
 	  skip_e = guard_e;
 	  e = EDGE_PRED (guard_to, 0);
 	  e = (e != guard_e ? e : EDGE_PRED (guard_to, 1));
+
+	  /* Handle any remaining dominator updates needed after
+	     inserting the loop skip edge above.  */
+	  if (LOOP_VINFO_EARLY_BREAKS (loop_vinfo)
+	      && prolog_peeling)
+	    {
+	      /* Adding a skip edge to skip a loop with multiple exits
+		 means the dominator of the join blocks for all exits shifts
+		 from the prolog skip guard to the loop skip guard.  */
+	      auto prolog_skip_bb
+		= single_pred (loop_preheader_edge (prolog)->src);
+	      auto needs_update
+		= get_dominated_by (CDI_DOMINATORS, prolog_skip_bb);
+
+	      /* Update everything except for the immediate children of
+		 the prolog skip block (the prolog and vector preheaders).
+		 Those should remain dominated by the prolog skip block itself,
+		 since the loop guard edge goes to the epilogue.  */
+	      for (auto bb : needs_update)
+		if (bb != EDGE_SUCC (prolog_skip_bb, 0)->dest
+		    && bb != EDGE_SUCC (prolog_skip_bb, 1)->dest)
+		  set_immediate_dominator (CDI_DOMINATORS, bb, guard_bb);
+	    }
+
 	  slpeel_update_phi_nodes_for_guard1 (first_loop, epilog, guard_e, e);
 
 	  /* Simply propagate profile info from guard_bb to guard_to which is
@@ -3536,7 +3574,9 @@ vect_do_peeling (loop_vec_info loop_vinfo, tree niters, tree nitersm1,
 
       /* If we have a peeled vector iteration we will never skip the epilog loop
 	 and we can simplify the cfg a lot by not doing the edge split.  */
-      if (skip_epilog || LOOP_VINFO_EARLY_BREAKS (loop_vinfo))
+      if (skip_epilog
+	  || (LOOP_VINFO_EARLY_BREAKS (loop_vinfo)
+	      && !LOOP_VINFO_EARLY_BREAKS_VECT_PEELED (loop_vinfo)))
 	{
 	  guard_cond = fold_build2 (EQ_EXPR, boolean_type_node,
 				    niters, niters_vector_mult_vf);
@@ -3757,10 +3797,11 @@ chain_cond_expr (tree *cond_expr, tree part_cond_expr)
 
    Input:
    COND_EXPR  - input conditional expression.  New conditions will be chained
-                with logical AND operation.
-   LOOP_VINFO - two fields of the loop information are used.
-                LOOP_VINFO_PTR_MASK is the mask used to check the alignment.
-                LOOP_VINFO_MAY_MISALIGN_STMTS contains the refs to be checked.
+		with logical AND operation.
+   LOOP_VINFO - three fields of the loop information are used.
+		LOOP_VINFO_PTR_MASK is the mask used to check the alignment.
+		LOOP_VINFO_MAY_MISALIGN_STMTS contains the refs to be checked.
+		LOOP_VINFO_ALLOW_MUTUAL_ALIGNMENT indicates which check applies.
 
    Output:
    COND_EXPR_STMT_LIST - statements needed to construct the conditional
@@ -3768,7 +3809,20 @@ chain_cond_expr (tree *cond_expr, tree part_cond_expr)
    The returned value is the conditional expression to be used in the if
    statement that controls which version of the loop gets executed at runtime.
 
-   The algorithm makes two assumptions:
+   Based on the boolean value of LOOP_VINFO_ALLOW_MUTUAL_ALIGNMENT, we decide
+   which type of check should be applied and create two different expressions
+   accordingly.
+     1) When LOOP_VINFO_ALLOW_MUTUAL_ALIGNMENT is false, we see if all data refs
+	to be checked are already aligned to an alignment boundary.  We create
+	an expression of "(a_1 | a_2 | a_3 | ... | a_n) & mask", where "a_i" is
+	the address of i'th data reference.
+     2) When LOOP_VINFO_ALLOW_MUTUAL_ALIGNMENT is true, we see if all data refs
+	can be aligned to a boundary after a certain amount of peeling, in other
+	words, their addresses have the same bottom bits according to the mask.
+	We create "((a_1 ^ a_2) | (a_2 ^ a_3) | ... | (a_n-1 ^ a_n)) & mask",
+	where "a_i" is the address of i'th data reference.
+
+   Both algorithms make two assumptions:
      1) The number of bytes "n" in a vector is a power of 2.
      2) An address "a" is aligned if a%n is zero and that this
         test can be done as a&(n-1) == 0.  For example, for 16
@@ -3782,33 +3836,35 @@ vect_create_cond_for_align_checks (loop_vec_info loop_vinfo,
   const vec<stmt_vec_info> &may_misalign_stmts
     = LOOP_VINFO_MAY_MISALIGN_STMTS (loop_vinfo);
   stmt_vec_info stmt_info;
-  int mask = LOOP_VINFO_PTR_MASK (loop_vinfo);
+  poly_uint64 mask = LOOP_VINFO_PTR_MASK (loop_vinfo);
   tree mask_cst;
   unsigned int i;
   tree int_ptrsize_type;
-  char tmp_name[20];
+  char tmp_name[30];
   tree or_tmp_name = NULL_TREE;
+  tree prev_addr_tmp_name = NULL_TREE;
   tree and_tmp_name;
   gimple *and_stmt;
   tree ptrsize_zero;
   tree part_cond_expr;
 
-  /* Check that mask is one less than a power of 2, i.e., mask is
-     all zeros followed by all ones.  */
-  gcc_assert ((mask != 0) && ((mask & (mask+1)) == 0));
+  gcc_assert (known_ne (mask, 0U));
 
   int_ptrsize_type = signed_type_for (ptr_type_node);
 
-  /* Create expression (mask & (dr_1 || ... || dr_n)) where dr_i is the address
-     of the first vector of the i'th data reference. */
+  /* If LOOP_VINFO_ALLOW_MUTUAL_ALIGNMENT is true, we should have at least two
+     datarefs to check the mutual alignment.  */
+  gcc_assert (may_misalign_stmts.length () > 1
+	      || !LOOP_VINFO_ALLOW_MUTUAL_ALIGNMENT (loop_vinfo));
 
   FOR_EACH_VEC_ELT (may_misalign_stmts, i, stmt_info)
     {
       gimple_seq new_stmt_list = NULL;
       tree addr_base;
       tree addr_tmp_name;
+      tree xor_tmp_name;
       tree new_or_tmp_name;
-      gimple *addr_stmt, *or_stmt;
+      gimple *addr_stmt, *or_stmt, *xor_stmt;
       tree vectype = STMT_VINFO_VECTYPE (stmt_info);
       bool negative = tree_int_cst_compare
 	(DR_STEP (STMT_VINFO_DATA_REF (stmt_info)), size_zero_node) < 0;
@@ -3830,20 +3886,56 @@ vect_create_cond_for_align_checks (loop_vec_info loop_vinfo,
       addr_stmt = gimple_build_assign (addr_tmp_name, NOP_EXPR, addr_base);
       gimple_seq_add_stmt (cond_expr_stmt_list, addr_stmt);
 
-      /* The addresses are OR together.  */
-
-      if (or_tmp_name != NULL_TREE)
-        {
-          /* create: or_tmp = or_tmp | addr_tmp */
-          sprintf (tmp_name, "orptrs%d", i);
-	  new_or_tmp_name = make_temp_ssa_name (int_ptrsize_type, NULL, tmp_name);
-	  or_stmt = gimple_build_assign (new_or_tmp_name, BIT_IOR_EXPR,
-					 or_tmp_name, addr_tmp_name);
-	  gimple_seq_add_stmt (cond_expr_stmt_list, or_stmt);
-          or_tmp_name = new_or_tmp_name;
-        }
+      if (LOOP_VINFO_ALLOW_MUTUAL_ALIGNMENT (loop_vinfo))
+	{
+	  /* Create "((a_1 ^ a_2) | (a_2 ^ a_3) | ... | (a_n-1 ^ a_n)) & mask"
+	     to check mutual alignment.  */
+	  if (prev_addr_tmp_name != NULL_TREE)
+	    {
+	      sprintf (tmp_name, "xorptrs%d_%d", i - 1, i);
+	      xor_tmp_name = make_temp_ssa_name (int_ptrsize_type, NULL,
+						 tmp_name);
+	      xor_stmt = gimple_build_assign (xor_tmp_name, BIT_XOR_EXPR,
+					      prev_addr_tmp_name,
+					      addr_tmp_name);
+	      gimple_seq_add_stmt (cond_expr_stmt_list, xor_stmt);
+	      if (or_tmp_name == NULL_TREE)
+		{
+		  /* Create the 1st XOR when the 2nd data ref is seen.  */
+		  or_tmp_name = xor_tmp_name;
+		}
+	      else
+		{
+		  /* Create: or_tmp = or_tmp | new_xor_tmp.  */
+		  sprintf (tmp_name, "orxors%d", i - 1);
+		  new_or_tmp_name = make_temp_ssa_name (int_ptrsize_type, NULL,
+							tmp_name);
+		  or_stmt = gimple_build_assign (new_or_tmp_name, BIT_IOR_EXPR,
+						 or_tmp_name, xor_tmp_name);
+		  gimple_seq_add_stmt (cond_expr_stmt_list, or_stmt);
+		  or_tmp_name = new_or_tmp_name;
+		}
+	    }
+	  prev_addr_tmp_name = addr_tmp_name;
+	}
       else
-        or_tmp_name = addr_tmp_name;
+	{
+	  /* Create: "(a_1 | a_2 | a_3 | ... | a_n) & mask" to check if all
+	     addresses are already aligned.  */
+	  if (or_tmp_name != NULL_TREE)
+	    {
+	      /* Create: or_tmp = or_tmp | addr_tmp.  */
+	      sprintf (tmp_name, "orptrs%d", i);
+	      new_or_tmp_name = make_temp_ssa_name (int_ptrsize_type, NULL,
+						    tmp_name);
+	      or_stmt = gimple_build_assign (new_or_tmp_name, BIT_IOR_EXPR,
+					     or_tmp_name, addr_tmp_name);
+	      gimple_seq_add_stmt (cond_expr_stmt_list, or_stmt);
+	      or_tmp_name = new_or_tmp_name;
+	    }
+	  else
+	    or_tmp_name = addr_tmp_name;
+	}
 
     } /* end for i */
 
@@ -3862,6 +3954,62 @@ vect_create_cond_for_align_checks (loop_vec_info loop_vinfo,
   part_cond_expr = fold_build2 (EQ_EXPR, boolean_type_node,
 				and_tmp_name, ptrsize_zero);
   chain_cond_expr (cond_expr, part_cond_expr);
+}
+
+/* Function vect_create_cond_for_vla_spec_read.
+
+   Create a conditional expression that represents the run-time checks with
+   max speculative read amount in VLA modes.  We check two things:
+     1) if the max speculative read amount exceeds the min page size
+     2) if the VF is power-of-2 - done by checking the max read amount instead
+
+   Input:
+   COND_EXPR  - input conditional expression.  New conditions will be chained
+		with logical AND operation.
+   LOOP_VINFO - field LOOP_VINFO_MAX_SPEC_READ_AMOUNT contains the max
+		possible speculative read amount in VLA modes.
+
+   Output:
+   COND_EXPR - conditional expression.
+
+   The returned COND_EXPR is the conditional expression to be used in the
+   if statement that controls which version of the loop gets executed at
+   runtime.  */
+
+static void
+vect_create_cond_for_vla_spec_read (loop_vec_info loop_vinfo, tree *cond_expr)
+{
+  poly_uint64 read_amount_poly = LOOP_VINFO_MAX_SPEC_READ_AMOUNT (loop_vinfo);
+  tree amount = build_int_cst (long_unsigned_type_node, read_amount_poly);
+
+  /* Both the read amount and the VF must be variants, and the read amount must
+     be a constant power-of-2 multiple of the VF.  */
+  unsigned HOST_WIDE_INT multiple;
+  gcc_assert (!read_amount_poly.is_constant ()
+	      && !LOOP_VINFO_VECT_FACTOR (loop_vinfo).is_constant ()
+	      && constant_multiple_p (read_amount_poly,
+				      LOOP_VINFO_VECT_FACTOR (loop_vinfo),
+				      &multiple)
+	      && pow2p_hwi (multiple));
+
+  tree cst_ul_zero = build_int_cstu (long_unsigned_type_node, 0U);
+  tree cst_ul_one = build_int_cstu (long_unsigned_type_node, 1U);
+  tree cst_ul_pagesize = build_int_cstu (long_unsigned_type_node,
+					 (unsigned long) param_min_pagesize);
+
+  /* Create an expression of "amount & (amount - 1) == 0".  */
+  tree amount_m1 = fold_build2 (MINUS_EXPR, long_unsigned_type_node,
+				amount, cst_ul_one);
+  tree amount_and_expr = fold_build2 (BIT_AND_EXPR, long_unsigned_type_node,
+				      amount, amount_m1);
+  tree powof2_cond_expr = fold_build2 (EQ_EXPR, boolean_type_node,
+				       amount_and_expr, cst_ul_zero);
+  chain_cond_expr (cond_expr, powof2_cond_expr);
+
+  /* Create an expression of "amount <= cst_ul_pagesize".  */
+  tree pagesize_cond_expr = fold_build2 (LE_EXPR, boolean_type_node,
+					 amount, cst_ul_pagesize);
+  chain_cond_expr (cond_expr, pagesize_cond_expr);
 }
 
 /* If LOOP_VINFO_CHECK_UNEQUAL_ADDRS contains <A1, B1>, ..., <An, Bn>,
@@ -3989,6 +4137,7 @@ vect_loop_versioning (loop_vec_info loop_vinfo,
   gimple_seq gimplify_stmt_list = NULL;
   tree scalar_loop_iters = LOOP_VINFO_NITERSM1 (loop_vinfo);
   bool version_align = LOOP_REQUIRES_VERSIONING_FOR_ALIGNMENT (loop_vinfo);
+  bool version_spec_read = LOOP_REQUIRES_VERSIONING_FOR_SPEC_READ (loop_vinfo);
   bool version_alias = LOOP_REQUIRES_VERSIONING_FOR_ALIAS (loop_vinfo);
   bool version_niter = LOOP_REQUIRES_VERSIONING_FOR_NITERS (loop_vinfo);
   poly_uint64 versioning_threshold
@@ -4046,6 +4195,9 @@ vect_loop_versioning (loop_vec_info loop_vinfo,
   if (version_align)
     vect_create_cond_for_align_checks (loop_vinfo, &cond_expr,
 				       &cond_expr_stmt_list);
+
+  if (version_spec_read)
+    vect_create_cond_for_vla_spec_read (loop_vinfo, &cond_expr);
 
   if (version_alias)
     {

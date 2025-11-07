@@ -1,12 +1,8 @@
 /* -fanalyzer plugin for CPython extension modules  */
 /* { dg-options "-g" } */
 
-#define INCLUDE_MEMORY
-#define INCLUDE_VECTOR
+#include "analyzer/common.h"
 #include "gcc-plugin.h"
-#include "config.h"
-#include "system.h"
-#include "coretypes.h"
 #include "tree.h"
 #include "function.h"
 #include "basic-block.h"
@@ -22,14 +18,14 @@
 #include "target.h"
 #include "fold-const.h"
 #include "tree-pretty-print.h"
-#include "diagnostic-color.h"
-#include "diagnostic-metadata.h"
+#include "diagnostics/color.h"
+#include "diagnostics/metadata.h"
 #include "tristate.h"
 #include "bitmap.h"
 #include "selftest.h"
 #include "function.h"
 #include "json.h"
-#include "analyzer/analyzer.h"
+#include "analyzer/common.h"
 #include "analyzer/analyzer-language.h"
 #include "analyzer/analyzer-logging.h"
 #include "ordered-hash-map.h"
@@ -46,7 +42,6 @@
 #include "analyzer/call-details.h"
 #include "analyzer/call-info.h"
 #include "analyzer/exploded-graph.h"
-#include "make-unique.h"
 
 int plugin_is_GPL_compatible;
 
@@ -207,7 +202,7 @@ public:
   std::unique_ptr<stmt_finder>
   clone () const final override
   {
-    return make_unique<refcnt_stmt_finder> (m_eg, m_var);
+    return std::make_unique<refcnt_stmt_finder> (m_eg, m_var);
   }
 
   const gimple *
@@ -416,7 +411,7 @@ count_pyobj_references (const region_model *model,
 
   for (const auto &binding : retval_binding_map)
     {
-      const svalue *binding_sval = binding.second;
+      const svalue *binding_sval = binding.m_sval;
       const svalue *unwrapped_sval = binding_sval->unwrap_any_unmergeable ();
       const region *pointee = unwrapped_sval->maybe_get_region ();
 
@@ -451,8 +446,9 @@ check_refcnt (const region_model *model,
 
       const auto &eg = ctxt->get_eg ();
       refcnt_stmt_finder finder (*eg, reg_tree);
-      auto pd = make_unique<refcnt_mismatch> (curr_region, ob_refcnt_sval,
-					      actual_refcnt_sval, reg_tree);
+      auto pd = std::make_unique<refcnt_mismatch> (curr_region, ob_refcnt_sval,
+						   actual_refcnt_sval,
+						   reg_tree);
       if (pd && eg)
 	ctxt->warn (std::move (pd), &finder);
     }
@@ -505,7 +501,7 @@ count_all_references (const region_model *model,
       auto binding_cluster = cluster.second;
       for (const auto &binding : binding_cluster->get_map ())
 	{
-	  const svalue *binding_sval = binding.second;
+	  const svalue *binding_sval = binding.m_sval;
 
 	  const svalue *unwrapped_sval
 	      = binding_sval->unwrap_any_unmergeable ();
@@ -680,7 +676,7 @@ kf_PyList_Append::impl_call_post (const call_details &cd) const
           = old_ptr_sval->dyn_cast_region_svalue ())
         {
           const region *freed_reg = old_reg->get_pointee ();
-          model->unbind_region_and_descendents (freed_reg, POISON_KIND_FREED);
+          model->unbind_region_and_descendents (freed_reg, poison_kind::freed);
           model->unset_dynamic_extents (freed_reg);
         }
 
@@ -885,7 +881,7 @@ kf_PyList_Append::impl_call_post (const call_details &cd) const
               model->mark_region_as_unknown (freed_reg, cd.get_uncertainty ());
             }
 
-          model->unbind_region_and_descendents (freed_reg, POISON_KIND_FREED);
+          model->unbind_region_and_descendents (freed_reg, poison_kind::freed);
           model->unset_dynamic_extents (freed_reg);
         }
 
@@ -943,9 +939,9 @@ kf_PyList_Append::impl_call_post (const call_details &cd) const
   /* Body of kf_PyList_Append::impl_call_post.  */
   if (cd.get_ctxt ())
     {
-      cd.get_ctxt ()->bifurcate (make_unique<realloc_failure> (cd));
-      cd.get_ctxt ()->bifurcate (make_unique<realloc_success_no_move> (cd));
-      cd.get_ctxt ()->bifurcate (make_unique<realloc_success_move> (cd));
+      cd.get_ctxt ()->bifurcate (std::make_unique<realloc_failure> (cd));
+      cd.get_ctxt ()->bifurcate (std::make_unique<realloc_success_no_move> (cd));
+      cd.get_ctxt ()->bifurcate (std::make_unique<realloc_success_move> (cd));
       cd.get_ctxt ()->terminate_path ();
     }
 }
@@ -1078,8 +1074,8 @@ kf_PyList_New::impl_call_post (const call_details &cd) const
 
   if (cd.get_ctxt ())
     {
-      cd.get_ctxt ()->bifurcate (make_unique<pyobj_init_fail> (cd));
-      cd.get_ctxt ()->bifurcate (make_unique<success> (cd));
+      cd.get_ctxt ()->bifurcate (std::make_unique<pyobj_init_fail> (cd));
+      cd.get_ctxt ()->bifurcate (std::make_unique<success> (cd));
       cd.get_ctxt ()->terminate_path ();
     }
 }
@@ -1147,8 +1143,8 @@ kf_PyLong_FromLong::impl_call_post (const call_details &cd) const
 
   if (cd.get_ctxt ())
     {
-      cd.get_ctxt ()->bifurcate (make_unique<pyobj_init_fail> (cd));
-      cd.get_ctxt ()->bifurcate (make_unique<success> (cd));
+      cd.get_ctxt ()->bifurcate (std::make_unique<pyobj_init_fail> (cd));
+      cd.get_ctxt ()->bifurcate (std::make_unique<success> (cd));
       cd.get_ctxt ()->terminate_path ();
     }
 }
@@ -1290,14 +1286,14 @@ cpython_analyzer_init_cb (void *gcc_data, void * /*user_data */)
     }
 
   iface->register_known_function ("PyList_Append",
-                                  make_unique<kf_PyList_Append> ());
-  iface->register_known_function ("PyList_New", make_unique<kf_PyList_New> ());
+                                  std::make_unique<kf_PyList_Append> ());
+  iface->register_known_function ("PyList_New", std::make_unique<kf_PyList_New> ());
   iface->register_known_function ("PyLong_FromLong",
-                                  make_unique<kf_PyLong_FromLong> ());
+                                  std::make_unique<kf_PyLong_FromLong> ());
 
   iface->register_known_function (
       "__analyzer_cpython_dump_refcounts",
-      make_unique<kf_analyzer_cpython_dump_refcounts> ());
+      std::make_unique<kf_analyzer_cpython_dump_refcounts> ());
 }
 } // namespace ana
 

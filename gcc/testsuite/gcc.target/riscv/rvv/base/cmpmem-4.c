@@ -1,4 +1,4 @@
-/* { dg-do compile } */
+/* { dg-do compile { target { ! riscv_abi_e } } } */
 /* { dg-add-options riscv_v } */
 /* { dg-additional-options "-O3 -mrvv-max-lmul=m8" } */
 /* { dg-final { check-function-bodies "**" "" } } */
@@ -8,7 +8,7 @@
 /* Tiny __builtin_memcmp should use libc.
 ** f1:
 **  li\s+a\d,\d+
-**  tail\s+memcmp
+**  tail\s+memcmp(?:@plt)?
 */
 int
 f1 (void *a, void *b)
@@ -53,7 +53,7 @@ f3 (void *a, void *b)
 /* Don't inline if the length is too large for one operation.
 ** f4:
 **  li\s+a2,\d+
-**  tail\s+memcmp
+**  tail\s+memcmp(?:@plt)?
 */
 int
 f4 (void *a, void *b)

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -77,6 +77,7 @@ with Style;
 with Table;
 with Tbuild;         use Tbuild;
 with Uintp;          use Uintp;
+with Uname;          use Uname;
 with Warnsw;         use Warnsw;
 
 package body Sem_Ch8 is
@@ -135,7 +136,7 @@ package body Sem_Ch8 is
    --  the order of their corresponding scopes on the scope stack. For
    --  example, if package P and the enclosing scope both contain entities
    --  named E, then when compiling the package body the chain for E will
-   --  hold the global entity first,  and the local one (corresponding to
+   --  hold the global entity first, and the local one (corresponding to
    --  the current inner scope) next. As a result, name resolution routines
    --  do not assume any relative ordering of the homonym chains, either
    --  for scope nesting or to order of appearance of context clauses.
@@ -206,7 +207,7 @@ package body Sem_Ch8 is
    --  a private or incomplete type declaration, or a protected type speci-
    --  fication) and re-chained when compiling the second view.
 
-   --  In the case of operators,  we do not make operators on derived types
+   --  In the case of operators, we do not make operators on derived types
    --  explicit. As a result, the notation P."+" may denote either a user-
    --  defined function with name "+", or else an implicit declaration of the
    --  operator "+" in package P. The resolution of expanded names always
@@ -1665,8 +1666,7 @@ package body Sem_Ch8 is
          Set_Etype (New_P, Standard_Void_Type);
 
       elsif Present (Renamed_Entity (Old_P))
-        and then (From_Limited_With (Renamed_Entity (Old_P))
-                    or else Has_Limited_View (Renamed_Entity (Old_P)))
+        and then Renames_Limited_View (Old_P)
         and then not
           Unit_Is_Visible (Cunit (Get_Source_Unit (Renamed_Entity (Old_P))))
       then
@@ -1691,8 +1691,10 @@ package body Sem_Ch8 is
 
          if Present (Renamed_Entity (Old_P)) then
             Set_Renamed_Entity (New_P, Renamed_Entity (Old_P));
+            Set_Renames_Limited_View (New_P, Renames_Limited_View (Old_P));
          else
             Set_Renamed_Entity (New_P, Old_P);
+            Set_Renames_Limited_View (New_P, From_Limited_With (Old_P));
          end if;
 
          --  The package renaming declaration may become Ghost if it renames a
@@ -1871,13 +1873,13 @@ package body Sem_Ch8 is
       New_S   : Entity_Id;
       Is_Body : Boolean)
    is
-      Nam       : constant Node_Id := Name (N);
-      Sel       : constant Node_Id := Selector_Name (Nam);
-      Is_Actual : constant Boolean := Present (Corresponding_Formal_Spec (N));
-      Old_S     : Entity_Id;
+      Nam : constant Node_Id := Name (N);
+      P   : constant Node_Id := Prefix (Nam);
+
+      Old_S : Entity_Id;
 
    begin
-      if Entity (Sel) = Any_Id then
+      if Entity (Selector_Name (Nam)) = Any_Id then
 
          --  Selector is undefined on prefix. Error emitted already
 
@@ -1890,7 +1892,7 @@ package body Sem_Ch8 is
       Old_S := Find_Renamed_Entity (N, Selector_Name (Nam), New_S);
 
       if Old_S = Any_Id then
-         Error_Msg_N ("no subprogram or entry matches specification",  N);
+         Error_Msg_N ("no subprogram or entry matches specification", N);
       else
          if Is_Body then
             Check_Subtype_Conformant (New_S, Old_S, N);
@@ -1908,10 +1910,11 @@ package body Sem_Ch8 is
          --  The prefix can be an arbitrary expression that yields a task or
          --  protected object, so it must be resolved.
 
-         if Is_Access_Type (Etype (Prefix (Nam))) then
-            Insert_Explicit_Dereference (Prefix (Nam));
+         if Is_Access_Type (Etype (P)) then
+            Insert_Explicit_Dereference (P);
          end if;
-         Resolve (Prefix (Nam), Scope (Old_S));
+
+         Resolve (P, Scope (Old_S));
       end if;
 
       Set_Convention (New_S, Convention (Old_S));
@@ -1922,9 +1925,9 @@ package body Sem_Ch8 is
 
       if Is_Protected_Type (Scope (Old_S))
         and then Ekind (New_S) = E_Procedure
-        and then not Is_Variable (Prefix (Nam))
+        and then not Is_Variable (P)
       then
-         if Is_Actual then
+         if Present (Corresponding_Formal_Spec (N)) then
             Error_Msg_N
               ("target object of protected operation used as actual for "
                & "formal procedure must be a variable", Nam);
@@ -1949,8 +1952,9 @@ package body Sem_Ch8 is
       New_S   : Entity_Id;
       Is_Body : Boolean)
    is
-      Nam   : constant Node_Id := Name (N);
-      P     : constant Node_Id := Prefix (Nam);
+      Nam : constant Node_Id := Name (N);
+      P   : constant Node_Id := Prefix (Nam);
+
       Old_S : Entity_Id;
 
    begin
@@ -1993,13 +1997,13 @@ package body Sem_Ch8 is
       New_S   : Entity_Id;
       Is_Body : Boolean)
    is
-      Old_S : Entity_Id;
-      Nam   : Entity_Id;
+      Nam : constant Node_Id := Name (N);
+      P   : constant Node_Id := Prefix (Nam);
 
       function Conforms
         (Subp : Entity_Id;
          Ctyp : Conformance_Type) return Boolean;
-      --  Verify that the signatures of the renamed entity and the new entity
+      --  Verify that the profiles of the renamed entity and the new entity
       --  match. The first formal of the renamed entity is skipped because it
       --  is the target object in any subsequent call.
 
@@ -2036,14 +2040,16 @@ package body Sem_Ch8 is
             Next_Formal (Old_F);
          end loop;
 
-         return True;
+         return No (Old_F) and then No (New_F);
       end Conforms;
+
+      Old_S : Entity_Id;
 
    --  Start of processing for Analyze_Renamed_Primitive_Operation
 
    begin
-      if not Is_Overloaded (Selector_Name (Name (N))) then
-         Old_S := Entity (Selector_Name (Name (N)));
+      if not Is_Overloaded (Selector_Name (Nam)) then
+         Old_S := Entity (Selector_Name (Nam));
 
          if not Conforms (Old_S, Type_Conformant) then
             Old_S := Any_Id;
@@ -2058,7 +2064,7 @@ package body Sem_Ch8 is
 
          begin
             Old_S := Any_Id;
-            Get_First_Interp (Selector_Name (Name (N)), Ind, It);
+            Get_First_Interp (Selector_Name (Nam), Ind, It);
 
             while Present (It.Nam) loop
                if Conforms (It.Nam, Type_Conformant) then
@@ -2071,7 +2077,7 @@ package body Sem_Ch8 is
       end if;
 
       if Old_S = Any_Id then
-         Error_Msg_N ("no subprogram or entry matches specification",  N);
+         Error_Msg_N ("no subprogram or entry matches specification", N);
 
       else
          if Is_Body then
@@ -2092,20 +2098,18 @@ package body Sem_Ch8 is
             --  AI12-0204: The prefix of a prefixed view that is renamed or
             --  passed as a formal subprogram must be renamable as an object.
 
-            Nam := Prefix (Name (N));
-
-            if Is_Object_Reference (Nam) then
-               if Is_Dependent_Component_Of_Mutable_Object (Nam) then
+            if Is_Object_Reference (P) then
+               if Is_Dependent_Component_Of_Mutable_Object (P) then
                   Error_Msg_N
                     ("illegal renaming of discriminant-dependent component",
-                     Nam);
-               elsif Depends_On_Mutably_Tagged_Ext_Comp (Nam) then
+                     P);
+               elsif Depends_On_Mutably_Tagged_Ext_Comp (P) then
                   Error_Msg_N
                     ("illegal renaming of mutably tagged dependent component",
-                     Nam);
+                     P);
                end if;
             else
-               Error_Msg_N ("expect object name in renaming", Nam);
+               Error_Msg_N ("expect object name in renaming", P);
             end if;
 
             --  Enforce the rule given in (RM 6.3.1 (10.1/2)): a prefixed
@@ -2117,12 +2121,16 @@ package body Sem_Ch8 is
             Set_Convention (New_S, Convention_Intrinsic);
          end if;
 
-         --  Inherit_Renamed_Profile (New_S, Old_S);
+         Set_Entity (Selector_Name (Nam), Old_S);
 
          --  The prefix can be an arbitrary expression that yields an
          --  object, so it must be resolved.
 
-         Resolve (Prefix (Name (N)));
+         if Is_Access_Type (Etype (P)) then
+            Insert_Explicit_Dereference (P);
+         end if;
+
+         Resolve (P);
       end if;
    end Analyze_Renamed_Primitive_Operation;
 
@@ -3846,7 +3854,7 @@ package body Sem_Ch8 is
          elsif Ekind (Old_S) /= E_Operator then
 
             --  If this a defaulted subprogram for a class-wide actual there is
-            --  no check for mode conformance,  given that the signatures don't
+            --  no check for mode conformance, given that the signatures don't
             --  match (the source mentions T but the actual mentions T'Class).
 
             if CW_Actual then
@@ -4268,6 +4276,40 @@ package body Sem_Ch8 is
          Local_Restrict.Check_Actual_Subprogram_For_Instance
            (Actual_Subp_Name => Nam, Formal_Subp => Formal_Spec);
       end if;
+
+      --  If pragma Short_Circuit_And_Or is specified, then we give an error
+      --  for renaming an operator that is made short circuit.
+      --  For example, this is illegal:
+      --
+      --      function My_And (X, Y: Boolean) return Boolean renames "and";
+      --
+      --  if "and" denotes the usual predefined Boolean operator. Otherwise,
+      --  the semantics are confusing (sometimes short circuit, and sometimes
+      --  not, for calls to My_And). If we ever relax this rule, we will need
+      --  to clean up that run-time semantics.
+
+      if Short_Circuit_And_Or
+        and then Chars (Old_S) in Name_Op_And | Name_Op_Or
+        and then In_Extended_Main_Source_Unit (N)
+        and then Etype (Old_S) = Standard_Boolean
+        and then Is_Intrinsic_Subprogram (Old_S)
+      then
+         if Comes_From_Source (N) then
+            Error_Msg_N
+              ("pragma Short_Circuit_And_Or disallows renaming of " &
+               "operator", N);
+
+         --  Same error in case of an instantiation with My_And => "and"
+
+         elsif Present (Corresponding_Formal_Spec (N)) then
+            Error_Msg_N
+              ("pragma Short_Circuit_And_Or disallows passing of " &
+               "operator as a generic actual", N);
+
+         else
+            raise Program_Error;
+         end if;
+      end if;
    end Analyze_Subprogram_Renaming;
 
    -------------------------
@@ -4299,6 +4341,49 @@ package body Sem_Ch8 is
 
       begin
          pragma Assert (Nkind (Clause) = N_Use_Package_Clause);
+
+         --  Perform "use implies with" expansion (when extensions are enabled)
+         --  by inserting an extra with clause since redundant clauses don't
+         --  really matter.
+
+         if All_Extensions_Allowed
+           and then Is_In_Context_Clause (Clause)
+           and then Nkind (Pack) in N_Expanded_Name
+                                  | N_Identifier
+                                  | N_Selected_Component
+         then
+            declare
+               Unum        : Unit_Number_Type;
+               With_Clause : constant Node_Id :=
+                 Make_With_Clause (Sloc (Clause),
+                   Name => New_Copy_Tree (Pack));
+            begin
+               --  Attempt to load the unit mentioned in the use clause
+
+               Unum := Load_Unit
+                         (Load_Name  => Get_Unit_Name (With_Clause),
+                          Required   => False,
+                          Subunit    => False,
+                          Error_Node => Clause,
+                          With_Node  => With_Clause);
+
+               --  Either we can't file the unit or the use clause is a
+               --  reference to a nested package - in that case just handle
+               --  the use clause normally.
+
+               if Unum /= No_Unit then
+
+                  Set_Library_Unit (With_Clause, Cunit (Unum));
+                  Set_Is_Implicit_With (With_Clause);
+
+                  Analyze (With_Clause);
+                  Expand_With_Clause
+                   (With_Clause, Name (With_Clause),
+                     Enclosing_Comp_Unit_Node (Clause));
+               end if;
+            end;
+         end if;
+
          Analyze (Pack);
 
          --  Verify that the package standard is not directly named in a
@@ -4457,6 +4542,10 @@ package body Sem_Ch8 is
 
       Id := Subtype_Mark (N);
       Find_Type (Id);
+      if not Is_Entity_Name (Id) then
+         pragma Assert (Serious_Errors_Detected > 0);
+         return;
+      end if;
       E := Base_Type (Entity (Id));
 
       --  There are many cases where a use_type_clause may be reanalyzed due to
@@ -4957,9 +5046,36 @@ package body Sem_Ch8 is
    -----------------------------------
 
    procedure Check_In_Previous_With_Clause (N, Nam : Node_Id) is
-      Pack : constant Entity_Id := Entity (Original_Node (Nam));
+
+      function Get_Name (N : Node_Id) return Node_Id;
+      --  Return the name of a package that may be present in a clause
+
+      --------------
+      -- Get_Name --
+      --------------
+
+      function Get_Name (N : Node_Id) return Node_Id is
+      begin
+         case Nkind (N) is
+            when N_Indexed_Component =>
+               return Prefix (N);
+
+            when N_Function_Call =>
+               return Name (N);
+
+            when others =>
+               return N;
+         end case;
+      end Get_Name;
+
+      --  Local variables
+
+      Pack : constant Entity_Id := Entity (Get_Name (Original_Node (Nam)));
+
       Item : Node_Id;
       Par  : Node_Id;
+
+   --  Start of processing for Check_In_Previous_With_Clause
 
    begin
       Item := First (Context_Items (Parent (N)));
@@ -4971,7 +5087,7 @@ package body Sem_Ch8 is
            and then Nkind (Name (Item)) /= N_Selected_Component
            and then Entity (Name (Item)) = Pack
          then
-            Par := Nam;
+            Par := Get_Name (Original_Node (Nam));
 
             --  Find root library unit in with_clause
 
@@ -4979,7 +5095,7 @@ package body Sem_Ch8 is
                Par := Prefix (Par);
             end loop;
 
-            if Is_Child_Unit (Entity (Original_Node (Par))) then
+            if Is_Child_Unit (Entity (Par)) then
                Error_Msg_NE ("& is not directly visible", Par, Entity (Par));
             else
                return;
@@ -5009,6 +5125,14 @@ package body Sem_Ch8 is
 
    begin
       if Nkind (Parent (N)) /= N_Compilation_Unit then
+         return;
+
+      --  Structural instances can always be renamed
+
+      elsif Is_Generic_Instance (Old_E)
+        and then Present (Get_Unit_Instantiation_Node (Old_E))
+        and then Is_Structural (Get_Unit_Instantiation_Node (Old_E))
+      then
          return;
 
       --  Check for library unit. Note that we used to check for the scope
@@ -5095,7 +5219,7 @@ package body Sem_Ch8 is
          --  An entity in the current scope is not necessarily the first one
          --  on its homonym chain. Find its predecessor if any,
          --  If it is an internal entity, it will not be in the visibility
-         --  chain altogether,  and there is nothing to unchain.
+         --  chain altogether, and there is nothing to unchain.
 
          if Id /= Current_Entity (Id) then
             Prev := Current_Entity (Id);
@@ -5130,7 +5254,7 @@ package body Sem_Ch8 is
             Set_Name_Entity_Id (Chars (Id), Outer);
 
          elsif Scope (Prev) /= Scope (Id) then
-            Set_Homonym (Prev,  Outer);
+            Set_Homonym (Prev, Outer);
          end if;
 
          <<Next_Ent>>
@@ -5212,28 +5336,27 @@ package body Sem_Ch8 is
    ---------------------
 
    procedure End_Use_Package (N : Node_Id) is
+      function Type_In_Use (T : Entity_Id; P : Entity_Id) return Boolean;
+      --  Check whether type T is declared in P and appears in an active
+      --  use_type clause.
+
+      -----------------
+      -- Type_In_Use --
+      -----------------
+
+      function Type_In_Use (T : Entity_Id; P : Entity_Id) return Boolean is
+         BT : constant Entity_Id := Base_Type (T);
+      begin
+         return Scope (BT) = P and then (In_Use (T) or else In_Use (BT));
+      end Type_In_Use;
+
+      --  Local variables
+
+      Elmt      : Elmt_Id;
+      Id        : Entity_Id;
       Pack      : Entity_Id;
       Pack_Name : Node_Id;
-      Id        : Entity_Id;
-      Elmt      : Elmt_Id;
-
-      function Is_Primitive_Operator_In_Use
-        (Op : Entity_Id;
-         F  : Entity_Id) return Boolean;
-      --  Check whether Op is a primitive operator of a use-visible type
-
-      ----------------------------------
-      -- Is_Primitive_Operator_In_Use --
-      ----------------------------------
-
-      function Is_Primitive_Operator_In_Use
-        (Op : Entity_Id;
-         F  : Entity_Id) return Boolean
-      is
-         T : constant Entity_Id := Base_Type (Etype (F));
-      begin
-         return In_Use (T) and then Scope (T) = Scope (Op);
-      end Is_Primitive_Operator_In_Use;
+      Scop      : Entity_Id;
 
    --  Start of processing for End_Use_Package
 
@@ -5259,16 +5382,20 @@ package body Sem_Ch8 is
 
                --  Preserve use-visibility of operators that are primitive
                --  operators of a type that is use-visible through an active
-               --  use_type_clause.
+               --  use_type_clause. Note that we compare with the scope of
+               --  the operator and not Pack itself, lest Pack be a renaming.
+
+               Scop := Scope (Id);
 
                if Nkind (Id) = N_Defining_Operator_Symbol
                  and then
-                   (Is_Primitive_Operator_In_Use (Id, First_Formal (Id))
+                   (Type_In_Use (Etype (Id), Scop)
+                     or else Type_In_Use (Etype (First_Formal (Id)), Scop)
                      or else
                        (Present (Next_Formal (First_Formal (Id)))
                          and then
-                           Is_Primitive_Operator_In_Use
-                             (Id, Next_Formal (First_Formal (Id)))))
+                           Type_In_Use
+                             (Etype (Next_Formal (First_Formal (Id))), Scop)))
                then
                   null;
                else
@@ -5370,7 +5497,15 @@ package body Sem_Ch8 is
          elsif In_Open_Scopes (Scope (Base_Type (T))) then
             null;
 
-         elsif not Redundant_Use (Id) then
+         --  Turn off the use_type_clause on the type unless the clause is
+         --  redundant, or there's a previous use_type_clause. (The case where
+         --  a use_type_clause without "all" is followed by one with "all" in
+         --  a more nested scope is not considered redundant, necessitating
+         --  the test for a previous clause. One might expect the latter test
+         --  to suffice, but it turns out there are cases where Redundant_Use
+         --  is set, but Prev_Use_Clause is not set. ???)
+
+         elsif not Redundant_Use (Id) and then No (Prev_Use_Clause (N)) then
             Set_In_Use (T, False);
             Set_In_Use (Base_Type (T), False);
             Set_Current_Use_Clause (T, Empty);
@@ -5385,10 +5520,7 @@ package body Sem_Ch8 is
          end if;
       end if;
 
-      if Is_Empty_Elmt_List (Used_Operations (N)) then
-         return;
-
-      else
+      if Present (Used_Operations (N)) then
          Elmt := First_Elmt (Used_Operations (N));
          while Present (Elmt) loop
             Set_Is_Potentially_Use_Visible (Node (Elmt), False);
@@ -7077,7 +7209,7 @@ package body Sem_Ch8 is
               ("renaming of limited view of package & not usable in this"
                & " context (RM 8.5.3(3.1/2))", Prefix (N), P_Name);
 
-         elsif Has_Limited_View (P_Name)
+         elsif Renames_Limited_View (Entity (Prefix (N)))
            and then not Unit_Is_Visible (Cunit (Get_Source_Unit (P_Name)))
            and then not Is_Visible_Through_Renamings (P_Name)
          then
@@ -7105,6 +7237,8 @@ package body Sem_Ch8 is
 
       begin
          while Present (Id) loop
+            --  The immediate case is when Id is an entity of the prefix
+
             if Scope (Id) = P_Name then
                Candidate        := Id;
                Is_New_Candidate := True;
@@ -7129,6 +7263,53 @@ package body Sem_Ch8 is
                      Is_New_Candidate := False;
                   end if;
                end if;
+
+            --  If the name of a generic child unit appears within an instance
+            --  of itself, then it is resolved to the renaming of the name of
+            --  the instance built in Sem_Ch12, so we get to the generic parent
+            --  through the renaming.
+
+            elsif Ekind (Id) in E_Function | E_Package | E_Procedure
+              and then Present (Renamed_Entity (Id))
+              and then Is_Generic_Instance (Renamed_Entity (Id))
+              and then In_Open_Scopes (Renamed_Entity (Id))
+            then
+               declare
+                  Gen_Inst : constant Entity_Id := Renamed_Entity (Id);
+                  Gen_Par  : constant Entity_Id :=
+                    Generic_Parent
+                      (Specification (Unit_Declaration_Node (Gen_Inst)));
+
+               begin
+                  --  The easy case is when Gen_Par is an entity of the prefix
+
+                  if Scope (Gen_Par) = P_Name then
+                     Is_New_Candidate := True;
+
+                  --  Now the prefix may also be within an instance of itself,
+                  --  but we do not need to go through the renaming for it, as
+                  --  this was done on entry to the procedure.
+
+                  elsif Is_Generic_Instance (P_Name)
+                    and then In_Open_Scopes (P_Name)
+                  then
+                     declare
+                        Gen_Par_P : constant Entity_Id :=
+                          Generic_Parent
+                            (Specification (Unit_Declaration_Node (P_Name)));
+
+                     begin
+                        if Scope (Gen_Par) = Gen_Par_P then
+                           Is_New_Candidate := True;
+                        else
+                           Is_New_Candidate := False;
+                        end if;
+                     end;
+
+                  else
+                     Is_New_Candidate := False;
+                  end if;
+               end;
 
             --  Ada 2005 (AI-217): Handle shadow entities associated with
             --  types declared in limited-withed nested packages. We don't need
@@ -7162,22 +7343,6 @@ package body Sem_Ch8 is
               and then Unit_Is_Visible (Cunit (Get_Source_Unit (P_Name)))
             then
                Candidate        := Get_Full_View (Id);
-               Is_New_Candidate := True;
-
-            --  An unusual case arises with a fully qualified name for an
-            --  entity local to a generic child unit package, within an
-            --  instantiation of that package. The name of the unit now
-            --  denotes the renaming created within the instance. This is
-            --  only relevant in an instance body, see below.
-
-            elsif Is_Generic_Instance (Scope (Id))
-              and then In_Open_Scopes (Scope (Id))
-              and then In_Instance_Body
-              and then Ekind (Scope (Id)) = E_Package
-              and then Ekind (Id) = E_Package
-              and then Renamed_Entity (Id) = Scope (Id)
-              and then Is_Immediately_Visible (P_Name)
-            then
                Is_New_Candidate := True;
 
             else
@@ -7314,55 +7479,6 @@ package body Sem_Ch8 is
                end if;
 
             else
-               --  Within the instantiation of a child unit, the prefix may
-               --  denote the parent instance, but the selector has the name
-               --  of the original child. That is to say, when A.B appears
-               --  within an instantiation of generic child unit B, the scope
-               --  stack includes an instance of A (P_Name) and an instance
-               --  of B under some other name. We scan the scope to find this
-               --  child instance, which is the desired entity.
-               --  Note that the parent may itself be a child instance, if
-               --  the reference is of the form A.B.C, in which case A.B has
-               --  already been rewritten with the proper entity.
-
-               if In_Open_Scopes (P_Name)
-                 and then Is_Generic_Instance (P_Name)
-               then
-                  declare
-                     Gen_Par : constant Entity_Id :=
-                                 Generic_Parent (Specification
-                                   (Unit_Declaration_Node (P_Name)));
-                     S : Entity_Id := Current_Scope;
-                     P : Entity_Id;
-
-                  begin
-                     for J in reverse 0 .. Scope_Stack.Last loop
-                        S := Scope_Stack.Table (J).Entity;
-
-                        exit when S = Standard_Standard;
-
-                        if Ekind (S) in E_Function | E_Package | E_Procedure
-                        then
-                           P :=
-                             Generic_Parent (Specification
-                               (Unit_Declaration_Node (S)));
-
-                           --  Check that P is a generic child of the generic
-                           --  parent of the prefix.
-
-                           if Present (P)
-                             and then Chars (P) = Chars (Selector)
-                             and then Scope (P) = Gen_Par
-                           then
-                              Id := S;
-                              goto Found;
-                           end if;
-                        end if;
-
-                     end loop;
-                  end;
-               end if;
-
                --  If this is a selection from Ada, System or Interfaces, then
                --  we assume a missing with for the corresponding package.
 
@@ -7469,7 +7585,6 @@ package body Sem_Ch8 is
          end if;
       end if;
 
-      <<Found>>
       if Comes_From_Source (N)
         and then Is_Remote_Access_To_Subprogram_Type (Id)
         and then Ekind (Id) = E_Access_Subprogram_Type
@@ -8364,7 +8479,8 @@ package body Sem_Ch8 is
 
             if Is_Overloaded (P) then
 
-               --  The prefix must resolve to a unique enclosing construct
+               --  The prefix must resolve to a unique enclosing construct, per
+               --  the last sentence of RM 4.1.3 (13).
 
                declare
                   Found : Boolean := False;
@@ -8378,6 +8494,7 @@ package body Sem_Ch8 is
                         if Found then
                            Error_Msg_N (
                               "prefix must be unique enclosing scope", N);
+                           Change_Selected_Component_To_Expanded_Name (N);
                            Set_Entity (N, Any_Id);
                            Set_Etype  (N, Any_Type);
                            return;
@@ -8393,92 +8510,104 @@ package body Sem_Ch8 is
                end;
             end if;
 
+            --  Case of the enclosing construct
+
             if In_Open_Scopes (P_Name) then
                Set_Entity (P, P_Name);
                Set_Is_Overloaded (P, False);
                Find_Expanded_Name (N);
 
+            --  If no interpretation as an expanded name is possible, then it
+            --  must be a selected component of a record returned by a function
+            --  call. Reformat the prefix as a function call and analyze it.
+
             else
-               --  If no interpretation as an expanded name is possible, it
-               --  must be a selected component of a record returned by a
-               --  function call. Reformat prefix as a function call, the rest
-               --  is done by type resolution.
+               declare
+                  procedure Diagnose_Call;
+                  --  Try and give useful diagnostics on error
 
-               --  Error if the prefix is procedure or entry, as is P.X
+                  -------------------
+                  -- Diagnose_Call --
+                  -------------------
 
-               if Ekind (P_Name) /= E_Function
-                 and then
-                   (not Is_Overloaded (P)
-                     or else Nkind (Parent (N)) = N_Procedure_Call_Statement)
-               then
-                  --  Prefix may mention a package that is hidden by a local
-                  --  declaration: let the user know. Scan the full homonym
-                  --  chain, the candidate package may be anywhere on it.
+                  procedure Diagnose_Call is
+                     Ent : Entity_Id;
 
-                  if Present (Homonym (Current_Entity (P_Name))) then
-                     P_Name := Current_Entity (P_Name);
+                  begin
+                     --  Prefix may mention a package that is hidden by a local
+                     --  declaration: let the user know. Scan the full homonym
+                     --  chain, the candidate package may be anywhere on it.
 
-                     while Present (P_Name) loop
-                        exit when Ekind (P_Name) = E_Package;
-                        P_Name := Homonym (P_Name);
+                     Ent := Current_Entity (P_Name);
+
+                     while Present (Ent) loop
+                        exit when Ekind (Ent) = E_Package;
+                        Ent := Homonym (Ent);
                      end loop;
 
-                     if Present (P_Name) then
-                        if not Is_Reference_In_Subunit then
-                           Error_Msg_Sloc := Sloc (Entity (Prefix (N)));
-                           Error_Msg_NE
-                             ("package& is hidden by declaration#", N, P_Name);
-                        end if;
+                     if Present (Ent) and then not Is_Reference_In_Subunit then
+                        Error_Msg_Sloc := Sloc (P_Name);
+                        Error_Msg_NE
+                          ("\package& is hidden by declaration#", N, Ent);
+                     end if;
 
-                        Set_Entity (Prefix (N), P_Name);
-                        Find_Expanded_Name (N);
+                     --  Format node as expanded name, to avoid cascaded errors
+
+                     Change_Selected_Component_To_Expanded_Name (N);
+                     Set_Entity (N, Any_Id);
+                     Set_Etype (N, Any_Type);
+                  end Diagnose_Call;
+
+               begin
+                  --  Error if the prefix is procedure or entry, as in P.X
+
+                  if Ekind (P_Name) /= E_Function
+                    and then not Is_Overloaded (P)
+                  then
+                     Error_Msg_NE
+                       ("invalid prefix& in selected component", N, P_Name);
+                     Diagnose_Call;
+                     return;
+
+                  --  Here we may have a function call, so do the reformatting
+
+                  else
+                     Nam := New_Copy (P);
+                     Save_Interps (P, Nam);
+
+                     --  We use Replace here because this is one of those cases
+                     --  where the parser has misclassified the node and we fix
+                     --  things up and then do semantic analysis on the fixed
+                     --  up node. Normally we do this using one of the Sinfo.CN
+                     --  routines, but this is too tricky for that.
+
+                     --  Note that using Rewrite would be wrong, since we would
+                     --  have a tree where the original node is unanalyzed.
+
+                     Replace (P, Make_Function_Call (Sloc (P), Name => Nam));
+
+                     --  Now analyze the reformatted node
+
+                     Analyze_Call (P);
+
+                     --  If the prefix is illegal after this transformation,
+                     --  there may be a visibility error on the prefix. The
+                     --  safest is to treat the selected component as an error.
+
+                     if Error_Posted (P) then
+                        Diagnose_Call;
                         return;
 
                      else
-                        P_Name := Entity (Prefix (N));
+                        Analyze_Selected_Component (N);
+
+                        if Error_Posted (N) then
+                           Diagnose_Call;
+                           return;
+                        end if;
                      end if;
                   end if;
-
-                  Error_Msg_NE
-                    ("invalid prefix in selected component&", N, P_Name);
-                  Change_Selected_Component_To_Expanded_Name (N);
-                  Set_Entity (N, Any_Id);
-                  Set_Etype (N, Any_Type);
-
-               --  Here we have a function call, so do the reformatting
-
-               else
-                  Nam := New_Copy (P);
-                  Save_Interps (P, Nam);
-
-                  --  We use Replace here because this is one of those cases
-                  --  where the parser has missclassified the node, and we fix
-                  --  things up and then do the semantic analysis on the fixed
-                  --  up node. Normally we do this using one of the Sinfo.CN
-                  --  routines, but this is too tricky for that.
-
-                  --  Note that using Rewrite would be wrong, because we would
-                  --  have a tree where the original node is unanalyzed.
-
-                  Replace (P,
-                    Make_Function_Call (Sloc (P), Name => Nam));
-
-                  --  Now analyze the reformatted node
-
-                  Analyze_Call (P);
-
-                  --  If the prefix is illegal after this transformation, there
-                  --  may be visibility errors on the prefix. The safest is to
-                  --  treat the selected component as an error.
-
-                  if Error_Posted (P) then
-                     Set_Etype (N, Any_Type);
-                     return;
-
-                  else
-                     Analyze_Selected_Component (N);
-                  end if;
-               end if;
+               end;
             end if;
 
          --  Remaining cases generate various error messages
@@ -8498,11 +8627,14 @@ package body Sem_Ch8 is
 
             --  It is not an error if the prefix is the current instance of
             --  type name, e.g. the expression of a type aspect, when it is
-            --  analyzed within a generic unit. We still have to verify that a
-            --  component of that name exists, and decorate the node
+            --  analyzed within a generic unit. We still have to verify that
+            --  a component of that name exists, and decorate the node
             --  accordingly.
 
-            elsif Is_Entity_Name (P) and then Is_Current_Instance (P) then
+            elsif Inside_A_Generic
+              and then Is_Entity_Name (P)
+              and then Is_Current_Instance (P)
+            then
                declare
                   Comp : Entity_Id;
 
@@ -9310,11 +9442,12 @@ package body Sem_Ch8 is
 
             --  If the new type is a renaming of the old one, as is the case
             --  for actuals in instances, retain its name, to simplify later
-            --  disambiguation.
+            --  disambiguation. Beware of Natural and Positive, see Cstand.
 
             if Nkind (Parent (New_T)) = N_Subtype_Declaration
               and then Is_Entity_Name (Subtype_Indication (Parent (New_T)))
               and then Entity (Subtype_Indication (Parent (New_T))) = Old_T
+              and then Scope (New_T) /= Standard_Standard
             then
                null;
             else
@@ -9499,6 +9632,11 @@ package body Sem_Ch8 is
            and then Present (Scope (Entity (E)))
          then
             Mark_Use_Package (Scope (Entity (E)));
+
+            --  Additionally mark the types of the formals and the return
+            --  types as used when dealing with an overloaded operator.
+
+            Mark_Parameters (Entity (E));
          end if;
 
          Curr := Current_Use_Clause (Base);
@@ -9828,9 +9966,7 @@ package body Sem_Ch8 is
         and then Scope (S) /= Standard_Standard
         and then not Is_Child_Unit (S)
       then
-         if Nkind (E) not in N_Entity then
-            return;
-         end if;
+         pragma Assert (Nkind (E) in N_Entity);
 
          --  Copy categorization flags from Scope (S) to S, this is not done
          --  when Scope (S) is Standard_Standard since propagation is from
@@ -9873,28 +10009,8 @@ package body Sem_Ch8 is
 
    procedure Premature_Usage (N : Node_Id) is
       Kind : constant Node_Kind := Nkind (Parent (Entity (N)));
-      E    : Entity_Id := Entity (N);
 
    begin
-      --  Within an instance, the analysis of the actual for a formal object
-      --  does not see the name of the object itself. This is significant only
-      --  if the object is an aggregate, where its analysis does not do any
-      --  name resolution on component associations. (see 4717-008). In such a
-      --  case, look for the visible homonym on the chain.
-
-      if In_Instance and then Present (Homonym (E)) then
-         E := Homonym (E);
-         while Present (E) and then not In_Open_Scopes (Scope (E)) loop
-            E := Homonym (E);
-         end loop;
-
-         if Present (E) then
-            Set_Entity (N, E);
-            Set_Etype (N, Etype (E));
-            return;
-         end if;
-      end if;
-
       case Kind is
          when N_Component_Declaration =>
             Error_Msg_N

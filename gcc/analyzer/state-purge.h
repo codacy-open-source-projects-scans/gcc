@@ -1,5 +1,5 @@
 /* Classes for purging state at function_points.
-   Copyright (C) 2019-2024 Free Software Foundation, Inc.
+   Copyright (C) 2019-2025 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -109,7 +109,7 @@ public:
 	= const_cast <decl_map_t&> (m_decl_map).get (decl))
       return *slot;
     else
-      return NULL;
+      return nullptr;
   }
 
   state_purge_per_decl &

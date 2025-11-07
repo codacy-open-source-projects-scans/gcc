@@ -1,5 +1,5 @@
 /* IR-agnostic target query functions relating to optabs
-   Copyright (C) 1987-2024 Free Software Foundation, Inc.
+   Copyright (C) 1987-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -492,7 +492,7 @@ find_widening_optab_handler_and_mode (optab op, machine_mode to_mode,
     {
       gcc_checking_assert (VECTOR_MODE_P (from_mode)
 			   && GET_MODE_INNER (from_mode) < to_mode);
-      limit_mode = from_mode;
+      limit_mode = GET_MODE_NEXT_MODE (from_mode).require ();
     }
   else
     gcc_checking_assert (GET_MODE_CLASS (from_mode) == GET_MODE_CLASS (to_mode)
@@ -719,13 +719,9 @@ supports_vec_gather_load_p (machine_mode mode, vec<int> *elsvals)
 	= (icode != CODE_FOR_nothing) ? 1 : -1;
     }
 
-  /* For gather the optab's operand indices do not match the IFN's because
-     the latter does not have the extension operand (operand 3).  It is
-     implicitly added during expansion so we use the IFN's else index + 1.
-     */
   if (elsvals && icode != CODE_FOR_nothing)
     get_supported_else_vals
-      (icode, internal_fn_else_index (IFN_MASK_GATHER_LOAD) + 1, *elsvals);
+      (icode, internal_fn_else_index (IFN_MASK_GATHER_LOAD), *elsvals);
 
   return this_fn_optabs->supports_vec_gather_load[mode] > 0;
 }

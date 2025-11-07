@@ -1,5 +1,5 @@
 /* RTL simplification functions for GNU compiler.
-   Copyright (C) 1987-2024 Free Software Foundation, Inc.
+   Copyright (C) 1987-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1709,6 +1709,17 @@ simplify_context::simplify_unary_operation_1 (rtx_code code, machine_mode mode,
       if (GET_MODE (op) == mode)
 	return op;
 
+      /* (zero_extend:SI (and:QI X (const))) -> (and:SI (lowpart:SI X) const)
+	 where const does not sign bit set. */
+      if (GET_CODE (op) == AND
+	  && CONST_INT_P (XEXP (op, 1))
+	  && INTVAL (XEXP (op, 1)) > 0)
+	{
+	  rtx tem = rtl_hooks.gen_lowpart_no_emit (mode, XEXP (op, 0));
+	  if (tem)
+	    return simplify_gen_binary (AND, mode, tem, XEXP (op, 1));
+	}
+
       /* Check for a zero extension of a subreg of a promoted
 	 variable, where the promotion is zero-extended, and the
 	 target mode is the same as the variable's promotion.  */
@@ -2446,6 +2457,61 @@ simplify_context::simplify_associative_operation (rtx_code code,
   return 0;
 }
 
+/* If COMPARISON can be treated as an unsigned comparison, return a mask
+   that represents it (8 if it includes <, 4 if it includes > and 2
+   if it includes ==).  Return 0 otherwise.  */
+static int
+unsigned_comparison_to_mask (rtx_code comparison)
+{
+  switch (comparison)
+    {
+    case LTU:
+      return 8;
+    case GTU:
+      return 4;
+    case EQ:
+      return 2;
+
+    case LEU:
+      return 10;
+    case GEU:
+      return 6;
+
+    case NE:
+      return 12;
+
+    default:
+      return 0;
+    }
+}
+
+/* Reverse the mapping in unsigned_comparison_to_mask, going from masks
+   to comparisons.  */
+static rtx_code
+mask_to_unsigned_comparison (int mask)
+{
+  switch (mask)
+    {
+    case 8:
+      return LTU;
+    case 4:
+      return GTU;
+    case 2:
+      return EQ;
+
+    case 10:
+      return LEU;
+    case 6:
+      return GEU;
+
+    case 12:
+      return NE;
+
+    default:
+      gcc_unreachable ();
+    }
+}
+
 /* Return a mask describing the COMPARISON.  */
 static int
 comparison_to_mask (enum rtx_code comparison)
@@ -2530,53 +2596,6 @@ mask_to_comparison (int mask)
     }
 }
 
-/* Return true if CODE is valid for comparisons of mode MODE, false
-   otherwise.
-
-   It is always safe to return false, even if the code was valid for the
-   given mode as that will merely suppress optimizations.  */
-
-static bool
-comparison_code_valid_for_mode (enum rtx_code code, enum machine_mode mode)
-{
-  switch (code)
-    {
-      /* These are valid for integral, floating and vector modes.  */
-      case NE:
-      case EQ:
-      case GE:
-      case GT:
-      case LE:
-      case LT:
-	return (INTEGRAL_MODE_P (mode)
-		|| FLOAT_MODE_P (mode)
-		|| VECTOR_MODE_P (mode));
-
-      /* These are valid for floating point modes.  */
-      case LTGT:
-      case UNORDERED:
-      case ORDERED:
-      case UNEQ:
-      case UNGE:
-      case UNGT:
-      case UNLE:
-      case UNLT:
-	return FLOAT_MODE_P (mode);
-
-      /* These are filtered out in simplify_logical_operation, but
-	 we check for them too as a matter of safety.   They are valid
-	 for integral and vector modes.  */
-      case GEU:
-      case GTU:
-      case LEU:
-      case LTU:
-	return INTEGRAL_MODE_P (mode) || VECTOR_MODE_P (mode);
-
-      default:
-	gcc_unreachable ();
-    }
-}
-
 /* Canonicalize RES, a scalar const0_rtx/const_true_rtx to the right
    false/true value of comparison with MODE where comparison operands
    have CMP_MODE.  */
@@ -2625,17 +2644,16 @@ relational_result (machine_mode mode, machine_mode cmp_mode, rtx res)
 }
 
 /* Simplify a logical operation CODE with result mode MODE, operating on OP0
-   and OP1, which should be both relational operations.  Return 0 if no such
-   simplification is possible.  */
+   and OP1, in the case where both are relational operations.  Assume that
+   OP0 is inverted if INVERT0_P is true.
+
+   Return 0 if no such simplification is possible.  */
 rtx
 simplify_context::simplify_logical_relational_operation (rtx_code code,
 							 machine_mode mode,
-							 rtx op0, rtx op1)
+							 rtx op0, rtx op1,
+							 bool invert0_p)
 {
-  /* We only handle IOR of two relational operations.  */
-  if (code != IOR)
-    return 0;
-
   if (!(COMPARISON_P (op0) && COMPARISON_P (op1)))
     return 0;
 
@@ -2643,28 +2661,72 @@ simplify_context::simplify_logical_relational_operation (rtx_code code,
 	&& rtx_equal_p (XEXP (op0, 1), XEXP (op1, 1))))
     return 0;
 
+  if (side_effects_p (op0))
+    return 0;
+
   enum rtx_code code0 = GET_CODE (op0);
   enum rtx_code code1 = GET_CODE (op1);
+  machine_mode cmp_mode = GET_MODE (XEXP (op0, 0));
+  if (cmp_mode == VOIDmode)
+    cmp_mode = GET_MODE (XEXP (op0, 1));
 
-  /* We don't handle unsigned comparisons currently.  */
-  if (code0 == LTU || code0 == GTU || code0 == LEU || code0 == GEU)
+  /* Assume at first that the comparisons are on integers, and that the
+     operands are therefore ordered.  */
+  int all = 14;
+  int mask0 = unsigned_comparison_to_mask (code0);
+  int mask1 = unsigned_comparison_to_mask (code1);
+  bool unsigned_p = (IN_RANGE (mask0 & 12, 4, 8)
+		     || IN_RANGE (mask1 & 12, 4, 8));
+  if (unsigned_p)
+    {
+      /* We only reach here when comparing integers.  Reject mixtures of signed
+	 and unsigned comparisons.  */
+      if (mask0 == 0 || mask1 == 0)
+	return 0;
+    }
+  else
+    {
+      /* See whether the operands might be unordered.  Assume that all
+	 results are possible for CC modes, and punt later if we don't get an
+	 always-true or always-false answer.  */
+      if (GET_MODE_CLASS (cmp_mode) == MODE_CC || HONOR_NANS (cmp_mode))
+	all = 15;
+      mask0 = comparison_to_mask (code0) & all;
+      mask1 = comparison_to_mask (code1) & all;
+    }
+
+  if (invert0_p)
+    mask0 = mask0 ^ all;
+
+  int mask;
+  if (code == AND)
+    mask = mask0 & mask1;
+  else if (code == IOR)
+    mask = mask0 | mask1;
+  else if (code == XOR)
+    mask = mask0 ^ mask1;
+  else
     return 0;
-  if (code1 == LTU || code1 == GTU || code1 == LEU || code1 == GEU)
-    return 0;
 
-  int mask0 = comparison_to_mask (code0);
-  int mask1 = comparison_to_mask (code1);
-
-  int mask = mask0 | mask1;
-
-  if (mask == 15)
+  if (mask == all)
     return relational_result (mode, GET_MODE (op0), const_true_rtx);
 
-  code = mask_to_comparison (mask);
+  if (mask == 0)
+    return relational_result (mode, GET_MODE (op0), const0_rtx);
 
-  /* Many comparison codes are only valid for certain mode classes.  */
-  if (!comparison_code_valid_for_mode (code, mode))
-    return 0;
+  if (unsigned_p)
+    code = mask_to_unsigned_comparison (mask);
+  else
+    {
+      if (GET_MODE_CLASS (cmp_mode) == MODE_CC)
+	return 0;
+
+      code = mask_to_comparison (mask);
+      /* LTGT and NE are arithmetically equivalent for ordered operands,
+	 with NE being the canonical choice.  */
+      if (code == LTGT && all == 14)
+	code = NE;
+    }
 
   op0 = XEXP (op1, 0);
   op1 = XEXP (op1, 1);
@@ -2970,6 +3032,48 @@ match_plus_neg_pattern (rtx op0, rtx op1, machine_mode mode)
   return false;
 }
 
+/* Check if OP matches the pattern of (subreg (not X)) and the subreg is
+   non-paradoxical.  */
+
+static bool
+non_paradoxical_subreg_not_p (rtx op)
+{
+  return GET_CODE (op) == SUBREG
+	 && !paradoxical_subreg_p (op)
+	 && GET_CODE (SUBREG_REG (op)) == NOT;
+}
+
+/* Convert (binop (subreg (not X)) Y) into (binop (not (subreg X)) Y), or
+   (binop X (subreg (not Y))) into (binop X (not (subreg Y))) to expose
+   opportunities to combine another binary logical operation with NOT.  */
+
+static rtx
+simplify_with_subreg_not (rtx_code binop, machine_mode mode, rtx op0, rtx op1)
+{
+  rtx opn = NULL_RTX;
+  if (non_paradoxical_subreg_not_p (op0))
+    opn = op0;
+  else if (non_paradoxical_subreg_not_p (op1))
+    opn = op1;
+
+  if (opn == NULL_RTX)
+    return NULL_RTX;
+
+  rtx new_subreg = simplify_gen_subreg (mode,
+					XEXP (SUBREG_REG (opn), 0),
+					GET_MODE (SUBREG_REG (opn)),
+					SUBREG_BYTE (opn));
+
+  if (!new_subreg)
+    return NULL_RTX;
+
+  rtx new_not = simplify_gen_unary (NOT, mode, new_subreg, mode);
+  if (opn == op0)
+    return simplify_gen_binary (binop, mode, new_not, op1);
+  else
+    return simplify_gen_binary (binop, mode, op0, new_not);
+}
+
 /* Subroutine of simplify_binary_operation.  Simplify a binary operation
    CODE with result mode MODE, operating on OP0 and OP1.  If OP0 and/or
    OP1 are constant pool references, TRUEOP0 and TRUEOP1 represent the
@@ -3217,21 +3321,6 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
       break;
 
     case COMPARE:
-      /* Convert (compare (gt (flags) 0) (lt (flags) 0)) to (flags).  */
-      if (((GET_CODE (op0) == GT && GET_CODE (op1) == LT)
-	   || (GET_CODE (op0) == GTU && GET_CODE (op1) == LTU))
-	  && XEXP (op0, 1) == const0_rtx && XEXP (op1, 1) == const0_rtx)
-	{
-	  rtx xop00 = XEXP (op0, 0);
-	  rtx xop10 = XEXP (op1, 0);
-
-	  if (REG_P (xop00) && REG_P (xop10)
-	      && REGNO (xop00) == REGNO (xop10)
-	      && GET_MODE (xop00) == mode
-	      && GET_MODE (xop10) == mode
-	      && GET_MODE_CLASS (mode) == MODE_CC)
-	    return xop00;
-	}
       break;
 
     case MINUS:
@@ -3376,7 +3465,9 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 	return plus_constant (mode, op0, trunc_int_for_mode (-offset, mode));
 
       /* Don't let a relocatable value get a negative coeff.  */
-      if (poly_int_rtx_p (op1) && GET_MODE (op0) != VOIDmode)
+      if (is_a <scalar_int_mode> (mode)
+	  && poly_int_rtx_p (op1)
+	  && GET_MODE (op0) != VOIDmode)
 	return simplify_gen_binary (PLUS, mode,
 				    op0,
 				    neg_poly_int_rtx (mode, op1));
@@ -3582,6 +3673,63 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 	  && GET_MODE_CLASS (mode) != MODE_CC)
 	return CONSTM1_RTX (mode);
 
+      /* IOR of two single bit bitfields extracted from the same object.
+	 Bitfields are represented as an AND based extraction */
+      if (GET_CODE (op0) == AND
+	  && GET_CODE (op1) == AND
+	  /* Verify both AND operands are logical right shifts. */
+	  && GET_CODE (XEXP (op0, 0)) == LSHIFTRT
+	  && GET_CODE (XEXP (op1, 0)) == LSHIFTRT
+	  /* Verify both bitfields are extracted from the same object. */
+	  && XEXP (XEXP (op0, 0), 0) == XEXP (XEXP (op1, 0), 0)
+	  /* Verify both fields are a single bit (could be generalized). */
+	  && XEXP (op0, 1) == CONST1_RTX (mode)
+	  && XEXP (op1, 1) == CONST1_RTX (mode)
+	  /* Verify bit positions (for cases with variable bit position). */
+	  && CONST_INT_P (XEXP (XEXP (op0, 0), 1))
+	  && CONST_INT_P (XEXP (XEXP (op1, 0), 1)))
+	{
+	  unsigned HOST_WIDE_INT bitpos1 = INTVAL (XEXP (XEXP (op0, 0), 1));
+	  unsigned HOST_WIDE_INT bitpos2 = INTVAL (XEXP (XEXP (op1, 0), 1));
+	  unsigned HOST_WIDE_INT mask
+	    = (HOST_WIDE_INT_1U << bitpos1) | (HOST_WIDE_INT_1U << bitpos2);
+
+	  rtx m = GEN_INT (mask);
+	  rtx t = gen_rtx_AND (mode, XEXP (XEXP (op0, 0), 0), m);
+	  t = gen_rtx_NE (mode, t, CONST0_RTX (mode));
+	  return t;
+	}
+
+      /* IOR of multiple single bit bitfields extracted from the same object
+	 (building on previous case).
+	 First bitfield is represented as an AND based extraction, as done
+		above. Second represented as NE based extraction, from
+		output above. */
+      if (GET_CODE (op0) == AND
+	  && GET_CODE (op1) == NE
+	  /* Verify AND operand is logical right shift. */
+	  && GET_CODE (XEXP (op0, 0)) == LSHIFTRT
+	  /* Verify NE operand is an AND (based on output above). */
+	  && GET_CODE (XEXP (op1, 0)) == AND
+	  /* Verify both bitfields are extracted from the same object. */
+	  && XEXP (XEXP (op0, 0), 0) == XEXP (XEXP (op1, 0), 0)
+	  /* Verify masking is with a single bit and that we have a NE 0
+	     comparison for the other operand.  */
+	  && XEXP (op0, 1) == CONST1_RTX (mode)
+	  && XEXP (op1, 1) == CONST0_RTX (mode)
+	  /* Verify bit position. */
+	  && CONST_INT_P (XEXP (XEXP (op0, 0), 1)))
+	{
+	  unsigned HOST_WIDE_INT bitpos1 = INTVAL (XEXP (XEXP (op0, 0), 1));
+	  unsigned HOST_WIDE_INT mask
+	    = (HOST_WIDE_INT_1U << bitpos1) | INTVAL (XEXP (XEXP (op1, 0), 1));
+
+	  rtx m = GEN_INT (mask);
+	  rtx t = gen_rtx_AND (mode, XEXP (XEXP (op0, 0), 0), m);
+	  t = gen_rtx_NE (mode, t, CONST0_RTX (mode));
+	  return t;
+	}
+
       /* Convert (ior (plus (A - 1)) (neg A)) to -1.  */
       if (match_plus_neg_pattern (op0, op1, mode))
 	return CONSTM1_RTX (mode);
@@ -3610,6 +3758,19 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 	  /* If (C1|C2) == ~0 then (X&C1)|C2 becomes X|C2.  */
 	  if (((c1|c2) & mask) == mask)
 	    return simplify_gen_binary (IOR, mode, XEXP (op0, 0), op1);
+
+	  /* If (C1|C2) has a single bit clear, then adjust C1 so that
+	     when split it'll match a single bit clear style insn.
+
+	     This could have been done with a target dependent splitter, but
+	     then every target with single bit manipulation insns would need
+	     to implement such splitters.  */
+	  if (exact_log2 (~(c1 | c2)) >= 0)
+	    {
+	      rtx temp = gen_rtx_AND (mode, XEXP (op0, 0), GEN_INT (c1 | c2));
+	      temp = gen_rtx_IOR (mode, temp, trueop1);
+	      return temp;
+	    }
 	}
 
       /* Convert (A & B) | A to A.  */
@@ -3701,6 +3862,10 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 	  && GET_CODE (XEXP (op0, 0)) == NOT
 	  && rtx_equal_p (XEXP (XEXP (op0, 0), 0), op1))
 	return simplify_gen_binary (IOR, mode, XEXP (op0, 1), op1);
+
+      tem = simplify_with_subreg_not (code, mode, op0, op1);
+      if (tem)
+	return tem;
 
       tem = simplify_byte_swapping_operation (code, mode, op0, op1);
       if (tem)
@@ -3970,6 +4135,24 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 	  && rtx_equal_p (XEXP (XEXP (op0, 0), 0), op1))
 	return simplify_gen_binary (IOR, mode, XEXP (op0, 1), op1);
 
+      /* Convert (xor (and (rotate (~1) A) B) (ashift 1 A))
+	 into B | (1 << A).  */
+      if (SHIFT_COUNT_TRUNCATED
+	  && GET_CODE (op0) == AND
+	  && GET_CODE (XEXP (op0, 0)) == ROTATE
+	  && CONST_INT_P (XEXP (XEXP (op0, 0), 0))
+	  && INTVAL (XEXP (XEXP (op0, 0), 0)) == -2
+	  && GET_CODE (op1) == ASHIFT
+	  && CONST_INT_P (XEXP (op1, 0))
+	  && INTVAL (XEXP (op1, 0)) == 1
+	  && rtx_equal_p (XEXP (XEXP (op0, 0), 1), XEXP (op1, 1))
+	  && !side_effects_p (XEXP (op1, 1)))
+	return simplify_gen_binary (IOR, mode, XEXP (op0, 1), op1);
+
+      tem = simplify_with_subreg_not (code, mode, op0, op1);
+      if (tem)
+	return tem;
+
       tem = simplify_byte_swapping_operation (code, mode, op0, op1);
       if (tem)
 	return tem;
@@ -4001,6 +4184,46 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 		 not do an AND.  */
 	      if ((nzop0 & ~val1) == 0)
 		return op0;
+
+	      /* Canonicalize (and (subreg (lshiftrt X shift)) mask) into
+		 (and (lshiftrt (subreg X) shift) mask).
+
+		 Keeps shift and AND in the same mode, improving recognition.
+		 Only applied when subreg is a lowpart, shift is valid,
+		 and no precision is lost.  */
+	      if (SUBREG_P (op0) && subreg_lowpart_p (op0)
+		  && GET_CODE (XEXP (op0, 0)) == LSHIFTRT
+		  && CONST_INT_P (XEXP (XEXP (op0, 0), 1))
+		  && INTVAL (XEXP (XEXP (op0, 0), 1)) >= 0
+		  && INTVAL (XEXP (XEXP (op0, 0), 1)) < HOST_BITS_PER_WIDE_INT
+		  && ((INTVAL (XEXP (XEXP (op0, 0), 1))
+		      + floor_log2 (val1))
+		      < GET_MODE_PRECISION (as_a <scalar_int_mode> (mode))))
+		{
+		  tem = XEXP (XEXP (op0, 0), 0);
+		  if (SUBREG_P (tem))
+		    {
+		      if (subreg_lowpart_p (tem))
+			tem = SUBREG_REG (tem);
+		      else
+			tem = NULL_RTX;
+		    }
+		  if (tem != NULL_RTX)
+		    {
+		      offset = subreg_lowpart_offset (mode, GET_MODE (tem));
+		      tem = simplify_gen_subreg (mode, tem, GET_MODE (tem),
+						 offset);
+		      if (tem)
+			{
+			  unsigned shiftamt = INTVAL (XEXP (XEXP (op0, 0), 1));
+			  rtx shiftamtrtx = gen_int_shift_amount (mode,
+								  shiftamt);
+			  op0 = simplify_gen_binary (LSHIFTRT, mode, tem,
+						     shiftamtrtx);
+			  return simplify_gen_binary (AND, mode, op0, op1);
+			}
+		    }
+		}
 	    }
 	  nzop1 = nonzero_bits (trueop1, mode);
 	  /* If we are clearing all the nonzero bits, the result is zero.  */
@@ -4238,6 +4461,10 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 	    return simplify_gen_binary (LSHIFTRT, mode, XEXP (op0, 0), XEXP (op0, 1));
 	}
 
+      tem = simplify_with_subreg_not (code, mode, op0, op1);
+      if (tem)
+	return tem;
+
       tem = simplify_byte_swapping_operation (code, mode, op0, op1);
       if (tem)
 	return tem;
@@ -4465,6 +4692,60 @@ simplify_context::simplify_binary_operation_1 (rtx_code code,
 	  if (val != INTVAL (op1))
 	    return simplify_gen_binary (code, mode, op0,
 					gen_int_shift_amount (mode, val));
+	}
+
+      /* Simplify:
+
+	   (code:M1
+	     (subreg:M1
+	       ([al]shiftrt:M2
+		 (subreg:M2
+		   (ashift:M1 X C1))
+		 C2))
+	     C3)
+
+	 to:
+
+	   (code:M1
+	     ([al]shiftrt:M1
+	       (ashift:M1 X C1+N)
+	       C2+N)
+	     C3)
+
+	 where M1 is N bits wider than M2.  Optimizing the (subreg:M1 ...)
+	 directly would be arithmetically correct, but restricting the
+	 simplification to shifts by constants is more conservative,
+	 since it is more likely to lead to further simplifications.  */
+      if (is_a<scalar_int_mode> (mode, &int_mode)
+	  && paradoxical_subreg_p (op0)
+	  && is_a<scalar_int_mode> (GET_MODE (SUBREG_REG (op0)), &inner_mode)
+	  && (GET_CODE (SUBREG_REG (op0)) == ASHIFTRT
+	      || GET_CODE (SUBREG_REG (op0)) == LSHIFTRT)
+	  && CONST_INT_P (op1))
+	{
+	  auto xcode = GET_CODE (SUBREG_REG (op0));
+	  rtx xop0 = XEXP (SUBREG_REG (op0), 0);
+	  rtx xop1 = XEXP (SUBREG_REG (op0), 1);
+	  if (SUBREG_P (xop0)
+	      && GET_MODE (SUBREG_REG (xop0)) == mode
+	      && GET_CODE (SUBREG_REG (xop0)) == ASHIFT
+	      && CONST_INT_P (xop1)
+	      && UINTVAL (xop1) < GET_MODE_PRECISION (inner_mode))
+	    {
+	      rtx yop0 = XEXP (SUBREG_REG (xop0), 0);
+	      rtx yop1 = XEXP (SUBREG_REG (xop0), 1);
+	      if (CONST_INT_P (yop1)
+		  && UINTVAL (yop1) < GET_MODE_PRECISION (inner_mode))
+		{
+		  auto bias = (GET_MODE_BITSIZE (int_mode)
+			       - GET_MODE_BITSIZE (inner_mode));
+		  tem = simplify_gen_binary (ASHIFT, mode, yop0,
+					     GEN_INT (INTVAL (yop1) + bias));
+		  tem = simplify_gen_binary (xcode, mode, tem,
+					     GEN_INT (INTVAL (xop1) + bias));
+		  return simplify_gen_binary (code, mode, tem, op1);
+		}
+	    }
 	}
       break;
 
@@ -6210,6 +6491,21 @@ simplify_context::simplify_relational_operation_1 (rtx_code code,
       /* Canonicalize (LEU x 0) as (EQ x 0).  */
       if (code == LEU)
         return simplify_gen_relational (EQ, mode, cmp_mode, op0, op1);
+
+      if ((code == NE || code == EQ)
+	  /* Verify op0 is IOR */
+	  && GET_CODE (op0) == IOR
+	  /* only enters if op1 is 0 */
+	  /* Verify IOR operand is NE */
+	  && GET_CODE (XEXP (op0, 0)) == NE
+	  /* Verfiy second NE operand is 0 */
+	  && XEXP (XEXP (op0, 0), 1) == CONST0_RTX (mode))
+	{
+	  rtx t = gen_rtx_IOR (mode, XEXP (XEXP (op0, 0), 0), XEXP (op0, 1));
+	  t = gen_rtx_fmt_ee (code, mode, t, CONST0_RTX (mode));
+	  return t;
+	}
+
     }
   else if (op1 == const1_rtx)
     {
@@ -6375,14 +6671,16 @@ simplify_context::simplify_relational_operation_1 (rtx_code code,
       case LEU:
 	/* (eq (popcount x) (const_int 0)) -> (eq x (const_int 0)).  */
 	return simplify_gen_relational (EQ, mode, GET_MODE (XEXP (op0, 0)),
-					XEXP (op0, 0), const0_rtx);
+					XEXP (op0, 0),
+					CONST0_RTX (GET_MODE (XEXP (op0, 0))));
 
       case NE:
       case GT:
       case GTU:
 	/* (ne (popcount x) (const_int 0)) -> (ne x (const_int 0)).  */
 	return simplify_gen_relational (NE, mode, GET_MODE (XEXP (op0, 0)),
-					XEXP (op0, 0), const0_rtx);
+					XEXP (op0, 0),
+					CONST0_RTX (GET_MODE (XEXP (op0, 0))));
 
       default:
 	break;
@@ -6405,6 +6703,40 @@ simplify_context::simplify_relational_operation_1 (rtx_code code,
 	  && INTVAL (XEXP (tmp, 1)) == GET_MODE_PRECISION (int_mode) - 1)
 	return simplify_gen_binary (AND, mode, XEXP (tmp, 0), const1_rtx);
     }
+
+  /* For two unsigned booleans A and B:
+
+     A >  B == ~B & A
+     A >= B == ~B | A
+     A <  B == ~A & B
+     A <= B == ~A | B
+     A == B == ~A ^ B (== ~B ^ A)
+     A != B ==  A ^ B
+
+     For signed comparisons, we have to take STORE_FLAG_VALUE into account,
+     with the rules above applying for positive STORE_FLAG_VALUE and with
+     the relations reversed for negative STORE_FLAG_VALUE.  */
+  if (is_a<scalar_int_mode> (cmp_mode)
+      && COMPARISON_P (op0)
+      && COMPARISON_P (op1))
+    {
+      rtx t = NULL_RTX;
+      if (code == GTU || code == (STORE_FLAG_VALUE > 0 ? GT : LT))
+	t = simplify_logical_relational_operation (AND, mode, op1, op0, true);
+      else if (code == GEU || code == (STORE_FLAG_VALUE > 0 ? GE : LE))
+	t = simplify_logical_relational_operation (IOR, mode, op1, op0, true);
+      else if (code == LTU || code == (STORE_FLAG_VALUE > 0 ? LT : GT))
+	t = simplify_logical_relational_operation (AND, mode, op0, op1, true);
+      else if (code == LEU || code == (STORE_FLAG_VALUE > 0 ? LE : GE))
+	t = simplify_logical_relational_operation (IOR, mode, op0, op1, true);
+      else if (code == EQ)
+	t = simplify_logical_relational_operation (XOR, mode, op0, op1, true);
+      else if (code == NE)
+	t = simplify_logical_relational_operation (XOR, mode, op0, op1);
+      if (t)
+	return t;
+    }
+
   return NULL_RTX;
 }
 
@@ -6533,15 +6865,20 @@ simplify_const_relational_operation (enum rtx_code code,
      we do not know the signedness of the operation on either the left or
      the right hand side of the comparison.  */
 
-  if (INTEGRAL_MODE_P (mode) && trueop1 != const0_rtx
+  if (INTEGRAL_MODE_P (mode)
+      && trueop1 != CONST0_RTX (mode)
       && (code == EQ || code == NE)
-      && ! ((REG_P (op0) || CONST_INT_P (trueop0))
-	    && (REG_P (op1) || CONST_INT_P (trueop1)))
+      && ! ((REG_P (op0)
+	     || CONST_SCALAR_INT_P (trueop0)
+	     || CONST_VECTOR_P (trueop0))
+	    && (REG_P (op1)
+		|| CONST_SCALAR_INT_P (trueop1)
+		|| CONST_VECTOR_P (trueop1)))
       && (tem = simplify_binary_operation (MINUS, mode, op0, op1)) != 0
       /* We cannot do this if tem is a nonzero address.  */
       && ! nonzero_address_p (tem))
     return simplify_const_relational_operation (signed_condition (code),
-						mode, tem, const0_rtx);
+						mode, tem, CONST0_RTX (mode));
 
   if (! HONOR_NANS (mode) && code == ORDERED)
     return const_true_rtx;
@@ -7191,6 +7528,13 @@ simplify_context::simplify_ternary_operation (rtx_code code, machine_mode mode,
 	      return gen_rtx_CONST_VECTOR (mode, v);
 	    }
 
+	  if (swap_commutative_operands_p (op0, op1)
+	      /* Two operands have same precedence, then first bit of mask
+		 select first operand.  */
+	      || (!swap_commutative_operands_p (op1, op0) && !(sel & 1)))
+	    return simplify_gen_ternary (code, mode, mode, op1, op0,
+					 GEN_INT (~sel & mask));
+
 	  /* Replace (vec_merge (vec_merge a b m) c n) with (vec_merge b c n)
 	     if no element from a appears in the result.  */
 	  if (GET_CODE (op0) == VEC_MERGE)
@@ -7571,6 +7915,28 @@ native_decode_vector_rtx (machine_mode mode, const vec<target_unit> &bytes,
   return builder.build ();
 }
 
+/* Extract a PRECISION-bit integer from bytes [FIRST_BYTE, FIRST_BYTE + SIZE)
+   of target memory image BYTES.  */
+
+wide_int
+native_decode_int (const vec<target_unit> &bytes, unsigned int first_byte,
+		   unsigned int size, unsigned int precision)
+{
+  /* Pull the bytes msb first, so that we can use simple
+     shift-and-insert wide_int operations.  */
+  wide_int result (wi::zero (precision));
+  for (unsigned int i = 0; i < size; ++i)
+    {
+      unsigned int lsb = (size - i - 1) * BITS_PER_UNIT;
+      /* Always constant because the inputs are.  */
+      unsigned int subbyte
+	= subreg_size_offset_from_lsb (1, size, lsb).to_constant ();
+      result <<= BITS_PER_UNIT;
+      result |= bytes[first_byte + subbyte];
+    }
+  return result;
+}
+
 /* Read an rtx of mode MODE from the target memory image given by BYTES,
    starting at byte FIRST_BYTE.  Each element of BYTES contains BITS_PER_UNIT
    bits and the bytes are in target memory order.  The image has enough
@@ -7596,19 +7962,9 @@ native_decode_rtx (machine_mode mode, const vec<target_unit> &bytes,
   if (is_a <scalar_int_mode> (mode, &imode)
       && GET_MODE_PRECISION (imode) <= MAX_BITSIZE_MODE_ANY_INT)
     {
-      /* Pull the bytes msb first, so that we can use simple
-	 shift-and-insert wide_int operations.  */
-      unsigned int size = GET_MODE_SIZE (imode);
-      wide_int result (wi::zero (GET_MODE_PRECISION (imode)));
-      for (unsigned int i = 0; i < size; ++i)
-	{
-	  unsigned int lsb = (size - i - 1) * BITS_PER_UNIT;
-	  /* Always constant because the inputs are.  */
-	  unsigned int subbyte
-	    = subreg_size_offset_from_lsb (1, size, lsb).to_constant ();
-	  result <<= BITS_PER_UNIT;
-	  result |= bytes[first_byte + subbyte];
-	}
+      auto result = native_decode_int (bytes, first_byte,
+				       GET_MODE_SIZE (imode),
+				       GET_MODE_PRECISION (imode));
       return immed_wide_int_const (result, imode);
     }
 
@@ -8104,18 +8460,56 @@ simplify_context::simplify_subreg (machine_mode outermode, rtx op,
 	return XEXP (XEXP (op, 0), 0);
     }
 
-  /* Attempt to simplify WORD_MODE SUBREGs of bitwise expressions.  */
-  if (outermode == word_mode
-      && (GET_CODE (op) == IOR || GET_CODE (op) == XOR || GET_CODE (op) == AND)
-      && SCALAR_INT_MODE_P (innermode))
+  auto distribute_subreg = [&](rtx op)
     {
-      rtx op0 = simplify_subreg (outermode, XEXP (op, 0), innermode, byte);
-      rtx op1 = simplify_subreg (outermode, XEXP (op, 1), innermode, byte);
-      if (op0 && op1)
-	return simplify_gen_binary (GET_CODE (op), outermode, op0, op1);
-    }
+      return simplify_subreg (outermode, op, innermode, byte);
+    };
 
+  /* Try distributing the subreg through logic operations, if that
+     leads to all subexpressions being simplified.  For example,
+     distributing the outer subreg in:
+
+       (subreg:SI (not:QI (subreg:QI (reg:SI X) <lowpart>)) 0)
+
+     gives:
+
+       (not:SI (reg:SI X))
+
+     This should be a win if the outermode is word_mode, since logical
+     operations on word_mode should (a) be no more expensive than logical
+     operations on subword modes and (b) are likely to be cheaper than
+     logical operations on multiword modes.
+
+     Otherwise, handle the case where the subreg is non-narrowing and does
+     not change the number of words.  The non-narrowing condition ensures
+     that we don't convert word_mode operations to subword operations.  */
   scalar_int_mode int_outermode, int_innermode;
+  if (is_a <scalar_int_mode> (outermode, &int_outermode)
+      && is_a <scalar_int_mode> (innermode, &int_innermode)
+      && (outermode == word_mode
+	  || ((GET_MODE_PRECISION (int_outermode)
+	       >= GET_MODE_PRECISION (int_innermode))
+	      && (CEIL (GET_MODE_SIZE (int_outermode), UNITS_PER_WORD)
+		  <= CEIL (GET_MODE_SIZE (int_innermode), UNITS_PER_WORD)))))
+    switch (GET_CODE (op))
+      {
+      case NOT:
+	if (rtx op0 = distribute_subreg (XEXP (op, 0)))
+	  return simplify_gen_unary (GET_CODE (op), outermode, op0, outermode);
+	break;
+
+      case AND:
+      case IOR:
+      case XOR:
+	if (rtx op0 = distribute_subreg (XEXP (op, 0)))
+	  if (rtx op1 = distribute_subreg (XEXP (op, 1)))
+	    return simplify_gen_binary (GET_CODE (op), outermode, op0, op1);
+	break;
+
+      default:
+	break;
+      }
+
   if (is_a <scalar_int_mode> (outermode, &int_outermode)
       && is_a <scalar_int_mode> (innermode, &int_innermode)
       && known_eq (byte, subreg_lowpart_offset (int_outermode, int_innermode)))
@@ -8165,9 +8559,45 @@ simplify_context::simplify_subreg (machine_mode outermode, rtx op,
       && VECTOR_MODE_P (innermode)
       && known_eq (GET_MODE_NUNITS (outermode), GET_MODE_NUNITS (innermode))
       && known_eq (GET_MODE_UNIT_SIZE (outermode),
-		    GET_MODE_UNIT_SIZE (innermode)))
+		   GET_MODE_UNIT_SIZE (innermode)))
     return simplify_gen_relational (GET_CODE (op), outermode, innermode,
 				    XEXP (op, 0), XEXP (op, 1));
+
+  /* Distribute non-paradoxical subregs through logic ops in cases where
+     one term disappears.
+
+     (subreg:M1 (and:M2 X C1)) -> (subreg:M1 X)
+     (subreg:M1 (ior:M2 X C1)) -> (subreg:M1 C1)
+     (subreg:M1 (xor:M2 X C1)) -> (subreg:M1 (not:M2 X))
+
+     if M2 is no smaller than M1 and (subreg:M1 C1) is all-ones.
+
+     (subreg:M1 (and:M2 X C2)) -> (subreg:M1 C2)
+     (subreg:M1 (ior/xor:M2 X C2)) -> (subreg:M1 X)
+
+     if M2 is no smaller than M1 and (subreg:M1 C2) is zero.  */
+  if (known_ge (innersize, outersize)
+      && GET_MODE_CLASS (outermode) == GET_MODE_CLASS (innermode)
+      && (GET_CODE (op) == AND || GET_CODE (op) == IOR || GET_CODE (op) == XOR)
+      && CONSTANT_P (XEXP (op, 1)))
+    {
+      rtx op1_subreg = distribute_subreg (XEXP (op, 1));
+      if (op1_subreg == CONSTM1_RTX (outermode))
+	{
+	  if (GET_CODE (op) == IOR)
+	    return op1_subreg;
+	  rtx op0 = XEXP (op, 0);
+	  if (GET_CODE (op) == XOR)
+	    op0 = simplify_gen_unary (NOT, innermode, op0, innermode);
+	  return simplify_gen_subreg (outermode, op0, innermode, byte);
+	}
+
+      if (op1_subreg == CONST0_RTX (outermode))
+	return (GET_CODE (op) == AND
+		? op1_subreg
+		: distribute_subreg (XEXP (op, 0)));
+    }
+
   return NULL_RTX;
 }
 
@@ -8186,14 +8616,10 @@ simplify_context::simplify_gen_subreg (machine_mode outermode, rtx op,
 
   if (GET_CODE (op) == SUBREG
       || GET_CODE (op) == CONCAT
-      || GET_MODE (op) == VOIDmode)
-    return NULL_RTX;
-
-  if (MODE_COMPOSITE_P (outermode)
-      && (CONST_SCALAR_INT_P (op)
-	  || CONST_DOUBLE_AS_FLOAT_P (op)
-	  || CONST_FIXED_P (op)
-	  || GET_CODE (op) == CONST_VECTOR))
+      || CONST_SCALAR_INT_P (op)
+      || CONST_DOUBLE_AS_FLOAT_P (op)
+      || CONST_FIXED_P (op)
+      || GET_CODE (op) == CONST_VECTOR)
     return NULL_RTX;
 
   if (validate_subreg (outermode, innermode, op, byte))
@@ -8439,6 +8865,74 @@ test_scalar_int_ext_ops (machine_mode bmode, machine_mode smode)
 				     lowpart_subreg (bmode, sreg, smode),
 				     bmode),
 		 sreg);
+
+  /* Test extensions, followed by logic ops, followed by truncations.  */
+  rtx bsubreg = lowpart_subreg (bmode, sreg, smode);
+  rtx smask = gen_int_mode (GET_MODE_MASK (smode), bmode);
+  rtx inv_smask = gen_int_mode (~GET_MODE_MASK (smode), bmode);
+  ASSERT_RTX_EQ (lowpart_subreg (smode,
+				 simplify_gen_binary (AND, bmode,
+						      bsubreg, smask),
+				 bmode),
+		 sreg);
+  ASSERT_RTX_EQ (lowpart_subreg (smode,
+				 simplify_gen_binary (AND, bmode,
+						      bsubreg, inv_smask),
+				 bmode),
+		 const0_rtx);
+  ASSERT_RTX_EQ (lowpart_subreg (smode,
+				 simplify_gen_binary (IOR, bmode,
+						      bsubreg, smask),
+				 bmode),
+		 constm1_rtx);
+  ASSERT_RTX_EQ (lowpart_subreg (smode,
+				 simplify_gen_binary (IOR, bmode,
+						      bsubreg, inv_smask),
+				 bmode),
+		 sreg);
+  ASSERT_RTX_EQ (lowpart_subreg (smode,
+				 simplify_gen_binary (XOR, bmode,
+						      bsubreg, smask),
+				 bmode),
+		 lowpart_subreg (smode,
+				 gen_rtx_NOT (bmode, bsubreg),
+				 bmode));
+  ASSERT_RTX_EQ (lowpart_subreg (smode,
+				 simplify_gen_binary (XOR, bmode,
+						      bsubreg, inv_smask),
+				 bmode),
+		 sreg);
+
+  if (known_le (GET_MODE_PRECISION (bmode), BITS_PER_WORD))
+    {
+      rtx breg1 = make_test_reg (bmode);
+      rtx breg2 = make_test_reg (bmode);
+      rtx ssubreg1 = lowpart_subreg (smode, breg1, bmode);
+      rtx ssubreg2 = lowpart_subreg (smode, breg2, bmode);
+      rtx not_1 = simplify_gen_unary (NOT, smode, ssubreg1, smode);
+      rtx and_12 = simplify_gen_binary (AND, smode, ssubreg1, ssubreg2);
+      rtx ior_12 = simplify_gen_binary (IOR, smode, ssubreg1, ssubreg2);
+      rtx xor_12 = simplify_gen_binary (XOR, smode, ssubreg1, ssubreg2);
+      rtx and_n12 = simplify_gen_binary (AND, smode, not_1, ssubreg2);
+      rtx ior_n12 = simplify_gen_binary (IOR, smode, not_1, ssubreg2);
+      rtx xor_12_c = simplify_gen_binary (XOR, smode, xor_12, const1_rtx);
+      ASSERT_RTX_EQ (lowpart_subreg (bmode, not_1, smode),
+		     gen_rtx_NOT (bmode, breg1));
+      ASSERT_RTX_EQ (lowpart_subreg (bmode, and_12, smode),
+		     gen_rtx_AND (bmode, breg1, breg2));
+      ASSERT_RTX_EQ (lowpart_subreg (bmode, ior_12, smode),
+		     gen_rtx_IOR (bmode, breg1, breg2));
+      ASSERT_RTX_EQ (lowpart_subreg (bmode, xor_12, smode),
+		     gen_rtx_XOR (bmode, breg1, breg2));
+      ASSERT_RTX_EQ (lowpart_subreg (bmode, and_n12, smode),
+		     gen_rtx_AND (bmode, gen_rtx_NOT (bmode, breg1), breg2));
+      ASSERT_RTX_EQ (lowpart_subreg (bmode, ior_n12, smode),
+		     gen_rtx_IOR (bmode, gen_rtx_NOT (bmode, breg1), breg2));
+      ASSERT_RTX_EQ (lowpart_subreg (bmode, xor_12_c, smode),
+		     gen_rtx_XOR (bmode,
+				  gen_rtx_XOR (bmode, breg1, breg2),
+				  const1_rtx));
+    }
 }
 
 /* Verify more simplifications of integer extension/truncation.
@@ -8493,6 +8987,63 @@ test_scalar_int_ext_ops2 (machine_mode bmode, machine_mode mmode,
 		 simplify_gen_unary (TRUNCATE, smode, mreg, mmode));
 }
 
+/* Test comparisons of comparisons, with the inner comparisons being
+   between values of mode MODE2 and producing results of mode MODE1,
+   and with the outer comparisons producing results of mode MODE0.  */
+
+static void
+test_comparisons (machine_mode mode0, machine_mode mode1, machine_mode mode2)
+{
+  rtx reg0 = make_test_reg (mode2);
+  rtx reg1 = make_test_reg (mode2);
+
+  static const rtx_code codes[] = {
+    EQ, NE, LT, LTU, LE, LEU, GE, GEU, GT, GTU
+  };
+  constexpr auto num_codes = ARRAY_SIZE (codes);
+  rtx cmps[num_codes];
+  rtx vals[] = { constm1_rtx, const0_rtx, const1_rtx };
+
+  for (unsigned int i = 0; i < num_codes; ++i)
+    cmps[i] = gen_rtx_fmt_ee (codes[i], mode1, reg0, reg1);
+
+  for (auto code : codes)
+    for (unsigned int i0 = 0; i0 < num_codes; ++i0)
+      for (unsigned int i1 = 0; i1 < num_codes; ++i1)
+	{
+	  rtx cmp_res = simplify_relational_operation (code, mode0, mode1,
+						       cmps[i0], cmps[i1]);
+	  if (i0 >= 2 && i1 >= 2 && (i0 ^ i1) & 1)
+	    ASSERT_TRUE (cmp_res == NULL_RTX);
+	  else
+	    {
+	      ASSERT_TRUE (cmp_res != NULL_RTX
+			   && (CONSTANT_P (cmp_res)
+			       || (COMPARISON_P (cmp_res)
+				   && GET_MODE (cmp_res) == mode0
+				   && REG_P (XEXP (cmp_res, 0))
+				   && REG_P (XEXP (cmp_res, 1)))));
+	      for (rtx reg0_val : vals)
+		for (rtx reg1_val : vals)
+		  {
+		    rtx val0 = simplify_const_relational_operation
+		      (codes[i0], mode1, reg0_val, reg1_val);
+		    rtx val1 = simplify_const_relational_operation
+		      (codes[i1], mode1, reg0_val, reg1_val);
+		    rtx val = simplify_const_relational_operation
+		      (code, mode0, val0, val1);
+		    rtx folded = cmp_res;
+		    if (COMPARISON_P (cmp_res))
+		      folded = simplify_const_relational_operation
+			(GET_CODE (cmp_res), mode0,
+			 XEXP (cmp_res, 0) == reg0 ? reg0_val : reg1_val,
+			 XEXP (cmp_res, 1) == reg0 ? reg0_val : reg1_val);
+		    ASSERT_RTX_EQ (val, folded);
+		  }
+	    }
+	}
+}
+
 
 /* Verify some simplifications involving scalar expressions.  */
 
@@ -8517,6 +9068,8 @@ test_scalar_ops ()
   test_scalar_int_ext_ops2 (DImode, HImode, QImode);
   test_scalar_int_ext_ops2 (DImode, SImode, QImode);
   test_scalar_int_ext_ops2 (DImode, SImode, HImode);
+
+  test_comparisons (QImode, HImode, SImode);
 }
 
 /* Test vector simplifications involving VEC_DUPLICATE in which the

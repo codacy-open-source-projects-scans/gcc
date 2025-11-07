@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2020-2024 Free Software Foundation, Inc.
+# Copyright (C) 2020-2025 Free Software Foundation, Inc.
 #
 # This file is part of GCC.
 #
@@ -38,6 +38,7 @@ default_changelog_locations = {
     'gcc/c',
     'gcc/c-family',
     'gcc',
+    'gcc/cobol',
     'gcc/cp',
     'gcc/d',
     'gcc/fortran',
@@ -66,6 +67,7 @@ default_changelog_locations = {
     'libgcc',
     'libgcc/config/avr/libf7',
     'libgcc/config/libbid',
+    'libgcobol',
     'libgfortran',
     'libgm2',
     'libgomp',
@@ -91,9 +93,11 @@ bug_components = {
     'bootstrap',
     'c',
     'c++',
+    'cobol',
     'd',
     'debug',
     'demangler',
+    'diagnostics',
     'driver',
     'fastjar',
     'fortran',
@@ -146,9 +150,11 @@ ignored_prefixes = {
     'gcc/testsuite/go.test/test/',
     'libffi/',
     'libgo/',
+    'libgrust/rustc-lib/core/',
     'libphobos/libdruntime/',
     'libphobos/src/',
     'libsanitizer/',
+    'zlib/',
     }
 
 wildcard_prefixes = {

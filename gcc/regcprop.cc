@@ -1,5 +1,5 @@
 /* Copy propagation on hard registers for the GNU compiler.
-   Copyright (C) 2000-2024 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -331,6 +331,10 @@ copy_value (rtx dest, rtx src, struct value_data *vd)
      or somesuch.  */
   if (vd->e[sr].mode == VOIDmode)
     set_value_regno (sr, vd->e[dr].mode, vd);
+
+  else if (!ordered_p (GET_MODE_PRECISION (vd->e[sr].mode),
+		       GET_MODE_PRECISION (GET_MODE (src))))
+    return;
 
   /* If we are narrowing the input to a smaller number of hard regs,
      and it is in big endian, we are really extracting a high part.

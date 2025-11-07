@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1997-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1997-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -11199,7 +11199,7 @@ package body Sem_Elab is
         (Id : Entity_Id) return Extended_Ghost_Mode
       is
       begin
-         return To_Ghost_Mode (Is_Ignored_Ghost_Entity (Id));
+         return To_Ghost_Mode (Is_Ignored_Ghost_Entity_In_Codegen (Id));
       end Ghost_Mode_Of_Entity;
 
       ------------------------
@@ -15236,7 +15236,15 @@ package body Sem_Elab is
             end if;
 
             Body_Decl := Unit_Declaration_Node (Body_Id);
-            Region    := Find_Early_Call_Region (Body_Decl);
+
+            --  For subprogram bodies in subunits we check where the subprogram
+            --  body stub is declared.
+
+            if Nkind (Parent (Body_Decl)) = N_Subunit then
+               Body_Decl := Corresponding_Stub (Parent (Body_Decl));
+            end if;
+
+            Region := Find_Early_Call_Region (Body_Decl);
 
             --  The freeze node appears prior to the early call region of the
             --  primitive body.
@@ -17389,7 +17397,7 @@ package body Sem_Elab is
       --  Nothing to do if call is being preanalyzed, as when within a
       --  pre/postcondition, a predicate, or an invariant.
 
-      elsif In_Spec_Expression then
+      elsif Preanalysis_Active then
          return;
       end if;
 
@@ -17461,7 +17469,7 @@ package body Sem_Elab is
       --  Stuff that happens only at the outer level
 
       if No (Outer_Scope) then
-         Elab_Visited.Set_Last (0);
+         Elab_Visited.Clear;
 
          --  Nothing to do if current scope is Standard (this is a bit odd, but
          --  it happens in the case of generic instantiations).

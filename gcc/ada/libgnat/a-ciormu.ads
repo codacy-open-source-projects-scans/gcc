@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -58,12 +58,11 @@ is
    type Set is tagged private
    with Constant_Indexing => Constant_Reference,
         Default_Iterator  => Iterate,
-        Iterator_Element  => Element_Type;
+        Iterator_Element  => Element_Type,
+        Preelaborable_Initialization;
 
-   pragma Preelaborable_Initialization (Set);
-
-   type Cursor is private;
-   pragma Preelaborable_Initialization (Cursor);
+   type Cursor is private
+   with Preelaborable_Initialization;
 
    Empty_Set : constant Set;
    --  The default value for set objects declared without an explicit

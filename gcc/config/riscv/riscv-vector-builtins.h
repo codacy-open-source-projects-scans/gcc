@@ -1,5 +1,5 @@
 /* Builtins definitions for RISC-V 'V' Extension for GNU compiler.
-   Copyright (C) 2022-2024 Free Software Foundation, Inc.
+   Copyright (C) 2022-2025 Free Software Foundation, Inc.
    Contributed by Ju-Zhe Zhong (juzhe.zhong@rivai.ai), RiVAI Technologies Ltd.
 
    This file is part of GCC.
@@ -130,6 +130,11 @@ enum required_ext
   XSFVQMACCQOQ_EXT,	/* XSFVQMACCQOQ extension */
   XSFVQMACCDOD_EXT,	/* XSFVQMACCDOD extension */
   XSFVFNRCLIPXFQF_EXT,	/* XSFVFNRCLIPXFQF extension */
+  XSFVCP_EXT, /* XSFVCP extension*/
+  XANDESVBFHCVT_EXT,    /* XANDESVBFHCVT extension */
+  XANDESVSINTLOAD_EXT,  /* XANDESVSINTLOAD extension */
+  XANDESVPACKFPH_EXT,   /* XANDESVPACKFPH extension */
+  XANDESVDOT_EXT,       /* XANDESVDOT extension */
   /* Please update below to isa_name func when add or remove enum type(s).  */
 };
 
@@ -169,6 +174,16 @@ static inline const char * required_ext_to_isa_name (enum required_ext required)
       return "xsfvqmaccdod";
     case XSFVFNRCLIPXFQF_EXT:
       return "xsfvfnrclipxfqf";
+    case XSFVCP_EXT:
+      return "xsfvcp";
+    case XANDESVBFHCVT_EXT:
+      return "xandesvbfhcvt";
+    case XANDESVSINTLOAD_EXT:
+      return "xandesvsintload";
+    case XANDESVPACKFPH_EXT:
+      return "xandesvpackfph";
+    case XANDESVDOT_EXT:
+      return "xandesvdot";
     default:
       gcc_unreachable ();
   }
@@ -212,6 +227,16 @@ static inline bool required_extensions_specified (enum required_ext required)
       return TARGET_XSFVQMACCDOD;
     case XSFVFNRCLIPXFQF_EXT:
       return TARGET_XSFVFNRCLIPXFQF;
+    case XSFVCP_EXT:
+      return TARGET_XSFVCP;
+    case XANDESVBFHCVT_EXT:
+      return TARGET_XANDESVBFHCVT;
+    case XANDESVSINTLOAD_EXT:
+      return TARGET_XANDESVSINTLOAD;
+    case XANDESVPACKFPH_EXT:
+      return TARGET_XANDESVPACKFPH;
+    case XANDESVDOT_EXT:
+      return TARGET_XANDESVDOT;
     default:
       gcc_unreachable ();
   }
@@ -296,6 +321,8 @@ struct rvv_arg_type_info
   tree get_vector_type (vector_type_index) const;
   tree get_tree_type (vector_type_index) const;
   tree get_tuple_subpart_type (vector_type_index) const;
+  tree get_xfqf_float_type (vector_type_index) const;
+  tree get_scalar_float_type (vector_type_index) const;
 };
 
 /* Static information for each operand.  */
@@ -324,43 +351,7 @@ struct function_group_info
   /* Return true if required extension is enabled */
   bool match (required_ext ext_value) const
   {
-    switch (ext_value)
-    {
-      case VECTOR_EXT:
-        return TARGET_VECTOR;
-      case ZVBB_EXT:
-        return TARGET_ZVBB;
-      case ZVBB_OR_ZVKB_EXT:
-        return (TARGET_ZVBB || TARGET_ZVKB);
-      case ZVBC_EXT:
-        return TARGET_ZVBC;
-      case ZVKG_EXT:
-        return TARGET_ZVKG;
-      case ZVKNED_EXT:
-        return TARGET_ZVKNED;
-      case ZVKNHA_OR_ZVKNHB_EXT:
-        return (TARGET_ZVKNHA || TARGET_ZVKNHB);
-      case ZVKNHB_EXT:
-        return TARGET_ZVKNHB;
-      case ZVKSED_EXT:
-        return TARGET_ZVKSED;
-      case ZVKSH_EXT:
-        return TARGET_ZVKSH;
-      case XTHEADVECTOR_EXT:
-	return TARGET_XTHEADVECTOR;
-      case ZVFBFMIN_EXT:
-	return TARGET_ZVFBFMIN;
-      case ZVFBFWMA_EXT:
-	return TARGET_ZVFBFWMA;
-      case XSFVQMACCQOQ_EXT:
-	return TARGET_XSFVQMACCQOQ;
-      case XSFVQMACCDOD_EXT:
-	return TARGET_XSFVQMACCDOD;
-      case XSFVFNRCLIPXFQF_EXT:
-	return TARGET_XSFVFNRCLIPXFQF;
-      default:
-        gcc_unreachable ();
-    }
+    return required_extensions_specified (ext_value);
   }
   /* The base name, as a string.  */
   const char *base_name;
@@ -406,6 +397,7 @@ public:
   bool any_type_float_p () const;
 
   tree get_return_type () const;
+  bool function_returns_void_p () const;
   tree get_arg_type (unsigned opno) const;
 
   /* The properties of the function.  (The explicit "enum"s are required
@@ -461,21 +453,12 @@ class function_call_info : public function_instance
 public:
   function_call_info (location_t, const function_instance &, tree);
 
-  bool function_returns_void_p ();
-
   /* The location of the call.  */
   location_t location;
 
   /* The FUNCTION_DECL that is being called.  */
   tree fndecl;
 };
-
-/* Return true if the function has no return value.  */
-inline bool
-function_call_info::function_returns_void_p ()
-{
-  return TREE_TYPE (TREE_TYPE (fndecl)) == void_type_node;
-}
 
 /* A class for folding a gimple function call.  */
 class gimple_folder : public function_call_info
@@ -526,6 +509,7 @@ public:
   rtx use_ternop_insn (bool, insn_code);
   rtx use_widen_ternop_insn (insn_code);
   rtx use_scalar_move_insn (insn_code);
+  rtx use_scalar_broadcast_insn (insn_code);
   rtx generate_insn (insn_code);
 
   /* The function call expression.  */

@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2024 Free Software Foundation, Inc.
+// Copyright (C) 2020-2025 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -25,6 +25,14 @@
 namespace Rust {
 namespace Analysis {
 
+class Attributes
+{
+public:
+  static bool is_known (const std::string &attribute_path);
+  static tl::optional<std::string>
+  extract_string_literal (const AST::Attribute &attr);
+};
+
 enum CompilerPass
 {
   UNKNOWN,
@@ -34,7 +42,12 @@ enum CompilerPass
   HIR_LOWERING,
   TYPE_CHECK,
   STATIC_ANALYSIS,
-  CODE_GENERATION
+  CODE_GENERATION,
+
+  // External Rust tooling attributes, like #[rustfmt::skip]
+  EXTERNAL,
+
+  // Do we need to add something here for const fns?
 };
 
 struct BuiltinAttrDefinition
@@ -93,13 +106,14 @@ private:
   void check_attribute (const AST::Attribute &attribute);
 
   /* Check the validity of all given attributes */
+
+  void check_inner_attributes (const AST::AttrVec &attributes);
   void check_attributes (const AST::AttrVec &attributes);
 
   // rust-ast.h
   void visit (AST::Crate &crate) override;
   void visit (AST::Token &tok) override;
   void visit (AST::DelimTokenTree &delim_tok_tree) override;
-  void visit (AST::AttrInputMetaItemContainer &input) override;
   void visit (AST::IdentifierExpr &ident_expr) override;
   void visit (AST::Lifetime &lifetime) override;
   void visit (AST::LifetimeParam &lifetime_param) override;
@@ -119,7 +133,7 @@ private:
   void visit (AST::AttrInputLiteral &attr_input) override;
   void visit (AST::AttrInputMacro &attr_input) override;
   void visit (AST::MetaItemLitExpr &meta_item) override;
-  void visit (AST::MetaItemPathLit &meta_item) override;
+  void visit (AST::MetaItemPathExpr &meta_item) override;
   void visit (AST::BorrowExpr &expr) override;
   void visit (AST::DereferenceExpr &expr) override;
   void visit (AST::ErrorPropagationExpr &expr) override;
@@ -192,7 +206,6 @@ private:
   void visit (AST::Union &union_item) override;
   void visit (AST::ConstantItem &const_item) override;
   void visit (AST::StaticItem &static_item) override;
-  void visit (AST::TraitItemConst &item) override;
   void visit (AST::TraitItemType &item) override;
   void visit (AST::Trait &trait) override;
   void visit (AST::InherentImpl &impl) override;
@@ -208,7 +221,6 @@ private:
   void visit (AST::MacroRulesDefinition &rules_def) override;
   void visit (AST::MacroInvocation &macro_invoc) override;
   void visit (AST::MetaItemPath &meta_item) override;
-  void visit (AST::MetaItemSeq &meta_item) override;
   void visit (AST::MetaWord &meta_item) override;
   void visit (AST::MetaNameValueStr &meta_item) override;
   void visit (AST::MetaListPaths &meta_item) override;
@@ -231,12 +243,12 @@ private:
   void visit (AST::StructPatternFieldIdent &field) override;
   void visit (AST::StructPattern &pattern) override;
   // void visit(TupleStructItems& tuple_items) override;
-  void visit (AST::TupleStructItemsNoRange &tuple_items) override;
-  void visit (AST::TupleStructItemsRange &tuple_items) override;
+  void visit (AST::TupleStructItemsNoRest &tuple_items) override;
+  void visit (AST::TupleStructItemsHasRest &tuple_items) override;
   void visit (AST::TupleStructPattern &pattern) override;
   // void visit(TuplePatternItems& tuple_items) override;
-  void visit (AST::TuplePatternItemsMultiple &tuple_items) override;
-  void visit (AST::TuplePatternItemsRanged &tuple_items) override;
+  void visit (AST::TuplePatternItemsNoRest &tuple_items) override;
+  void visit (AST::TuplePatternItemsHasRest &tuple_items) override;
   void visit (AST::TuplePattern &pattern) override;
   void visit (AST::GroupedPattern &pattern) override;
   void visit (AST::SlicePattern &pattern) override;

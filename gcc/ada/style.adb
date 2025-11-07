@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -345,12 +345,14 @@ package body Style is
    begin
       if Style_Check_Xtra_Parens_Precedence
         and then
-          Paren_Count (N) >
-            (if Nkind (N) in N_Case_Expression
-                           | N_Expression_With_Actions
-                           | N_If_Expression
-                           | N_Quantified_Expression
-                           | N_Raise_Expression
+          Paren_Count (Original_Node (N)) >
+            (if Nkind (Original_Node (N)) in N_Case_Expression
+                                           | N_Expression_With_Actions
+                                           | N_If_Expression
+                                           | N_Quantified_Expression
+                                           | N_Raise_Expression
+                                           | N_In
+                                           | N_Not_In
              then 1
              else 0)
       then

@@ -1,5 +1,5 @@
 /* Statement simplification on GIMPLE.
-   Copyright (C) 2010-2024 Free Software Foundation, Inc.
+   Copyright (C) 2010-2025 Free Software Foundation, Inc.
    Split out from tree-ssa-ccp.cc.
 
 This file is part of GCC.
@@ -38,6 +38,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "stor-layout.h"
 #include "dumpfile.h"
 #include "gimple-iterator.h"
+#include "tree-pass.h"
 #include "gimple-fold.h"
 #include "gimplify.h"
 #include "tree-into-ssa.h"
@@ -189,19 +190,6 @@ can_refer_decl_in_current_unit_p (tree decl, tree from_decl)
     return false;
   node = dyn_cast <cgraph_node *> (snode);
   return !node || !node->inlined_to;
-}
-
-/* Create a temporary for TYPE for a statement STMT.  If the current function
-   is in SSA form, a SSA name is created.  Otherwise a temporary register
-   is made.  */
-
-tree
-create_tmp_reg_or_ssa_name (tree type, gimple *stmt)
-{
-  if (gimple_in_ssa_p (cfun))
-    return make_ssa_name (type, stmt);
-  else
-    return create_tmp_reg (type);
 }
 
 /* CVAL is value taken from DECL_INITIAL of variable.  Try to transform it into
@@ -894,121 +882,6 @@ size_must_be_zero_p (tree size)
   return vr.zero_p ();
 }
 
-/* Optimize
-   a = {};
-   b = a;
-   into
-   a = {};
-   b = {};
-   Similarly for memset (&a, ..., sizeof (a)); instead of a = {};
-   and/or memcpy (&b, &a, sizeof (a)); instead of b = a;  */
-
-static bool
-optimize_memcpy_to_memset (gimple_stmt_iterator *gsip, tree dest, tree src, tree len)
-{
-  gimple *stmt = gsi_stmt (*gsip);
-  if (gimple_has_volatile_ops (stmt))
-    return false;
-
-  tree vuse = gimple_vuse (stmt);
-  if (vuse == NULL || TREE_CODE (vuse) != SSA_NAME)
-    return false;
-
-  gimple *defstmt = SSA_NAME_DEF_STMT (vuse);
-  tree src2 = NULL_TREE, len2 = NULL_TREE;
-  poly_int64 offset, offset2;
-  tree val = integer_zero_node;
-  if (gimple_store_p (defstmt)
-      && gimple_assign_single_p (defstmt)
-      && TREE_CODE (gimple_assign_rhs1 (defstmt)) == CONSTRUCTOR
-      && !gimple_clobber_p (defstmt))
-    src2 = gimple_assign_lhs (defstmt);
-  else if (gimple_call_builtin_p (defstmt, BUILT_IN_MEMSET)
-	   && TREE_CODE (gimple_call_arg (defstmt, 0)) == ADDR_EXPR
-	   && TREE_CODE (gimple_call_arg (defstmt, 1)) == INTEGER_CST)
-    {
-      src2 = TREE_OPERAND (gimple_call_arg (defstmt, 0), 0);
-      len2 = gimple_call_arg (defstmt, 2);
-      val = gimple_call_arg (defstmt, 1);
-      /* For non-0 val, we'd have to transform stmt from assignment
-	 into memset (only if dest is addressable).  */
-      if (!integer_zerop (val) && is_gimple_assign (stmt))
-	src2 = NULL_TREE;
-    }
-
-  if (src2 == NULL_TREE)
-    return false;
-
-  if (len == NULL_TREE)
-    len = (TREE_CODE (src) == COMPONENT_REF
-	   ? DECL_SIZE_UNIT (TREE_OPERAND (src, 1))
-	   : TYPE_SIZE_UNIT (TREE_TYPE (src)));
-  if (len2 == NULL_TREE)
-    len2 = (TREE_CODE (src2) == COMPONENT_REF
-	    ? DECL_SIZE_UNIT (TREE_OPERAND (src2, 1))
-	    : TYPE_SIZE_UNIT (TREE_TYPE (src2)));
-  if (len == NULL_TREE
-      || !poly_int_tree_p (len)
-      || len2 == NULL_TREE
-      || !poly_int_tree_p (len2))
-    return false;
-
-  src = get_addr_base_and_unit_offset (src, &offset);
-  src2 = get_addr_base_and_unit_offset (src2, &offset2);
-  if (src == NULL_TREE
-      || src2 == NULL_TREE
-      || maybe_lt (offset, offset2))
-    return false;
-
-  if (!operand_equal_p (src, src2, 0))
-    return false;
-
-  /* [ src + offset2, src + offset2 + len2 - 1 ] is set to val.
-     Make sure that
-     [ src + offset, src + offset + len - 1 ] is a subset of that.  */
-  if (maybe_gt (wi::to_poly_offset (len) + (offset - offset2),
-		wi::to_poly_offset (len2)))
-    return false;
-
-  if (dump_file && (dump_flags & TDF_DETAILS))
-    {
-      fprintf (dump_file, "Simplified\n  ");
-      print_gimple_stmt (dump_file, stmt, 0, dump_flags);
-      fprintf (dump_file, "after previous\n  ");
-      print_gimple_stmt (dump_file, defstmt, 0, dump_flags);
-    }
-
-  /* For simplicity, don't change the kind of the stmt,
-     turn dest = src; into dest = {}; and memcpy (&dest, &src, len);
-     into memset (&dest, val, len);
-     In theory we could change dest = src into memset if dest
-     is addressable (maybe beneficial if val is not 0), or
-     memcpy (&dest, &src, len) into dest = {} if len is the size
-     of dest, dest isn't volatile.  */
-  if (is_gimple_assign (stmt))
-    {
-      tree ctor = build_constructor (TREE_TYPE (dest), NULL);
-      gimple_assign_set_rhs_from_tree (gsip, ctor);
-      update_stmt (stmt);
-    }
-  else /* If stmt is memcpy, transform it into memset.  */
-    {
-      gcall *call = as_a <gcall *> (stmt);
-      tree fndecl = builtin_decl_implicit (BUILT_IN_MEMSET);
-      gimple_call_set_fndecl (call, fndecl);
-      gimple_call_set_fntype (call, TREE_TYPE (fndecl));
-      gimple_call_set_arg (call, 1, val);
-      update_stmt (stmt);
-    }
-
-  if (dump_file && (dump_flags & TDF_DETAILS))
-    {
-      fprintf (dump_file, "into\n  ");
-      print_gimple_stmt (dump_file, stmt, 0, dump_flags);
-    }
-  return true;
-}
-
 /* Fold function call to builtin mem{{,p}cpy,move}.  Try to detect and
    diagnose (otherwise undefined) overlapping copies without preventing
    folding.  When folded, GCC guarantees that overlapping memcpy has
@@ -1156,8 +1029,7 @@ gimple_fold_builtin_memory_op (gimple_stmt_iterator *gsi,
 			{
 			  new_stmt = gimple_build_assign (NULL_TREE, srcmem);
 			  srcmem
-			    = create_tmp_reg_or_ssa_name (TREE_TYPE (srcmem),
-							  new_stmt);
+			    = make_ssa_name (TREE_TYPE (srcmem), new_stmt);
 			  gimple_assign_set_lhs (new_stmt, srcmem);
 			  gimple_set_vuse (new_stmt, gimple_vuse (stmt));
 			  gimple_set_location (new_stmt, loc);
@@ -1287,15 +1159,6 @@ gimple_fold_builtin_memory_op (gimple_stmt_iterator *gsi,
 
 	  return false;
 	}
-
-     /* Try to optimize the memcpy to memset if src and dest are addresses. */
-     if (code != BUILT_IN_MEMPCPY
-	 && TREE_CODE (dest) == ADDR_EXPR
-	 && TREE_CODE (src) == ADDR_EXPR
-	 && TREE_CODE (len) == INTEGER_CST
-	 && optimize_memcpy_to_memset (gsi, TREE_OPERAND (dest, 0),
-				       TREE_OPERAND (src, 0), len))
-	return true;
 
       if (!tree_fits_shwi_p (len))
 	return false;
@@ -1435,8 +1298,7 @@ gimple_fold_builtin_memory_op (gimple_stmt_iterator *gsi,
 	  if (! is_gimple_min_invariant (srcvar))
 	    {
 	      new_stmt = gimple_build_assign (NULL_TREE, srcvar);
-	      srcvar = create_tmp_reg_or_ssa_name (TREE_TYPE (srcvar),
-						   new_stmt);
+	      srcvar = make_ssa_name (TREE_TYPE (srcvar), new_stmt);
 	      gimple_assign_set_lhs (new_stmt, srcvar);
 	      gimple_set_vuse (new_stmt, gimple_vuse (stmt));
 	      gimple_set_location (new_stmt, loc);
@@ -2408,7 +2270,7 @@ gimple_fold_builtin_strchr (gimple_stmt_iterator *gsi, bool is_strrchr)
   gimple_seq stmts = NULL;
   gimple *new_stmt = gimple_build_call (strlen_fn, 1, str);
   gimple_set_location (new_stmt, loc);
-  len = create_tmp_reg_or_ssa_name (size_type_node);
+  len = make_ssa_name (size_type_node);
   gimple_call_set_lhs (new_stmt, len);
   gimple_seq_add_stmt_without_update (&stmts, new_stmt);
 
@@ -2554,7 +2416,7 @@ gimple_fold_builtin_strcat (gimple_stmt_iterator *gsi, tree dst, tree src)
   gimple_seq stmts = NULL, stmts2;
   gimple *repl = gimple_build_call (strlen_fn, 1, dst);
   gimple_set_location (repl, loc);
-  newdst = create_tmp_reg_or_ssa_name (size_type_node);
+  newdst = make_ssa_name (size_type_node);
   gimple_call_set_lhs (repl, newdst);
   gimple_seq_add_stmt_without_update (&stmts, repl);
 
@@ -2787,7 +2649,7 @@ gimple_load_first_char (location_t loc, tree str, gimple_seq *stmts)
 
   tree temp = fold_build2_loc (loc, MEM_REF, cst_uchar_node, str, off0);
   gassign *stmt = gimple_build_assign (NULL_TREE, temp);
-  var = create_tmp_reg_or_ssa_name (cst_uchar_node, stmt);
+  var = make_ssa_name (cst_uchar_node, stmt);
 
   gimple_assign_set_lhs (stmt, var);
   gimple_seq_add_stmt_without_update (stmts, stmt);
@@ -2958,7 +2820,7 @@ gimple_fold_builtin_string_compare (gimple_stmt_iterator *gsi)
 
       if (lhs)
 	{
-	  tree c = create_tmp_reg_or_ssa_name (integer_type_node);
+	  tree c = make_ssa_name (integer_type_node);
 	  stmt = gimple_build_assign (c, NOP_EXPR, var);
 	  gimple_seq_add_stmt_without_update (&stmts, stmt);
 
@@ -2980,11 +2842,11 @@ gimple_fold_builtin_string_compare (gimple_stmt_iterator *gsi)
 
       if (lhs)
 	{
-	  tree c1 = create_tmp_reg_or_ssa_name (integer_type_node);
+	  tree c1 = make_ssa_name (integer_type_node);
 	  gassign *convert1 = gimple_build_assign (c1, NOP_EXPR, temp1);
 	  gimple_seq_add_stmt_without_update (&stmts, convert1);
 
-	  tree c2 = create_tmp_reg_or_ssa_name (integer_type_node);
+	  tree c2 = make_ssa_name (integer_type_node);
 	  gassign *convert2 = gimple_build_assign (c2, NOP_EXPR, temp2);
 	  gimple_seq_add_stmt_without_update (&stmts, convert2);
 
@@ -4224,6 +4086,40 @@ gimple_fold_builtin_omp_is_initial_device (gimple_stmt_iterator *gsi)
   return false;
 }
 
+/* omp_get_initial_device was in OpenMP 5.0/5.1 explicitly and in
+   5.0 implicitly the same as omp_get_num_devices; since 6.0 it is
+   unspecified whether -1 or omp_get_num_devices() is returned.  For
+   better backward compatibility, use omp_get_num_devices() on the
+   host - and -1 on the device (where the result is unspecified).  */
+
+static bool
+gimple_fold_builtin_omp_get_initial_device (gimple_stmt_iterator *gsi)
+{
+#if ACCEL_COMPILER
+  replace_call_with_value (gsi, build_int_cst (integer_type_node, -1));
+#else
+  if (!ENABLE_OFFLOADING)
+    replace_call_with_value (gsi, integer_zero_node);
+  else
+    {
+      tree fn = builtin_decl_explicit (BUILT_IN_OMP_GET_NUM_DEVICES);
+      gcall *repl = gimple_build_call (fn, 0);
+      replace_call_with_call_and_fold (gsi, repl);
+    }
+#endif
+  return true;
+}
+
+static bool
+gimple_fold_builtin_omp_get_num_devices (gimple_stmt_iterator *gsi)
+{
+  if (!ENABLE_OFFLOADING)
+    {
+      replace_call_with_value (gsi, integer_zero_node);
+      return true;
+    }
+  return false;
+}
 
 /* Fold a call to __builtin_acc_on_device.  */
 
@@ -5311,6 +5207,153 @@ gimple_fold_builtin_clear_padding (gimple_stmt_iterator *gsi)
   return true;
 }
 
+/* Fold __builtin_constant_p builtin.  */
+
+static bool
+gimple_fold_builtin_constant_p (gimple_stmt_iterator *gsi)
+{
+  gcall *call = as_a<gcall*>(gsi_stmt (*gsi));
+
+  if (gimple_call_num_args (call) != 1)
+    return false;
+
+  tree arg = gimple_call_arg (call, 0);
+  tree result = fold_builtin_constant_p (arg);
+
+  /* Resolve __builtin_constant_p.  If it hasn't been
+     folded to integer_one_node by now, it's fairly
+     certain that the value simply isn't constant.  */
+  if (!result && fold_before_rtl_expansion_p ())
+    result = integer_zero_node;
+
+  if (!result)
+    return false;
+
+  gimplify_and_update_call_from_tree (gsi, result);
+  return true;
+}
+
+/* If va_list type is a simple pointer and nothing special is needed,
+   optimize __builtin_va_start (&ap, 0) into ap = __builtin_next_arg (0),
+   __builtin_va_end (&ap) out as NOP and __builtin_va_copy into a simple
+   pointer assignment.  Returns true if a change happened.  */
+
+static bool
+gimple_fold_builtin_stdarg (gimple_stmt_iterator *gsi, gcall *call)
+{
+  /* These shouldn't be folded before pass_stdarg.  */
+  if (!fold_before_rtl_expansion_p ())
+    return false;
+
+  tree callee, lhs, rhs, cfun_va_list;
+  bool va_list_simple_ptr;
+  location_t loc = gimple_location (call);
+  gimple *nstmt0, *nstmt;
+  tree tlhs, oldvdef, newvdef;
+
+  callee = gimple_call_fndecl (call);
+
+  cfun_va_list = targetm.fn_abi_va_list (callee);
+  va_list_simple_ptr = POINTER_TYPE_P (cfun_va_list)
+		       && (TREE_TYPE (cfun_va_list) == void_type_node
+			   || TREE_TYPE (cfun_va_list) == char_type_node);
+
+  switch (DECL_FUNCTION_CODE (callee))
+    {
+    case BUILT_IN_VA_START:
+      if (!va_list_simple_ptr
+	  || targetm.expand_builtin_va_start != NULL
+	  || !builtin_decl_explicit_p (BUILT_IN_NEXT_ARG))
+	return false;
+
+      if (gimple_call_num_args (call) != 2)
+	return false;
+
+      lhs = gimple_call_arg (call, 0);
+      if (!POINTER_TYPE_P (TREE_TYPE (lhs))
+	  || TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (lhs)))
+	     != TYPE_MAIN_VARIANT (cfun_va_list))
+	return false;
+      /* Create `tlhs = __builtin_next_arg(0);`. */
+      tlhs = make_ssa_name (cfun_va_list);
+      nstmt0 = gimple_build_call (builtin_decl_explicit (BUILT_IN_NEXT_ARG), 1, integer_zero_node);
+      lhs = fold_build2 (MEM_REF, cfun_va_list, lhs, build_zero_cst (TREE_TYPE (lhs)));
+      gimple_call_set_lhs (nstmt0, tlhs);
+      gimple_set_location (nstmt0, loc);
+      gimple_move_vops (nstmt0, call);
+      gsi_replace (gsi, nstmt0, false);
+      oldvdef = gimple_vdef (nstmt0);
+      newvdef = make_ssa_name (gimple_vop (cfun), nstmt0);
+      gimple_set_vdef (nstmt0, newvdef);
+
+      /* Create `*lhs = tlhs;`.  */
+      nstmt = gimple_build_assign (lhs, tlhs);
+      gimple_set_location (nstmt, loc);
+      gimple_set_vuse (nstmt, newvdef);
+      gimple_set_vdef (nstmt, oldvdef);
+      SSA_NAME_DEF_STMT (oldvdef) = nstmt;
+      gsi_insert_after (gsi, nstmt, GSI_NEW_STMT);
+
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	{
+	  fprintf (dump_file, "Simplified\n  ");
+	  print_gimple_stmt (dump_file, call, 0, dump_flags);
+	  fprintf (dump_file, "into\n  ");
+	  print_gimple_stmt (dump_file, nstmt0, 0, dump_flags);
+	  fprintf (dump_file, "  ");
+	  print_gimple_stmt (dump_file, nstmt, 0, dump_flags);
+	}
+      return true;
+
+    case BUILT_IN_VA_COPY:
+      if (!va_list_simple_ptr)
+	return false;
+
+      if (gimple_call_num_args (call) != 2)
+	return false;
+
+      lhs = gimple_call_arg (call, 0);
+      if (!POINTER_TYPE_P (TREE_TYPE (lhs))
+	  || TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (lhs)))
+	     != TYPE_MAIN_VARIANT (cfun_va_list))
+	return false;
+      rhs = gimple_call_arg (call, 1);
+      if (TYPE_MAIN_VARIANT (TREE_TYPE (rhs))
+	  != TYPE_MAIN_VARIANT (cfun_va_list))
+	return false;
+
+      lhs = fold_build2 (MEM_REF, cfun_va_list, lhs, build_zero_cst (TREE_TYPE (lhs)));
+      nstmt = gimple_build_assign (lhs, rhs);
+      gimple_set_location (nstmt, loc);
+      gimple_move_vops (nstmt, call);
+      gsi_replace (gsi, nstmt, false);
+
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	{
+	  fprintf (dump_file, "Simplified\n  ");
+	  print_gimple_stmt (dump_file, call, 0, dump_flags);
+	  fprintf (dump_file, "into\n  ");
+	  print_gimple_stmt (dump_file, nstmt, 0, dump_flags);
+	}
+      return true;
+
+    case BUILT_IN_VA_END:
+      /* No effect, so the statement will be deleted.  */
+      if (dump_file && (dump_flags & TDF_DETAILS))
+	{
+	  fprintf (dump_file, "Removed\n  ");
+	  print_gimple_stmt (dump_file, call, 0, dump_flags);
+	}
+      unlink_stmt_vdef (call);
+      release_defs (call);
+      gsi_replace (gsi, gimple_build_nop (), true);
+      return true;
+
+    default:
+      gcc_unreachable ();
+    }
+}
+
 /* Fold the non-target builtin at *GSI and return whether any simplification
    was made.  */
 
@@ -5329,6 +5372,10 @@ gimple_fold_builtin (gimple_stmt_iterator *gsi)
   enum built_in_function fcode = DECL_FUNCTION_CODE (callee);
   switch (fcode)
     {
+    case BUILT_IN_VA_START:
+    case BUILT_IN_VA_END:
+    case BUILT_IN_VA_COPY:
+      return gimple_fold_builtin_stdarg (gsi, stmt);
     case BUILT_IN_BCMP:
       return gimple_fold_builtin_bcmp (gsi);
     case BUILT_IN_BCOPY:
@@ -5468,11 +5515,20 @@ gimple_fold_builtin (gimple_stmt_iterator *gsi)
     case BUILT_IN_OMP_IS_INITIAL_DEVICE:
       return gimple_fold_builtin_omp_is_initial_device (gsi);
 
+    case BUILT_IN_OMP_GET_INITIAL_DEVICE:
+      return gimple_fold_builtin_omp_get_initial_device (gsi);
+
+    case BUILT_IN_OMP_GET_NUM_DEVICES:
+      return gimple_fold_builtin_omp_get_num_devices (gsi);
+
     case BUILT_IN_REALLOC:
       return gimple_fold_builtin_realloc (gsi);
 
     case BUILT_IN_CLEAR_PADDING:
       return gimple_fold_builtin_clear_padding (gsi);
+
+    case BUILT_IN_CONSTANT_P:
+      return gimple_fold_builtin_constant_p (gsi);
 
     default:;
     }
@@ -5933,6 +5989,12 @@ gimple_fold_call (gimple_stmt_iterator *gsi, bool inplace)
       tree overflow = NULL_TREE;
       switch (gimple_call_internal_fn (stmt))
 	{
+	case IFN_ASSUME:
+	  /* Remove .ASSUME calls during the last fold since it is no
+	     longer needed.  */
+	  if (fold_before_rtl_expansion_p ())
+	    replace_call_with_value (gsi, NULL_TREE);
+	  break;
 	case IFN_BUILTIN_EXPECT:
 	  result = fold_builtin_expect (gimple_location (stmt),
 					gimple_call_arg (stmt, 0),
@@ -6144,7 +6206,7 @@ has_use_on_stmt (tree name, gimple *stmt)
 
 /* Add the lhs of each statement of SEQ to DCE_WORKLIST. */
 
-static void
+void
 mark_lhs_in_seq_for_dce (bitmap dce_worklist, gimple_seq seq)
 {
   if (!dce_worklist)
@@ -6205,24 +6267,71 @@ replace_stmt_with_simplification (gimple_stmt_iterator *gsi,
       auto code = tree_code (res_op->code);
       if (TREE_CODE_CLASS (code) == tcc_comparison
 	  /* GIMPLE_CONDs condition may not throw.  */
-	  && (!flag_exceptions
-	      || !cfun->can_throw_non_call_exceptions
+	  && ((cfun
+	       && (!flag_exceptions
+		   || !cfun->can_throw_non_call_exceptions))
 	      || !operation_could_trap_p (code,
 					  FLOAT_TYPE_P (TREE_TYPE (ops[0])),
 					  false, NULL_TREE)))
 	gimple_cond_set_condition (cond_stmt, code, ops[0], ops[1]);
       else if (code == SSA_NAME)
-	gimple_cond_set_condition (cond_stmt, NE_EXPR, ops[0],
-				   build_zero_cst (TREE_TYPE (ops[0])));
+	{
+	  /* If setting the gimple cond to the same thing,
+	     return false as nothing changed.  */
+	  if (gimple_cond_code (cond_stmt) == NE_EXPR
+	      && operand_equal_p (gimple_cond_lhs (cond_stmt), ops[0])
+	      && integer_zerop (gimple_cond_rhs (cond_stmt)))
+	    return false;
+	  gimple_cond_set_condition (cond_stmt, NE_EXPR, ops[0],
+				     build_zero_cst (TREE_TYPE (ops[0])));
+	}
       else if (code == INTEGER_CST)
 	{
+	  /* Make into the canonical form `1 != 0` and `0 != 0`.
+	     If already in the canonical form return false
+	     saying nothing has been done.  */
 	  if (integer_zerop (ops[0]))
-	    gimple_cond_make_false (cond_stmt);
+	    {
+	      if (gimple_cond_false_canonical_p (cond_stmt))
+		return false;
+	      gimple_cond_make_false (cond_stmt);
+	    }
 	  else
-	    gimple_cond_make_true (cond_stmt);
+	    {
+	      if (gimple_cond_true_canonical_p (cond_stmt))
+		return false;
+	      gimple_cond_make_true (cond_stmt);
+	    }
 	}
       else if (!inplace)
 	{
+	  /* For throwing comparisons, see if the GIMPLE_COND is the same as
+	     the comparison would be.
+	     This can happen due to the match pattern for
+	     `(ne (cmp @0 @1) integer_zerop)` which creates a new expression
+	     for the comparison.  */
+	  if (TREE_CODE_CLASS (code) == tcc_comparison
+	      && (!cfun
+		  || (flag_exceptions
+		      && cfun->can_throw_non_call_exceptions))
+	      && operation_could_trap_p (code,
+					 FLOAT_TYPE_P (TREE_TYPE (ops[0])),
+					 false, NULL_TREE))
+	    {
+	      tree lhs = gimple_cond_lhs (cond_stmt);
+	      if (gimple_cond_code (cond_stmt) == NE_EXPR
+		  && TREE_CODE (lhs) == SSA_NAME
+		  && INTEGRAL_TYPE_P (TREE_TYPE (lhs))
+		  && integer_zerop (gimple_cond_rhs (cond_stmt)))
+		{
+		  gimple *s = SSA_NAME_DEF_STMT (lhs);
+		  if (is_gimple_assign (s)
+		      && gimple_assign_rhs_code (s) == code
+		      && operand_equal_p (gimple_assign_rhs1 (s), ops[0])
+		      && operand_equal_p (gimple_assign_rhs2 (s), ops[1]))
+		    return false;
+		}
+	    }
 	  tree res = maybe_push_res_to_seq (res_op, seq);
 	  if (!res)
 	    return false;
@@ -6653,16 +6762,6 @@ fold_stmt_1 (gimple_stmt_iterator *gsi, bool inplace, tree (*valueize) (tree),
     {
     case GIMPLE_ASSIGN:
       {
-	if (gimple_assign_load_p (stmt) && gimple_store_p (stmt))
-	  {
-	    if (optimize_memcpy_to_memset (gsi, gimple_assign_lhs (stmt),
-					   gimple_assign_rhs1 (stmt),
-					   /* len = */NULL_TREE))
-	      {
-		changed = true;
-		break;
-	      }
-	  }
 	/* Try to canonicalize for boolean-typed X the comparisons
 	   X == 0, X == 1, X != 0, and X != 1.  */
 	if (gimple_assign_rhs_code (stmt) == EQ_EXPR
@@ -6824,10 +6923,10 @@ fold_stmt (gimple_stmt_iterator *gsi, tree (*valueize) (tree), bitmap dce_bitmap
    which can produce *&x = 0.  */
 
 bool
-fold_stmt_inplace (gimple_stmt_iterator *gsi)
+fold_stmt_inplace (gimple_stmt_iterator *gsi, tree (*valueize) (tree))
 {
   gimple *stmt = gsi_stmt (*gsi);
-  bool changed = fold_stmt_1 (gsi, true, no_follow_ssa_edges);
+  bool changed = fold_stmt_1 (gsi, true, valueize);
   gcc_assert (gsi_stmt (*gsi) == stmt);
   return changed;
 }
@@ -7440,26 +7539,42 @@ maybe_fold_comparisons_from_match_pd (tree type, enum tree_code code,
 }
 
 /* Return TRUE and set op[0] if T, following all SSA edges, is a type
-   conversion.  */
+   conversion.  Reject loads if LOAD is NULL, otherwise set *LOAD if a
+   converting load is found.  */
 
 static bool
-gimple_convert_def_p (tree t, tree op[1])
+gimple_convert_def_p (tree t, tree op[1], gimple **load = NULL)
 {
+  bool ret = false;
+
   if (TREE_CODE (t) == SSA_NAME
       && !SSA_NAME_IS_DEFAULT_DEF (t))
     if (gassign *def = dyn_cast <gassign *> (SSA_NAME_DEF_STMT (t)))
-      switch (gimple_assign_rhs_code (def))
-	{
-	CASE_CONVERT:
-	  op[0] = gimple_assign_rhs1 (def);
-	  return true;
-	case VIEW_CONVERT_EXPR:
-	  op[0] = TREE_OPERAND (gimple_assign_rhs1 (def), 0);
-	  return true;
-	default:
-	  break;
-	}
-  return false;
+      {
+	bool load_p = gimple_assign_load_p (def);
+	if (load_p && !load)
+	  return false;
+	switch (gimple_assign_rhs_code (def))
+	  {
+	  CASE_CONVERT:
+	    op[0] = gimple_assign_rhs1 (def);
+	    ret = true;
+	    break;
+
+	  case VIEW_CONVERT_EXPR:
+	    op[0] = TREE_OPERAND (gimple_assign_rhs1 (def), 0);
+	    ret = true;
+	    break;
+
+	  default:
+	    break;
+	  }
+
+	if (ret && load_p)
+	  *load = def;
+      }
+
+  return ret;
 }
 
 /* Return TRUE and set op[*] if T, following all SSA edges, resolves to a
@@ -7493,13 +7608,18 @@ gimple_binop_def_p (enum tree_code code, tree t, tree op[2])
 
    *PREVERSEP is set to the storage order of the field.
 
-   *PAND_MASK is set to the mask found in a BIT_AND_EXPR, if any.
-   If PAND_MASK *is NULL, BIT_AND_EXPR is not recognized.
+   *PAND_MASK is set to the mask found in a BIT_AND_EXPR, if any.  If
+   *PAND_MASK is initially set to a mask with nonzero precision, that mask is
+   combined with the found mask, or adjusted in precision to match.
 
-   *XOR_P is to be FALSE if EXP might be a XOR used in a compare, in which
-   case, if XOR_CMP_OP is a zero constant, it will be overridden with *PEXP,
-   *XOR_P will be set to TRUE, and the left-hand operand of the XOR will be
-   decoded.  If *XOR_P is TRUE, XOR_CMP_OP is supposed to be NULL, and then the
+   *PSIGNBIT is set to TRUE if, before clipping to *PBITSIZE, the mask
+   encompassed bits that corresponded to extensions of the sign bit.
+
+   *PXORP is to be FALSE if EXP might be a XOR used in a compare, in which
+   case, if PXOR_CMP_OP is a zero constant, it will be overridden with *PEXP,
+   *PXORP will be set to TRUE, *PXOR_AND_MASK will be copied from *PAND_MASK,
+   and the left-hand operand of the XOR will be decoded.  If *PXORP is TRUE,
+   PXOR_CMP_OP and PXOR_AND_MASK are supposed to be NULL, and then the
    right-hand operand of the XOR will be decoded.
 
    *LOAD is set to the load stmt of the innermost reference, if any,
@@ -7515,8 +7635,9 @@ static tree
 decode_field_reference (tree *pexp, HOST_WIDE_INT *pbitsize,
 			HOST_WIDE_INT *pbitpos,
 			bool *punsignedp, bool *preversep, bool *pvolatilep,
-			wide_int *pand_mask, bool *xor_p, tree *xor_cmp_op,
-			gimple **load, location_t loc[4])
+			wide_int *pand_mask, bool *psignbit,
+			bool *pxorp, tree *pxor_cmp_op, wide_int *pxor_and_mask,
+			gimple **pload, location_t loc[4])
 {
   tree exp = *pexp;
   tree outer_type = 0;
@@ -7525,8 +7646,12 @@ decode_field_reference (tree *pexp, HOST_WIDE_INT *pbitsize,
   int shiftrt = 0;
   tree res_ops[2];
   machine_mode mode;
-
-  *load = NULL;
+  bool convert_before_shift = false;
+  bool signbit = false;
+  bool xorp = false;
+  tree xor_cmp_op;
+  wide_int xor_and_mask;
+  gimple *load = NULL;
 
   /* All the optimizations using this function assume integer fields.
      There are problems with FP fields since the type_for_size call
@@ -7534,66 +7659,80 @@ decode_field_reference (tree *pexp, HOST_WIDE_INT *pbitsize,
   if (! INTEGRAL_TYPE_P (TREE_TYPE (exp)))
     return NULL_TREE;
 
-  /* Drop casts, only save the outermost type.  We need not worry about
-     narrowing then widening casts, or vice-versa, for those that are not
-     essential for the compare have already been optimized out at this
-     point.  */
-  if (gimple_convert_def_p (exp, res_ops))
+  /* Drop casts, saving only the outermost type, effectively used in
+     the compare.  We can deal with at most one conversion, and it may
+     appear at various points in the chain of recognized preparation
+     statements.  Earlier optimizers will often have already dropped
+     unneeded extensions, but they may survive, as in PR118046.  ???
+     Can we do better and allow multiple conversions, perhaps taking
+     note of the narrowest intermediate type, sign extensions and
+     whatnot?  */
+  if (!outer_type && gimple_convert_def_p (exp, res_ops))
     {
-      if (!outer_type)
-	{
-	  outer_type = TREE_TYPE (exp);
-	  loc[0] = gimple_location (SSA_NAME_DEF_STMT (exp));
-	}
+      outer_type = TREE_TYPE (exp);
+      loc[0] = gimple_location (SSA_NAME_DEF_STMT (exp));
       exp = res_ops[0];
     }
 
-  /* Recognize and save a masking operation.  */
-  if (pand_mask && gimple_binop_def_p (BIT_AND_EXPR, exp, res_ops)
-      && uniform_integer_cst_p (res_ops[1]))
+  /* Recognize and save a masking operation.  Combine it with an
+     incoming mask.  */
+  if (gimple_binop_def_p (BIT_AND_EXPR, exp, res_ops)
+      && TREE_CODE (res_ops[1]) == INTEGER_CST)
     {
       loc[1] = gimple_location (SSA_NAME_DEF_STMT (exp));
       exp = res_ops[0];
       and_mask = wi::to_wide (res_ops[1]);
+      unsigned prec_in = pand_mask->get_precision ();
+      if (prec_in)
+	{
+	  unsigned prec_op = and_mask.get_precision ();
+	  if (prec_in >= prec_op)
+	    {
+	      if (prec_in > prec_op)
+		and_mask = wide_int::from (and_mask, prec_in, UNSIGNED);
+	      and_mask &= *pand_mask;
+	    }
+	  else
+	    and_mask &= wide_int::from (*pand_mask, prec_op, UNSIGNED);
+	}
     }
+  else
+    and_mask = *pand_mask;
 
   /* Turn (a ^ b) [!]= 0 into a [!]= b.  */
-  if (xor_p && gimple_binop_def_p (BIT_XOR_EXPR, exp, res_ops)
-      && uniform_integer_cst_p (res_ops[1]))
+  if (pxorp && gimple_binop_def_p (BIT_XOR_EXPR, exp, res_ops))
     {
       /* No location recorded for this one, it's entirely subsumed by the
 	 compare.  */
-      if (*xor_p)
+      if (*pxorp)
 	{
 	  exp = res_ops[1];
-	  gcc_checking_assert (!xor_cmp_op);
+	  gcc_checking_assert (!pxor_cmp_op && !pxor_and_mask);
 	}
-      else if (!xor_cmp_op)
+      else if (!pxor_cmp_op)
 	/* Not much we can do when xor appears in the right-hand compare
 	   operand.  */
 	return NULL_TREE;
-      else if (integer_zerop (*xor_cmp_op))
+      else if (integer_zerop (*pxor_cmp_op))
 	{
-	  *xor_p = true;
+	  xorp = true;
 	  exp = res_ops[0];
-	  *xor_cmp_op = *pexp;
+	  xor_cmp_op = *pexp;
+	  xor_and_mask = *pand_mask;
 	}
     }
 
   /* Another chance to drop conversions.  */
-  if (gimple_convert_def_p (exp, res_ops))
+  if (!outer_type && gimple_convert_def_p (exp, res_ops))
     {
-      if (!outer_type)
-	{
-	  outer_type = TREE_TYPE (exp);
-	  loc[0] = gimple_location (SSA_NAME_DEF_STMT (exp));
-	}
+      outer_type = TREE_TYPE (exp);
+      loc[0] = gimple_location (SSA_NAME_DEF_STMT (exp));
       exp = res_ops[0];
     }
 
   /* Take note of shifts.  */
   if (gimple_binop_def_p (RSHIFT_EXPR, exp, res_ops)
-      && uniform_integer_cst_p (res_ops[1]))
+      && TREE_CODE (res_ops[1]) == INTEGER_CST)
     {
       loc[2] = gimple_location (SSA_NAME_DEF_STMT (exp));
       exp = res_ops[0];
@@ -7604,26 +7743,32 @@ decode_field_reference (tree *pexp, HOST_WIDE_INT *pbitsize,
 	return NULL_TREE;
     }
 
-  /* Yet another chance to drop conversions.  */
-  if (gimple_convert_def_p (exp, res_ops))
+  /* Yet another chance to drop conversions.  This one is allowed to
+     match a converting load, subsuming the load identification block
+     below.  */
+  if (!outer_type && gimple_convert_def_p (exp, res_ops, &load))
     {
-      if (!outer_type)
-	{
-	  outer_type = TREE_TYPE (exp);
-	  loc[0] = gimple_location (SSA_NAME_DEF_STMT (exp));
-	}
+      outer_type = TREE_TYPE (exp);
+      loc[0] = gimple_location (SSA_NAME_DEF_STMT (exp));
+      if (load)
+	loc[3] = gimple_location (load);
       exp = res_ops[0];
+      /* This looks backwards, but we're going back the def chain, so if we
+	 find the conversion here, after finding a shift, that's because the
+	 convert appears before the shift, and we should thus adjust the bit
+	 pos and size because of the shift after adjusting it due to type
+	 conversion.  */
+      convert_before_shift = true;
     }
 
   /* Identify the load, if there is one.  */
-  if (TREE_CODE (exp) == SSA_NAME
-      && !SSA_NAME_IS_DEFAULT_DEF (exp))
+  if (!load && TREE_CODE (exp) == SSA_NAME && !SSA_NAME_IS_DEFAULT_DEF (exp))
     {
       gimple *def = SSA_NAME_DEF_STMT (exp);
       if (gimple_assign_load_p (def))
 	{
 	  loc[3] = gimple_location (def);
-	  *load = def;
+	  load = def;
 	  exp = gimple_assign_rhs1 (def);
 	}
     }
@@ -7640,51 +7785,84 @@ decode_field_reference (tree *pexp, HOST_WIDE_INT *pbitsize,
       || bs <= shiftrt
       || offset != 0
       || TREE_CODE (inner) == PLACEHOLDER_EXPR
-      /* Reject out-of-bound accesses (PR79731).  */
-      || (! AGGREGATE_TYPE_P (TREE_TYPE (inner))
-	  && compare_tree_int (TYPE_SIZE (TREE_TYPE (inner)),
-			       bp + bs) < 0)
+      /* Reject out-of-bound accesses (PR79731, PR118514).  */
+      || !access_in_bounds_of_type_p (TREE_TYPE (inner), bs, bp)
       || (INTEGRAL_TYPE_P (TREE_TYPE (inner))
 	  && !type_has_mode_precision_p (TREE_TYPE (inner))))
     return NULL_TREE;
 
+  /* Adjust shifts...  */
+  if (convert_before_shift
+      && outer_type && bs > TYPE_PRECISION (outer_type))
+    {
+      HOST_WIDE_INT excess = bs - TYPE_PRECISION (outer_type);
+      if (reversep ? !BYTES_BIG_ENDIAN : BYTES_BIG_ENDIAN)
+	bp += excess;
+      bs -= excess;
+    }
+
+  if (shiftrt)
+    {
+      /* Punt if we're shifting by more than the loaded bitfield (after
+	 adjustment), or if there's a shift after a change of signedness, punt.
+	 When comparing this field with a constant, we'll check that the
+	 constant is a proper sign- or zero-extension (depending on signedness)
+	 of a value that would fit in the selected portion of the bitfield.  A
+	 shift after a change of signedness would make the extension
+	 non-uniform, and we can't deal with that (yet ???).  See
+	 gcc.dg/field-merge-22.c for a test that would go wrong.  */
+      if (bs <= shiftrt
+	  || (convert_before_shift
+	      && outer_type && unsignedp != TYPE_UNSIGNED (outer_type)))
+	return NULL_TREE;
+      if (!reversep ? !BYTES_BIG_ENDIAN : BYTES_BIG_ENDIAN)
+	bp += shiftrt;
+      bs -= shiftrt;
+    }
+
+  /* ... and bit position.  */
+  if (!convert_before_shift
+      && outer_type && bs > TYPE_PRECISION (outer_type))
+    {
+      HOST_WIDE_INT excess = bs - TYPE_PRECISION (outer_type);
+      if (reversep ? !BYTES_BIG_ENDIAN : BYTES_BIG_ENDIAN)
+	bp += excess;
+      bs -= excess;
+    }
+
+  /* If the number of bits in the reference is the same as the bitsize of
+     the outer type, then the outer type gives the signedness. Otherwise
+     (in case of a small bitfield) the signedness is unchanged.  */
+  if (outer_type && bs == TYPE_PRECISION (outer_type))
+    unsignedp = TYPE_UNSIGNED (outer_type);
+
+  /* Make the mask the expected width.  */
+  if (and_mask.get_precision () != 0)
+    {
+      /* If the AND_MASK encompasses bits that would be extensions of
+	 the sign bit, set SIGNBIT.  */
+      if (!unsignedp
+	  && and_mask.get_precision () > bs
+	  && (and_mask & wi::mask (bs, true, and_mask.get_precision ())) != 0)
+	signbit = true;
+      and_mask = wide_int::from (and_mask, bs, UNSIGNED);
+    }
+
+  *pexp = exp;
+  *pload = load;
   *pbitsize = bs;
   *pbitpos = bp;
   *punsignedp = unsignedp;
   *preversep = reversep;
   *pvolatilep = volatilep;
-
-  /* Adjust shifts...  */
-  if (shiftrt)
+  *psignbit = signbit;
+  *pand_mask = and_mask;
+  if (xorp)
     {
-      if (!*preversep ? !BYTES_BIG_ENDIAN : BYTES_BIG_ENDIAN)
-	*pbitpos += shiftrt;
-      *pbitsize -= shiftrt;
+      *pxorp = xorp;
+      *pxor_cmp_op = xor_cmp_op;
+      *pxor_and_mask = xor_and_mask;
     }
-
-  /* ... and bit position.  */
-  if (outer_type && *pbitsize > TYPE_PRECISION (outer_type))
-    {
-      HOST_WIDE_INT excess = *pbitsize - TYPE_PRECISION (outer_type);
-      if (*preversep ? !BYTES_BIG_ENDIAN : BYTES_BIG_ENDIAN)
-	*pbitpos += excess;
-      *pbitsize -= excess;
-    }
-
-  *pexp = exp;
-
-  /* If the number of bits in the reference is the same as the bitsize of
-     the outer type, then the outer type gives the signedness. Otherwise
-     (in case of a small bitfield) the signedness is unchanged.  */
-  if (outer_type && *pbitsize == TYPE_PRECISION (outer_type))
-    *punsignedp = TYPE_UNSIGNED (outer_type);
-
-  /* Make the mask the expected width.  */
-  if (and_mask.get_precision () != 0)
-    and_mask = wide_int::from (and_mask, *pbitsize, UNSIGNED);
-
-  if (pand_mask)
-    *pand_mask = and_mask;
 
   return inner;
 }
@@ -7966,6 +8144,7 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
   HOST_WIDE_INT rnbitsize, rnbitpos, rnprec;
   bool ll_unsignedp, lr_unsignedp, rl_unsignedp, rr_unsignedp;
   bool ll_reversep, lr_reversep, rl_reversep, rr_reversep;
+  bool ll_signbit, lr_signbit, rl_signbit, rr_signbit;
   scalar_int_mode lnmode, lnmode2, rnmode;
   wide_int ll_and_mask, lr_and_mask, rl_and_mask, rr_and_mask;
   wide_int l_const, r_const;
@@ -8008,22 +8187,72 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
       return 0;
     }
 
-  bool lsignbit = false, rsignbit = false;
+  /* Prepare to turn compares of signed quantities with zero into sign-bit
+     tests.  We need not worry about *_reversep here for these compare
+     rewrites: loads will have already been reversed before compares.  Save the
+     precision, because [lr]l_arg may change and we won't be able to tell how
+     wide it was originally.  */
+  unsigned lsignbit = 0, rsignbit = 0;
   if ((lcode == LT_EXPR || lcode == GE_EXPR)
       && integer_zerop (lr_arg)
       && INTEGRAL_TYPE_P (TREE_TYPE (ll_arg))
       && !TYPE_UNSIGNED (TREE_TYPE (ll_arg)))
     {
-      lsignbit = true;
+      lsignbit = TYPE_PRECISION (TREE_TYPE (ll_arg));
       lcode = (lcode == LT_EXPR ? NE_EXPR : EQ_EXPR);
     }
+  /* Turn compares of unsigned quantities with powers of two into
+     equality tests of masks.  */
+  else if ((lcode == LT_EXPR || lcode == GE_EXPR)
+	   && INTEGRAL_TYPE_P (TREE_TYPE (ll_arg))
+	   && TYPE_UNSIGNED (TREE_TYPE (ll_arg))
+	   && TREE_CODE (lr_arg) == INTEGER_CST
+	   && wi::popcount (wi::to_wide (lr_arg)) == 1)
+    {
+      ll_and_mask = ~(wi::to_wide (lr_arg) - 1);
+      lcode = (lcode == GE_EXPR ? NE_EXPR : EQ_EXPR);
+      lr_arg = wide_int_to_tree (TREE_TYPE (ll_arg), ll_and_mask * 0);
+    }
+  /* Turn compares of unsigned quantities with powers of two minus one
+     into equality tests of masks.  */
+  else if ((lcode == LE_EXPR || lcode == GT_EXPR)
+	   && INTEGRAL_TYPE_P (TREE_TYPE (ll_arg))
+	   && TYPE_UNSIGNED (TREE_TYPE (ll_arg))
+	   && TREE_CODE (lr_arg) == INTEGER_CST
+	   && wi::popcount (wi::to_wide (lr_arg) + 1) == 1)
+    {
+      ll_and_mask = ~wi::to_wide (lr_arg);
+      lcode = (lcode == GT_EXPR ? NE_EXPR : EQ_EXPR);
+      lr_arg = wide_int_to_tree (TREE_TYPE (ll_arg), ll_and_mask * 0);
+    }
+  /* Likewise for the second compare.  */
   if ((rcode == LT_EXPR || rcode == GE_EXPR)
       && integer_zerop (rr_arg)
       && INTEGRAL_TYPE_P (TREE_TYPE (rl_arg))
       && !TYPE_UNSIGNED (TREE_TYPE (rl_arg)))
     {
-      rsignbit = true;
+      rsignbit = TYPE_PRECISION (TREE_TYPE (rl_arg));
       rcode = (rcode == LT_EXPR ? NE_EXPR : EQ_EXPR);
+    }
+  else if ((rcode == LT_EXPR || rcode == GE_EXPR)
+	   && INTEGRAL_TYPE_P (TREE_TYPE (rl_arg))
+	   && TYPE_UNSIGNED (TREE_TYPE (rl_arg))
+	   && TREE_CODE (rr_arg) == INTEGER_CST
+	   && wi::popcount (wi::to_wide (rr_arg)) == 1)
+    {
+      rl_and_mask = ~(wi::to_wide (rr_arg) - 1);
+      rcode = (rcode == GE_EXPR ? NE_EXPR : EQ_EXPR);
+      rr_arg = wide_int_to_tree (TREE_TYPE (rl_arg), rl_and_mask * 0);
+    }
+  else if ((rcode == LE_EXPR || rcode == GT_EXPR)
+	   && INTEGRAL_TYPE_P (TREE_TYPE (rl_arg))
+	   && TYPE_UNSIGNED (TREE_TYPE (rl_arg))
+	   && TREE_CODE (rr_arg) == INTEGER_CST
+	   && wi::popcount (wi::to_wide (rr_arg) + 1) == 1)
+    {
+      rl_and_mask = ~wi::to_wide (rr_arg);
+      rcode = (rcode == GT_EXPR ? NE_EXPR : EQ_EXPR);
+      rr_arg = wide_int_to_tree (TREE_TYPE (rl_arg), rl_and_mask * 0);
     }
 
   /* See if the comparisons can be merged.  Then get all the parameters for
@@ -8038,32 +8267,96 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
   bool l_xor = false, r_xor = false;
   ll_inner = decode_field_reference (&ll_arg, &ll_bitsize, &ll_bitpos,
 				     &ll_unsignedp, &ll_reversep, &volatilep,
-				     &ll_and_mask, &l_xor, &lr_arg,
+				     &ll_and_mask, &ll_signbit,
+				     &l_xor, &lr_arg, &lr_and_mask,
 				     &ll_load, ll_loc);
+  if (!ll_inner)
+    return 0;
   lr_inner = decode_field_reference (&lr_arg, &lr_bitsize, &lr_bitpos,
 				     &lr_unsignedp, &lr_reversep, &volatilep,
-				     &lr_and_mask, &l_xor, 0,
+				     &lr_and_mask, &lr_signbit, &l_xor, 0, 0,
 				     &lr_load, lr_loc);
+  if (!lr_inner)
+    return 0;
   rl_inner = decode_field_reference (&rl_arg, &rl_bitsize, &rl_bitpos,
 				     &rl_unsignedp, &rl_reversep, &volatilep,
-				     &rl_and_mask, &r_xor, &rr_arg,
+				     &rl_and_mask, &rl_signbit,
+				     &r_xor, &rr_arg, &rr_and_mask,
 				     &rl_load, rl_loc);
+  if (!rl_inner)
+    return 0;
   rr_inner = decode_field_reference (&rr_arg, &rr_bitsize, &rr_bitpos,
 				     &rr_unsignedp, &rr_reversep, &volatilep,
-				     &rr_and_mask, &r_xor, 0,
+				     &rr_and_mask, &rr_signbit, &r_xor, 0, 0,
 				     &rr_load, rr_loc);
+  if (!rr_inner)
+    return 0;
 
   /* It must be true that the inner operation on the lhs of each
      comparison must be the same if we are to be able to do anything.
      Then see if we have constants.  If not, the same must be true for
-     the rhs's.  */
-  if (volatilep
-      || ll_reversep != rl_reversep
-      || ll_inner == 0 || rl_inner == 0
-      || ! operand_equal_p (ll_inner, rl_inner, 0)
-      || (ll_load && rl_load
-	  && gimple_vuse (ll_load) != gimple_vuse (rl_load)))
+     the rhs's.  If one is a load and the other isn't, we have to be
+     conservative and avoid the optimization, otherwise we could get
+     SRAed fields wrong.  */
+  if (volatilep)
     return 0;
+
+  if (ll_reversep != rl_reversep
+      || ! operand_equal_p (ll_inner, rl_inner, 0))
+    {
+      /* Try swapping the operands.  */
+      if (ll_reversep != rr_reversep || rsignbit
+	  || !operand_equal_p (ll_inner, rr_inner, 0))
+	return 0;
+
+      rcode = swap_tree_comparison (rcode);
+      std::swap (rl_arg, rr_arg);
+      std::swap (rl_inner, rr_inner);
+      std::swap (rl_bitsize, rr_bitsize);
+      std::swap (rl_bitpos, rr_bitpos);
+      std::swap (rl_unsignedp, rr_unsignedp);
+      std::swap (rl_reversep, rr_reversep);
+      std::swap (rl_and_mask, rr_and_mask);
+      std::swap (rl_signbit, rr_signbit);
+      std::swap (rl_load, rr_load);
+      std::swap (rl_loc, rr_loc);
+    }
+
+  if ((ll_load && rl_load)
+      ? gimple_vuse (ll_load) != gimple_vuse (rl_load)
+      : (!ll_load != !rl_load))
+    return 0;
+
+  /* ??? Can we do anything with these?  */
+  if (lr_signbit || rr_signbit)
+    return 0;
+
+  /* If the mask encompassed extensions of the sign bit before
+     clipping, try to include the sign bit in the test.  If we're not
+     comparing with zero, don't even try to deal with it (for now?).
+     If we've already commited to a sign test, the extended (before
+     clipping) mask could already be messing with it.  */
+  if (ll_signbit)
+    {
+      if (!integer_zerop (lr_arg) || lsignbit)
+	return 0;
+      wide_int sign = wi::mask (ll_bitsize - 1, true, ll_bitsize);
+      if (!ll_and_mask.get_precision ())
+	ll_and_mask = sign;
+      else
+	ll_and_mask |= sign;
+    }
+
+  if (rl_signbit)
+    {
+      if (!integer_zerop (rr_arg) || rsignbit)
+	return 0;
+      wide_int sign = wi::mask (rl_bitsize - 1, true, rl_bitsize);
+      if (!rl_and_mask.get_precision ())
+	rl_and_mask = sign;
+      else
+	rl_and_mask |= sign;
+    }
 
   if (TREE_CODE (lr_arg) == INTEGER_CST
       && TREE_CODE (rr_arg) == INTEGER_CST)
@@ -8081,10 +8374,10 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
       lr_reversep = ll_reversep;
     }
   else if (lr_reversep != rr_reversep
-	   || lr_inner == 0 || rr_inner == 0
 	   || ! operand_equal_p (lr_inner, rr_inner, 0)
-	   || (lr_load && rr_load
-	       && gimple_vuse (lr_load) != gimple_vuse (rr_load)))
+	   || ((lr_load && rr_load)
+	       ? gimple_vuse (lr_load) != gimple_vuse (rr_load)
+	       : (!lr_load != !rr_load)))
     return 0;
 
   /* If we found sign tests, finish turning them into bit tests.  */
@@ -8092,19 +8385,53 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
   if (lsignbit)
     {
       wide_int sign = wi::mask (ll_bitsize - 1, true, ll_bitsize);
+      /* If ll_arg is zero-extended and we're testing the sign bit, we know
+	 what the result should be.  Shifting the sign bit out of sign will get
+	 us to mask the entire field out, yielding zero, i.e., the sign bit of
+	 the zero-extended value.  We know the masked value is being compared
+	 with zero, so the compare will get us the result we're looking
+	 for: TRUE if EQ_EXPR, FALSE if NE_EXPR.  */
+      if (lsignbit > ll_bitsize && ll_unsignedp)
+	sign <<= 1;
       if (!ll_and_mask.get_precision ())
 	ll_and_mask = sign;
       else
 	ll_and_mask &= sign;
+      if (l_xor)
+	{
+	  if (ll_bitsize != lr_bitsize)
+	    return 0;
+	  if (!lr_and_mask.get_precision ())
+	    lr_and_mask = sign;
+	  else
+	    lr_and_mask &= sign;
+	  if (l_const.get_precision ())
+	    l_const &= wide_int::from (lr_and_mask,
+				       l_const.get_precision (), UNSIGNED);
+	}
     }
 
   if (rsignbit)
     {
       wide_int sign = wi::mask (rl_bitsize - 1, true, rl_bitsize);
+      if (rsignbit > rl_bitsize && rl_unsignedp)
+	sign <<= 1;
       if (!rl_and_mask.get_precision ())
 	rl_and_mask = sign;
       else
 	rl_and_mask &= sign;
+      if (r_xor)
+	{
+	  if (rl_bitsize != rr_bitsize)
+	    return 0;
+	  if (!rr_and_mask.get_precision ())
+	    rr_and_mask = sign;
+	  else
+	    rr_and_mask &= sign;
+	  if (r_const.get_precision ())
+	    r_const &= wide_int::from (rr_and_mask,
+				       r_const.get_precision (), UNSIGNED);
+	}
     }
 
   /* If either comparison code is not correct for our logical operation,
@@ -8218,25 +8545,51 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
   HOST_WIDE_INT ll_align = TYPE_ALIGN (TREE_TYPE (ll_inner));
   poly_uint64 ll_end_region = 0;
   if (TYPE_SIZE (TREE_TYPE (ll_inner))
-      && uniform_integer_cst_p (TYPE_SIZE (TREE_TYPE (ll_inner))))
+      && tree_fits_poly_uint64_p (TYPE_SIZE (TREE_TYPE (ll_inner))))
     ll_end_region = tree_to_poly_uint64 (TYPE_SIZE (TREE_TYPE (ll_inner)));
   if (get_best_mode (end_bit - first_bit, first_bit, 0, ll_end_region,
 		     ll_align, BITS_PER_WORD, volatilep, &lnmode))
     l_split_load = false;
+  /* ??? If ll and rl share the same load, reuse that?
+     See PR 118206 -> gcc.dg/field-merge-18.c  */
   else
     {
       /* Consider the possibility of recombining loads if any of the
 	 fields straddles across an alignment boundary, so that either
-	 part can be loaded along with the other field.  */
+	 part can be loaded along with the other field.  Since we
+	 limit access modes to BITS_PER_WORD, don't exceed that,
+	 otherwise on a 32-bit host and a 64-bit-aligned data
+	 structure, we'll fail the above for a field that straddles
+	 across two words, and would fail here for not even trying to
+	 split it at between 32-bit words.  */
       HOST_WIDE_INT boundary = compute_split_boundary_from_align
-	(ll_align, ll_bitpos, ll_bitsize, rl_bitpos, rl_bitsize);
+	(MIN (ll_align, BITS_PER_WORD),
+	 ll_bitpos, ll_bitsize, rl_bitpos, rl_bitsize);
 
       if (boundary < 0
 	  || !get_best_mode (boundary - first_bit, first_bit, 0, ll_end_region,
 			     ll_align, BITS_PER_WORD, volatilep, &lnmode)
 	  || !get_best_mode (end_bit - boundary, boundary, 0, ll_end_region,
 			     ll_align, BITS_PER_WORD, volatilep, &lnmode2))
-	return 0;
+	{
+	  if (ll_align <= BITS_PER_WORD)
+	    return 0;
+
+	  /* As a last resort, try double-word access modes.  This
+	     enables us to deal with misaligned double-word fields
+	     that straddle across 3 separate words.  */
+	  boundary = compute_split_boundary_from_align
+	    (MIN (ll_align, 2 * BITS_PER_WORD),
+	     ll_bitpos, ll_bitsize, rl_bitpos, rl_bitsize);
+	  if (boundary < 0
+	      || !get_best_mode (boundary - first_bit, first_bit,
+				 0, ll_end_region, ll_align, 2 * BITS_PER_WORD,
+				 volatilep, &lnmode)
+	      || !get_best_mode (end_bit - boundary, boundary,
+				 0, ll_end_region, ll_align, 2 * BITS_PER_WORD,
+				 volatilep, &lnmode2))
+	    return 0;
+	}
 
       /* If we can't have a single load, but can with two, figure out whether
 	 the two compares can be separated, i.e., whether the entirety of the
@@ -8288,17 +8641,41 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
   else
     rl_mask = wi::shifted_mask (xrl_bitpos, rl_bitsize, false, lnprec);
 
+  /* When we set l_const, we also set r_const.  */
+  gcc_checking_assert (!l_const.get_precision () == !r_const.get_precision ());
+
   /* Adjust right-hand constants in both original comparisons to match width
      and bit position.  */
   if (l_const.get_precision ())
     {
+      /* Before clipping upper bits of the right-hand operand of the compare,
+	 check that they're sign or zero extensions, depending on how the
+	 left-hand operand would be extended.  If it is unsigned, or if there's
+	 a mask that zeroes out extension bits, whether because we've checked
+	 for upper bits in the mask and did not set ll_signbit, or because the
+	 sign bit itself is masked out, check that the right-hand operand is
+	 zero-extended.  */
+      bool l_non_ext_bits = false;
+      if (ll_bitsize < lr_bitsize)
+	{
+	  wide_int zext = wi::zext (l_const, ll_bitsize);
+	  if ((ll_unsignedp
+	       || (ll_and_mask.get_precision ()
+		   && (!ll_signbit
+		       || ((ll_and_mask & wi::mask (ll_bitsize - 1, true, ll_bitsize))
+			   == 0)))
+	       ? zext : wi::sext (l_const, ll_bitsize)) == l_const)
+	    l_const = zext;
+	  else
+	    l_non_ext_bits = true;
+	}
       /* We're doing bitwise equality tests, so don't bother with sign
 	 extensions.  */
       l_const = wide_int::from (l_const, lnprec, UNSIGNED);
       if (ll_and_mask.get_precision ())
 	l_const &= wide_int::from (ll_and_mask, lnprec, UNSIGNED);
       l_const <<= xll_bitpos;
-      if ((l_const & ~ll_mask) != 0)
+      if (l_non_ext_bits || (l_const & ~ll_mask) != 0)
 	{
 	  warning_at (lloc, OPT_Wtautological_compare,
 		      "comparison is always %d", wanted_code == NE_EXPR);
@@ -8306,15 +8683,28 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
 	  return constant_boolean_node (wanted_code == NE_EXPR, truth_type);
 	}
 
-      /* When we set l_const, we also set r_const, so we need not test it
-	 again.  */
-      gcc_checking_assert (r_const.get_precision ());
-
+      /* Before clipping upper bits of the right-hand operand of the compare,
+	 check that they're sign or zero extensions, depending on how the
+	 left-hand operand would be extended.  */
+      bool r_non_ext_bits = false;
+      if (rl_bitsize < rr_bitsize)
+	{
+	  wide_int zext = wi::zext (r_const, rl_bitsize);
+	  if ((rl_unsignedp
+	       || (rl_and_mask.get_precision ()
+		   && (!rl_signbit
+		       || ((rl_and_mask & wi::mask (rl_bitsize - 1, true, rl_bitsize))
+			   == 0)))
+	       ? zext : wi::sext (r_const, rl_bitsize)) == r_const)
+	    r_const = zext;
+	  else
+	    r_non_ext_bits = true;
+	}
       r_const = wide_int::from (r_const, lnprec, UNSIGNED);
       if (rl_and_mask.get_precision ())
 	r_const &= wide_int::from (rl_and_mask, lnprec, UNSIGNED);
       r_const <<= xrl_bitpos;
-      if ((r_const & ~rl_mask) != 0)
+      if (r_non_ext_bits || (r_const & ~rl_mask) != 0)
 	{
 	  warning_at (rloc, OPT_Wtautological_compare,
 		      "comparison is always %d", wanted_code == NE_EXPR);
@@ -8385,7 +8775,7 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
       HOST_WIDE_INT lr_align = TYPE_ALIGN (TREE_TYPE (lr_inner));
       poly_uint64 lr_end_region = 0;
       if (TYPE_SIZE (TREE_TYPE (lr_inner))
-	  && uniform_integer_cst_p (TYPE_SIZE (TREE_TYPE (lr_inner))))
+	  && tree_fits_poly_uint64_p (TYPE_SIZE (TREE_TYPE (lr_inner))))
 	lr_end_region = tree_to_poly_uint64 (TYPE_SIZE (TREE_TYPE (lr_inner)));
       if (!get_best_mode (end_bit - first_bit, first_bit, 0, lr_end_region,
 			  lr_align, BITS_PER_WORD, volatilep, &rnmode))
@@ -8441,10 +8831,10 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
       wide_int lr_mask, rr_mask;
       if (lr_and_mask.get_precision ())
 	lr_mask = wi::lshift (wide_int::from (lr_and_mask, rnprec, UNSIGNED),
-			  xlr_bitpos);
+			      xlr_bitpos);
       else
 	lr_mask = wi::shifted_mask (xlr_bitpos, lr_bitsize, false, rnprec);
-      if (rl_and_mask.get_precision ())
+      if (rr_and_mask.get_precision ())
 	rr_mask = wi::lshift (wide_int::from (rr_and_mask, rnprec, UNSIGNED),
 			      xrr_bitpos);
       else
@@ -8579,11 +8969,11 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
       /* Apply masks.  */
       for (int j = 0; j < 2; j++)
 	if (mask[j] != wi::mask (0, true, mask[j].get_precision ()))
-	  op[j] = build2_loc (locs[j][2], BIT_AND_EXPR, type,
-			      op[j], wide_int_to_tree (type, mask[j]));
+	  op[j] = fold_build2_loc (locs[j][2], BIT_AND_EXPR, type,
+				   op[j], wide_int_to_tree (type, mask[j]));
 
-      cmp[i] = build2_loc (i ? rloc : lloc, wanted_code, truth_type,
-			   op[0], op[1]);
+      cmp[i] = fold_build2_loc (i ? rloc : lloc, wanted_code, truth_type,
+				op[0], op[1]);
     }
 
   /* Reorder the compares if needed.  */
@@ -8595,7 +8985,15 @@ fold_truth_andor_for_ifcombine (enum tree_code code, tree truth_type,
   if (parts == 1)
     result = cmp[0];
   else if (!separatep || !maybe_separate)
-    result = build2_loc (rloc, orig_code, truth_type, cmp[0], cmp[1]);
+    {
+      /* Only fold if any of the cmp is known, otherwise we may lose the
+	 sequence point, and that may prevent further optimizations.  */
+      if (TREE_CODE (cmp[0]) == INTEGER_CST
+	  || TREE_CODE (cmp[1]) == INTEGER_CST)
+	result = fold_build2_loc (rloc, orig_code, truth_type, cmp[0], cmp[1]);
+      else
+	result = build2_loc (rloc, orig_code, truth_type, cmp[0], cmp[1]);
+    }
   else
     {
       result = cmp[0];
@@ -9553,9 +9951,8 @@ fold_array_ctor_reference (tree type, tree ctor,
 	  constructor_elt *elt = CONSTRUCTOR_ELT (ctor, ctor_idx);
 	  if (elt->index == NULL_TREE || TREE_CODE (elt->index) != INTEGER_CST)
 	    return NULL_TREE;
-	  *suboff += access_index.to_uhwi () * BITS_PER_UNIT;
 	  unsigned o = (access_index - wi::to_offset (elt->index)).to_uhwi ();
-	  return build_int_cst (TREE_TYPE (val), RAW_DATA_UCHAR_ELT (val, o));
+	  val = build_int_cst (TREE_TYPE (val), RAW_DATA_UCHAR_ELT (val, o));
 	}
       if (!size && TREE_CODE (val) != CONSTRUCTOR)
 	{
@@ -9680,10 +10077,17 @@ fold_nonarray_ctor_reference (tree type, tree ctor,
 	    {
 	      if (BYTES_BIG_ENDIAN != WORDS_BIG_ENDIAN)
 		return NULL_TREE;
-	      const unsigned int encoding_size
-		= GET_MODE_BITSIZE (SCALAR_INT_TYPE_MODE (TREE_TYPE (cfield)));
 	      if (BYTES_BIG_ENDIAN)
-		inner_offset += encoding_size - wi::to_offset (field_size);
+		{
+		  tree ctype = TREE_TYPE (cfield);
+		  unsigned int encoding_size;
+		  if (TYPE_MODE (ctype) != BLKmode)
+		    encoding_size
+		      = GET_MODE_BITSIZE (SCALAR_INT_TYPE_MODE (ctype));
+		  else
+		    encoding_size = TREE_INT_CST_LOW (TYPE_SIZE (ctype));
+		  inner_offset += encoding_size - wi::to_offset (field_size);
+		}
 	    }
 
 	  return fold_ctor_reference (type, cval,
@@ -9881,18 +10285,20 @@ fold_const_aggregate_ref_1 (tree t, tree (*valueize) (tree))
       base = get_ref_base_and_extent (t, &offset, &size, &max_size, &reverse);
       ctor = get_base_constructor (base, &offset, valueize);
 
-      /* Empty constructor.  Always fold to 0.  */
-      if (ctor == error_mark_node)
-	return build_zero_cst (TREE_TYPE (t));
-      /* We do not know precise address.  */
-      if (!known_size_p (max_size) || maybe_ne (max_size, size))
-	return NULL_TREE;
       /* We cannot determine ctor.  */
       if (!ctor)
 	return NULL_TREE;
-
+      /* Empty constructor.  Always fold to 0.  */
+      if (ctor == error_mark_node)
+	return build_zero_cst (TREE_TYPE (t));
+      /* We do not know precise access.  */
+      if (!known_size_p (max_size) || maybe_ne (max_size, size))
+	return NULL_TREE;
       /* Out of bound array access.  Value is undefined, but don't fold.  */
       if (maybe_lt (offset, 0))
+	return NULL_TREE;
+      /* Access with reverse storage order.  */
+      if (reverse)
 	return NULL_TREE;
 
       tem = fold_ctor_reference (TREE_TYPE (t), ctor, offset, size, base);
@@ -9913,7 +10319,6 @@ fold_const_aggregate_ref_1 (tree t, tree (*valueize) (tree))
 	      && offset.is_constant (&coffset)
 	      && (coffset % BITS_PER_UNIT != 0
 		  || csize % BITS_PER_UNIT != 0)
-	      && !reverse
 	      && BYTES_BIG_ENDIAN == WORDS_BIG_ENDIAN)
 	    {
 	      poly_int64 bitoffset;
@@ -10040,13 +10445,12 @@ gimple_get_virt_method_for_vtable (HOST_WIDE_INT token,
   access_index = offset / BITS_PER_UNIT / elt_size;
   gcc_checking_assert (offset % (elt_size * BITS_PER_UNIT) == 0);
 
-  /* The C++ FE can now produce indexed fields, and we check if the indexes
-     match.  */
+  /* This code makes an assumption that there are no
+     indexed fileds produced by C++ FE, so we can directly index the array.  */
   if (access_index < CONSTRUCTOR_NELTS (init))
     {
       fn = CONSTRUCTOR_ELT (init, access_index)->value;
-      tree idx = CONSTRUCTOR_ELT (init, access_index)->index;
-      gcc_checking_assert (!idx || tree_to_uhwi (idx) == access_index);
+      gcc_checking_assert (!CONSTRUCTOR_ELT (init, access_index)->index);
       STRIP_NOPS (fn);
     }
   else
@@ -10258,6 +10662,56 @@ arith_code_with_undefined_signed_overflow (tree_code code)
     }
 }
 
+/* Return true if STMT has an operation that operates on a signed
+   integer types involves undefined behavior on overflow and the
+   operation can be expressed with unsigned arithmetic.
+   Also returns true if STMT is a VCE that needs to be rewritten
+   if moved to be executed unconditionally.   */
+
+bool
+gimple_needing_rewrite_undefined (gimple *stmt)
+{
+  if (!is_gimple_assign (stmt))
+    return false;
+  tree lhs = gimple_assign_lhs (stmt);
+  if (!lhs)
+    return false;
+  tree lhs_type = TREE_TYPE (lhs);
+  if (!INTEGRAL_TYPE_P (lhs_type)
+      && !POINTER_TYPE_P (lhs_type))
+    return false;
+  tree rhs = gimple_assign_rhs1 (stmt);
+  /* Boolean loads need special handling as they are treated as a full MODE load
+     and don't mask off the bits for the precision.  */
+  if (gimple_assign_load_p (stmt)
+      /* Booleans are the integral type which has this non-masking issue. */
+      && TREE_CODE (lhs_type) == BOOLEAN_TYPE
+      /* Only non mode precision booleans are need the masking.  */
+      && !type_has_mode_precision_p (lhs_type)
+      /* BFR should be the correct thing and just grab the precision.  */
+      && TREE_CODE (rhs) != BIT_FIELD_REF
+      /* Bit-fields loads don't need a rewrite as the masking
+	 happens for them.  */
+      && (TREE_CODE (rhs) != COMPONENT_REF
+	  || !DECL_BIT_FIELD (TREE_OPERAND (rhs, 1))))
+    return true;
+  /* VCE from integral types to a integral types but with
+     a smaller precision need to be changed into casts
+     to be well defined. */
+  if (gimple_assign_rhs_code (stmt) == VIEW_CONVERT_EXPR
+      && INTEGRAL_TYPE_P (TREE_TYPE (TREE_OPERAND (rhs, 0)))
+      && is_gimple_val (TREE_OPERAND (rhs, 0))
+      && TYPE_PRECISION (lhs_type)
+	  < TYPE_PRECISION (TREE_TYPE (TREE_OPERAND (rhs, 0))))
+    return true;
+  if (!TYPE_OVERFLOW_UNDEFINED (lhs_type))
+    return false;
+  if (!arith_code_with_undefined_signed_overflow
+	(gimple_assign_rhs_code (stmt)))
+    return false;
+  return true;
+}
+
 /* Rewrite STMT, an assignment with a signed integer or pointer arithmetic
    operation that can be transformed to unsigned arithmetic by converting
    its operand, carrying out the operation in the corresponding unsigned
@@ -10269,19 +10723,89 @@ arith_code_with_undefined_signed_overflow (tree_code code)
    contain a modified form of STMT itself.  */
 
 static gimple_seq
-rewrite_to_defined_overflow (gimple_stmt_iterator *gsi, gimple *stmt,
-			     bool in_place)
+rewrite_to_defined_unconditional (gimple_stmt_iterator *gsi, gimple *stmt,
+				  bool in_place)
 {
+  gcc_assert (gimple_needing_rewrite_undefined (stmt));
   if (dump_file && (dump_flags & TDF_DETAILS))
     {
-      fprintf (dump_file, "rewriting stmt with undefined signed "
-	       "overflow ");
+      fprintf (dump_file, "rewriting stmt for being uncondtional defined");
       print_gimple_stmt (dump_file, stmt, 0, TDF_SLIM);
     }
-
-  tree lhs = gimple_assign_lhs (stmt);
-  tree type = unsigned_type_for (TREE_TYPE (lhs));
   gimple_seq stmts = NULL;
+  tree lhs = gimple_assign_lhs (stmt);
+
+  /* Boolean loads need to be rewritten to be a load from the same mode
+     and then a cast to the other type so the other bits are masked off
+     correctly since the load was done conditionally. It is similar to the VCE
+     case below.  */
+  if (gimple_assign_load_p (stmt)
+      && TREE_CODE (TREE_TYPE (lhs)) == BOOLEAN_TYPE)
+    {
+      tree rhs = gimple_assign_rhs1 (stmt);
+
+      /* Double check that gimple_needing_rewrite_undefined was called.  */
+      /* Bit-fields loads will do the masking so don't need the rewriting.  */
+      gcc_assert (TREE_CODE (rhs) != COMPONENT_REF
+		  || !DECL_BIT_FIELD (TREE_OPERAND (rhs, 1)));
+      /* BFR is like a bit field load and will do the correct thing.  */
+      gcc_assert (TREE_CODE (lhs) != BIT_FIELD_REF);
+      /* Complex boolean types are not valid so REAL/IMAG part will
+	 never show up. */
+      gcc_assert (TREE_CODE (rhs) != REALPART_EXPR
+		  && TREE_CODE (lhs) != IMAGPART_EXPR);
+
+      auto bits = GET_MODE_BITSIZE (SCALAR_TYPE_MODE (TREE_TYPE (rhs)));
+      tree new_type = build_nonstandard_integer_type (bits, true);
+      location_t loc = gimple_location (stmt);
+      tree mem_ref = fold_build1_loc (loc, VIEW_CONVERT_EXPR, new_type, rhs);
+      /* Replace the original load with a new load and a new lhs. */
+      tree new_lhs = make_ssa_name (new_type);
+      gimple_assign_set_rhs1 (stmt, mem_ref);
+      gimple_assign_set_lhs (stmt, new_lhs);
+
+      if (in_place)
+	  update_stmt (stmt);
+      else
+	{
+	  gimple_set_modified (stmt, true);
+	  gimple_seq_add_stmt (&stmts, stmt);
+	}
+
+      /* Build the conversion statement.  */
+      gimple *cvt = gimple_build_assign (lhs, NOP_EXPR, new_lhs);
+      if (in_place)
+	{
+	  gsi_insert_after (gsi, cvt, GSI_SAME_STMT);
+	  update_stmt (stmt);
+	}
+      else
+	gimple_seq_add_stmt (&stmts, cvt);
+      return stmts;
+    }
+
+  /* VCE from integral types to another integral types but with
+     smaller precisions need to be changed into casts
+     to be well defined. */
+  if (gimple_assign_rhs_code (stmt) == VIEW_CONVERT_EXPR)
+    {
+      tree rhs = gimple_assign_rhs1 (stmt);
+      tree new_rhs = TREE_OPERAND (rhs, 0);
+      gcc_assert (TYPE_PRECISION (TREE_TYPE (rhs))
+		  < TYPE_PRECISION (TREE_TYPE (new_rhs)));
+      gcc_assert (is_gimple_val (new_rhs));
+      gimple_assign_set_rhs_code (stmt, NOP_EXPR);
+      gimple_assign_set_rhs1 (stmt, new_rhs);
+      if (in_place)
+	  update_stmt (stmt);
+      else
+	{
+	  gimple_set_modified (stmt, true);
+	  gimple_seq_add_stmt (&stmts, stmt);
+	}
+      return stmts;
+    }
+  tree type = unsigned_type_for (TREE_TYPE (lhs));
   if (gimple_assign_rhs_code (stmt) == ABS_EXPR)
     gimple_assign_set_rhs_code (stmt, ABSU_EXPR);
   else
@@ -10316,15 +10840,15 @@ rewrite_to_defined_overflow (gimple_stmt_iterator *gsi, gimple *stmt,
 }
 
 void
-rewrite_to_defined_overflow (gimple_stmt_iterator *gsi)
+rewrite_to_defined_unconditional (gimple_stmt_iterator *gsi)
 {
-  rewrite_to_defined_overflow (gsi, gsi_stmt (*gsi), true);
+  rewrite_to_defined_unconditional (gsi, gsi_stmt (*gsi), true);
 }
 
 gimple_seq
-rewrite_to_defined_overflow (gimple *stmt)
+rewrite_to_defined_unconditional (gimple *stmt)
 {
-  return rewrite_to_defined_overflow (nullptr, stmt, false);
+  return rewrite_to_defined_unconditional (nullptr, stmt, false);
 }
 
 /* The valueization hook we use for the gimple_build API simplification.
@@ -10383,7 +10907,7 @@ gimple_build (gimple_stmt_iterator *gsi,
 		       gsi->bb ? follow_all_ssa_edges : gimple_build_valueize);
   if (!res)
     {
-      res = create_tmp_reg_or_ssa_name (type);
+      res = make_ssa_name (type);
       gimple *stmt;
       if (code == REALPART_EXPR
 	  || code == IMAGPART_EXPR
@@ -10415,7 +10939,7 @@ gimple_build (gimple_stmt_iterator *gsi,
 		       gsi->bb ? follow_all_ssa_edges : gimple_build_valueize);
   if (!res)
     {
-      res = create_tmp_reg_or_ssa_name (type);
+      res = make_ssa_name (type);
       gimple *stmt = gimple_build_assign (res, code, op0, op1);
       gimple_set_location (stmt, loc);
       gimple_seq_add_stmt_without_update (&seq, stmt);
@@ -10442,7 +10966,7 @@ gimple_build (gimple_stmt_iterator *gsi,
 		       gsi->bb ? follow_all_ssa_edges : gimple_build_valueize);
   if (!res)
     {
-      res = create_tmp_reg_or_ssa_name (type);
+      res = make_ssa_name (type);
       gimple *stmt;
       if (code == BIT_FIELD_REF)
 	stmt = gimple_build_assign (res, code,
@@ -10478,7 +11002,7 @@ gimple_build (gimple_stmt_iterator *gsi,
     }
   if (!VOID_TYPE_P (type))
     {
-      res = create_tmp_reg_or_ssa_name (type);
+      res = make_ssa_name (type);
       gimple_call_set_lhs (stmt, res);
     }
   gimple_set_location (stmt, loc);
@@ -10513,7 +11037,7 @@ gimple_build (gimple_stmt_iterator *gsi,
 	}
       if (!VOID_TYPE_P (type))
 	{
-	  res = create_tmp_reg_or_ssa_name (type);
+	  res = make_ssa_name (type);
 	  gimple_call_set_lhs (stmt, res);
 	}
       gimple_set_location (stmt, loc);
@@ -10550,7 +11074,7 @@ gimple_build (gimple_stmt_iterator *gsi,
 	}
       if (!VOID_TYPE_P (type))
 	{
-	  res = create_tmp_reg_or_ssa_name (type);
+	  res = make_ssa_name (type);
 	  gimple_call_set_lhs (stmt, res);
 	}
       gimple_set_location (stmt, loc);
@@ -10588,7 +11112,7 @@ gimple_build (gimple_stmt_iterator *gsi,
 	}
       if (!VOID_TYPE_P (type))
 	{
-	  res = create_tmp_reg_or_ssa_name (type);
+	  res = make_ssa_name (type);
 	  gimple_call_set_lhs (stmt, res);
 	}
       gimple_set_location (stmt, loc);

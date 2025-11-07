@@ -1,6 +1,6 @@
 @c markers: BUG TODO
 
-@c Copyright (C) 1988-2024 Free Software Foundation, Inc.
+@c Copyright (C) 1988-2025 Free Software Foundation, Inc.
 @c This is part of the GCC manual.
 @c For copying conditions, see the file gcc.texi.
 
@@ -735,12 +735,6 @@ cannot be used for branch prediction (though adapting it would
 not be difficult).  The pass is located in @file{tree-vrp.cc} and is
 described by @code{pass_vrp}.
 
-@item Folding built-in functions
-
-This pass simplifies built-in functions, as applicable, with constant
-arguments or with inferable string lengths.  It is located in
-@file{tree-ssa-ccp.cc} and is described by @code{pass_fold_builtins}.
-
 @item Split critical edges
 
 This pass identifies critical edges and inserts empty basic blocks
@@ -959,6 +953,12 @@ global constant and  copy propagation.
 The source file for this pass is @file{gcse.cc}, and the LCM routines
 are in @file{lcm.cc}.
 
+A third version of this pass is run on some targets to optimise assignments to
+specific hard registers.  This can be used in cases where a register has a
+single purpose, such as specifying a mode as an extra input for specific
+instructions (@pxref{mode switching optimization} for another way of handling
+instruction modes).
+
 @item Loop optimization
 
 This pass performs several loop related optimizations.
@@ -1018,6 +1018,7 @@ combination approaches as well.
 The pass runs twice, once before register allocation and once after
 register allocation.  The code is located in @file{late-combine.cc}.
 
+@anchor{mode switching optimization}
 @item Mode switching optimization
 
 This pass looks for instructions that require the processor to be in a

@@ -1,7 +1,7 @@
 /* This file contains the definitions and documentation for the
    additional tree codes used in the GNU C++ compiler (see tree.def
    for the standard codes).
-   Copyright (C) 1987-2024 Free Software Foundation, Inc.
+   Copyright (C) 1987-2025 Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -299,6 +299,11 @@ DEFTREECODE (IF_STMT, "if_stmt", tcc_statement, 4)
    templates.  */
 DEFTREECODE (RANGE_FOR_STMT, "range_for_stmt", tcc_statement, 6)
 
+/* Used to represent an expansion-statement.  The operands are
+   TEMPLATE_FOR_DECL, TEMPLATE_FOR_EXPR, TEMPLATE_FOR_BODY,
+   TEMPLATE_FOR_SCOPE, and TEMPLATE_FOR_INIT_STMT, respectively.  */
+DEFTREECODE (TEMPLATE_FOR_STMT, "template_for_stmt", tcc_statement, 5)
+
 /* Used to represent an expression statement.  Use `EXPR_STMT_EXPR' to
    obtain the expression.  */
 DEFTREECODE (EXPR_STMT, "expr_stmt", tcc_expression, 1)
@@ -574,6 +579,12 @@ DEFTREECODE (CO_RETURN_EXPR, "co_return", tcc_statement, 2)
 DEFTREECODE (ASSERTION_STMT, "assertion_stmt", tcc_statement, 3)
 DEFTREECODE (PRECONDITION_STMT, "precondition_stmt", tcc_statement, 3)
 DEFTREECODE (POSTCONDITION_STMT, "postcondition_stmt", tcc_statement, 4)
+
+/* A reference to a translation-unit local entity.
+
+   This is emitted by modules streaming when writing a TU-local entity that
+   wasn't an exposure (e.g. in a non-inline function template).  */
+DEFTREECODE (TU_LOCAL_ENTITY, "tu_local_entity", tcc_exceptional, 0)
 
 /*
 Local variables:

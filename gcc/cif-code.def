@@ -1,7 +1,7 @@
 /* This file contains the definitions of the cgraph_inline_failed_t
    enums used in GCC.
 
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
    Contributed by Doug Kwan <dougkwan@google.com>
 
 This file is part of GCC.
@@ -142,3 +142,8 @@ DEFCIFCODE(EXTERN_LIVE_ONLY_STATIC, CIF_FINAL_ERROR,
 /* We proved that the call is unreachable.  */
 DEFCIFCODE(UNREACHABLE, CIF_FINAL_ERROR,
 	   N_("unreachable"))
+
+/* Callback edges cannot be inlined, as the corresponding call
+   statement does not exist.  */
+DEFCIFCODE(CALLBACK_EDGE, CIF_FINAL_ERROR,
+	   N_("callback edges cannot be inlined"))

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2024 Free Software Foundation, Inc.
+// Copyright (C) 2019-2025 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -302,9 +302,15 @@ test03()
   int i = 0;
   std::atomic_ref<int> a0(i);
   std::atomic_ref<int> a1(i);
+  std::atomic_ref<const int> a1c(i);
+  std::atomic_ref<volatile int> a1v(i);
+  std::atomic_ref<const volatile int> a1cv(i);
   std::atomic_ref<int> a2(a0);
   a0 = 42;
   VERIFY( a1 == 42 );
+  VERIFY( a1c == 42 );
+  VERIFY( a1v == 42 );
+  VERIFY( a1cv == 42 );
   VERIFY( a2 == 42 );
 }
 

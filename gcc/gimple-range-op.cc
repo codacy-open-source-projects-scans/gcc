@@ -1,5 +1,5 @@
 /* Code for GIMPLE range op related routines.
-   Copyright (C) 2019-2024 Free Software Foundation, Inc.
+   Copyright (C) 2019-2025 Free Software Foundation, Inc.
    Contributed by Andrew MacLeod <amacleod@redhat.com>
    and Aldy Hernandez <aldyh@redhat.com>.
 
@@ -150,6 +150,10 @@ gimple_range_op_handler::gimple_range_op_handler (gimple *s)
 	      if (TREE_CODE (ssa) == SSA_NAME)
 		m_op1 = ssa;
 	    }
+	  // VIEW_CONVERT_EXPR needs to descend one level deeper to pick
+	  // up the symbolic operand.
+	  if (TREE_CODE (m_op1) == VIEW_CONVERT_EXPR)
+	    m_op1 = TREE_OPERAND (m_op1, 0);
 	  if (gimple_num_ops (m_stmt) >= 3)
 	    m_op2 = gimple_assign_rhs2 (m_stmt);
 	  // Check that operands are supported types.  One check is enough.
@@ -1416,7 +1420,7 @@ gimple_range_op_handler::maybe_builtin_call ()
       m_operator = &op_cfn_signbit;
       break;
 
-    CASE_FLT_FN (BUILT_IN_ISINF):
+    CASE_FLT_FN (CFN_BUILT_IN_ISINF):
       m_op1 = gimple_call_arg (call, 0);
       m_operator = &op_cfn_isinf;
       break;

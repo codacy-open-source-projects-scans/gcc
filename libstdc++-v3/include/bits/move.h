@@ -1,6 +1,6 @@
 // Move, forward and identity for C++11 + swap -*- C++ -*-
 
-// Copyright (C) 2007-2024 Free Software Foundation, Inc.
+// Copyright (C) 2007-2025 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -47,6 +47,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  @ingroup utilities
    */
   template<typename _Tp>
+    __attribute__((__always_inline__))
     inline _GLIBCXX_CONSTEXPR _Tp*
     __addressof(_Tp& __r) _GLIBCXX_NOEXCEPT
     { return __builtin_addressof(__r); }
@@ -63,9 +64,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  @return The parameter cast to the specified type.
    *
    *  This function is used to implement "perfect forwarding".
+   *  @since C++11
    */
   template<typename _Tp>
-    _GLIBCXX_NODISCARD
+    [[__nodiscard__,__gnu__::__always_inline__]]
     constexpr _Tp&&
     forward(typename std::remove_reference<_Tp>::type& __t) noexcept
     { return static_cast<_Tp&&>(__t); }
@@ -75,9 +77,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  @return The parameter cast to the specified type.
    *
    *  This function is used to implement "perfect forwarding".
+   *  @since C++11
    */
   template<typename _Tp>
-    _GLIBCXX_NODISCARD
+    [[__nodiscard__,__gnu__::__always_inline__]]
     constexpr _Tp&&
     forward(typename std::remove_reference<_Tp>::type&& __t) noexcept
     {
@@ -86,7 +89,6 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       return static_cast<_Tp&&>(__t);
     }
 
-#if __glibcxx_forward_like // C++ >= 23
   template<typename _Tp, typename _Up>
   struct __like_impl; // _Tp must be a reference and _Up an lvalue reference
 
@@ -109,8 +111,16 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   template<typename _Tp, typename _Up>
     using __like_t = typename __like_impl<_Tp&&, _Up&>::type;
 
+#if __glibcxx_forward_like // C++ >= 23
+  /** @brief Forward with the cv-qualifiers and value category of another type.
+   *  @tparam _Tp An lvalue reference or rvalue reference.
+   *  @tparam _Up An lvalue reference type deduced from the function argument.
+   *  @param __x An lvalue.
+   *  @return `__x` converted to match the qualifiers of `_Tp`.
+   *  @since C++23
+   */
   template<typename _Tp, typename _Up>
-  [[nodiscard]]
+  [[nodiscard,__gnu__::__always_inline__]]
   constexpr __like_t<_Tp, _Up>
   forward_like(_Up&& __x) noexcept
   { return static_cast<__like_t<_Tp, _Up>>(__x); }
@@ -120,9 +130,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  @brief  Convert a value to an rvalue.
    *  @param  __t  A thing of arbitrary type.
    *  @return The parameter cast to an rvalue-reference to allow moving it.
+   *  @since C++11
   */
   template<typename _Tp>
-    _GLIBCXX_NODISCARD
+    [[__nodiscard__,__gnu__::__always_inline__]]
     constexpr typename std::remove_reference<_Tp>::type&&
     move(_Tp&& __t) noexcept
     { return static_cast<typename std::remove_reference<_Tp>::type&&>(__t); }
@@ -140,9 +151,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *
    *  Same as std::move unless the type's move constructor could throw and the
    *  type is copyable, in which case an lvalue-reference is returned instead.
+   *  @since C++11
    */
   template<typename _Tp>
-    _GLIBCXX_NODISCARD
+    [[__nodiscard__,__gnu__::__always_inline__]]
     constexpr
     __conditional_t<__move_if_noexcept_cond<_Tp>::value, const _Tp&, _Tp&&>
     move_if_noexcept(_Tp& __x) noexcept
@@ -156,12 +168,13 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *         operator&.
    *  @param  __r  Reference to an object or function.
    *  @return   The actual address.
+   *  @since C++11
   */
   template<typename _Tp>
-    _GLIBCXX_NODISCARD
+    [[__nodiscard__,__gnu__::__always_inline__]]
     inline _GLIBCXX17_CONSTEXPR _Tp*
     addressof(_Tp& __r) noexcept
-    { return std::__addressof(__r); }
+    { return __builtin_addressof(__r); }
 
   // _GLIBCXX_RESOLVE_LIB_DEFECTS
   // 2598. addressof works on temporaries
@@ -202,14 +215,18 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
    *  @return   Nothing.
   */
   template<typename _Tp>
-    _GLIBCXX20_CONSTEXPR
-    inline
-#if __cplusplus >= 201103L
-    typename enable_if<__and_<__not_<__is_tuple_like<_Tp>>,
-			      is_move_constructible<_Tp>,
-			      is_move_assignable<_Tp>>::value>::type
+#if __glibcxx_concepts // >= C++20
+    requires (! __is_tuple_like<_Tp>::value)
+      && is_move_constructible_v<_Tp>
+      && is_move_assignable_v<_Tp>
+    constexpr void
+#elif __cplusplus >= 201103L
+    _GLIBCXX20_CONSTEXPR inline
+    __enable_if_t<__and_<__not_<__is_tuple_like<_Tp>>,
+			 is_move_constructible<_Tp>,
+			 is_move_assignable<_Tp>>::value>
 #else
-    void
+    inline void
 #endif
     swap(_Tp& __a, _Tp& __b)
     _GLIBCXX_NOEXCEPT_IF(__and_<is_nothrow_move_constructible<_Tp>,
@@ -228,12 +245,14 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   // DR 809. std::swap should be overloaded for array types.
   /// Swap the contents of two arrays.
   template<typename _Tp, size_t _Nm>
-    _GLIBCXX20_CONSTEXPR
-    inline
-#if __cplusplus >= 201103L
-    typename enable_if<__is_swappable<_Tp>::value>::type
+#if __glibcxx_concepts // >= C++20
+    requires is_swappable_v<_Tp>
+    constexpr void
+#elif __cplusplus >= 201103L
+    _GLIBCXX20_CONSTEXPR inline
+    __enable_if_t<__is_swappable<_Tp>::value>
 #else
-    void
+    inline void
 #endif
     swap(_Tp (&__a)[_Nm], _Tp (&__b)[_Nm])
     _GLIBCXX_NOEXCEPT_IF(__is_nothrow_swappable<_Tp>::value)

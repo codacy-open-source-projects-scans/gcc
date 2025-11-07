@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -83,11 +83,8 @@ package body Debug_A is
 
          case Nkind (N) is
             when N_Has_Chars =>
-               Write_Str (" """);
-               if Present (Chars (N)) then
-                  Write_Str (Get_Name_String (Chars (N)));
-               end if;
-               Write_Str ("""");
+               Write_Str (" ");
+               Write_Name_For_Debug (Chars (N));
             when others => null;
          end case;
 

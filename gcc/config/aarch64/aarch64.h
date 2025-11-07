@@ -1,5 +1,5 @@
 /* Machine description for AArch64 architecture.
-   Copyright (C) 2009-2024 Free Software Foundation, Inc.
+   Copyright (C) 2009-2025 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of GCC.
@@ -240,43 +240,21 @@ constexpr auto AARCH64_FL_DEFAULT_ISA_MODE ATTRIBUTE_UNUSED
 #define TARGET_SIMD (TARGET_BASE_SIMD && TARGET_NON_STREAMING)
 #define TARGET_FLOAT AARCH64_HAVE_ISA (FP)
 
-/* AARCH64_FL options necessary for system register implementation.  */
-
 /* Define AARCH64_FL aliases for architectural features which are protected
    by -march flags in binutils but which receive no special treatment by GCC.
+   These features are used in the aarch64-sys-regs.def file, which is copied
+   from Binutils.
 
-   Such flags are inherited from the Binutils definition of system registers
-   and are mapped to the architecture in which the feature is implemented.  */
+   We should try to eliminate these inconsistencies in future.  */
 #define AARCH64_FL_RAS		   AARCH64_FL_V8A
 #define AARCH64_FL_LOR		   AARCH64_FL_V8_1A
 #define AARCH64_FL_PAN		   AARCH64_FL_V8_1A
-#define AARCH64_FL_AMU		   AARCH64_FL_V8_4A
-#define AARCH64_FL_SCXTNUM	   AARCH64_FL_V8_5A
-#define AARCH64_FL_ID_PFR2	   AARCH64_FL_V8_5A
-
-/* Armv8.9-A extension feature bits defined in Binutils but absent from GCC,
-   aliased to their base architecture.  */
-#define AARCH64_FL_AIE		   AARCH64_FL_V8_9A
-#define AARCH64_FL_DEBUGv8p9	   AARCH64_FL_V8_9A
-#define AARCH64_FL_FGT2	   AARCH64_FL_V8_9A
 #define AARCH64_FL_ITE		   AARCH64_FL_V8_9A
-#define AARCH64_FL_PFAR	   AARCH64_FL_V8_9A
-#define AARCH64_FL_PMUv3_ICNTR	   AARCH64_FL_V8_9A
-#define AARCH64_FL_PMUv3_SS	   AARCH64_FL_V8_9A
-#define AARCH64_FL_PMUv3p9	   AARCH64_FL_V8_9A
 #define AARCH64_FL_RASv2	   AARCH64_FL_V8_9A
-#define AARCH64_FL_S1PIE	   AARCH64_FL_V8_9A
-#define AARCH64_FL_S1POE	   AARCH64_FL_V8_9A
-#define AARCH64_FL_S2PIE	   AARCH64_FL_V8_9A
-#define AARCH64_FL_S2POE	   AARCH64_FL_V8_9A
-#define AARCH64_FL_SCTLR2	   AARCH64_FL_V8_9A
-#define AARCH64_FL_SEBEP	   AARCH64_FL_V8_9A
-#define AARCH64_FL_SPE_FDS	   AARCH64_FL_V8_9A
-#define AARCH64_FL_TCR2	   AARCH64_FL_V8_9A
+
 
 #define TARGET_V8R AARCH64_HAVE_ISA (V8R)
 #define TARGET_V9A AARCH64_HAVE_ISA (V9A)
-
 
 /* SHA2 is an optional extension to AdvSIMD.  */
 #define TARGET_SHA2 AARCH64_HAVE_ISA (SHA2)
@@ -361,13 +339,13 @@ constexpr auto AARCH64_FL_DEFAULT_ISA_MODE ATTRIBUTE_UNUSED
 #define TARGET_ARMV8_3	AARCH64_HAVE_ISA (V8_3A)
 
 /* Javascript conversion instruction from Armv8.3-a.  */
-#define TARGET_JSCVT	(TARGET_FLOAT && TARGET_ARMV8_3)
+#define TARGET_JSCVT	AARCH64_HAVE_ISA (JSCVT)
 
 /* Armv8.3-a Complex number extension to AdvSIMD extensions.  */
-#define TARGET_COMPLEX (TARGET_SIMD && TARGET_ARMV8_3)
+#define TARGET_COMPLEX AARCH64_HAVE_ISA (FCMA)
 
 /* Floating-point rounding instructions from Armv8.5-a.  */
-#define TARGET_FRINT (AARCH64_HAVE_ISA (V8_5A) && TARGET_FLOAT)
+#define TARGET_FRINT AARCH64_HAVE_ISA (FRINTTS)
 
 /* TME instructions are enabled.  */
 #define TARGET_TME AARCH64_HAVE_ISA (TME)
@@ -410,6 +388,10 @@ constexpr auto AARCH64_FL_DEFAULT_ISA_MODE ATTRIBUTE_UNUSED
 /* CSSC instructions are enabled through +cssc.  */
 #define TARGET_CSSC AARCH64_HAVE_ISA (CSSC)
 
+/* CB<cc> instructions are enabled through +cmpbr,
+   but are incompatible with -mtrack-speculation. */
+#define TARGET_CMPBR (AARCH64_HAVE_ISA (CMPBR) && !aarch64_track_speculation)
+
 /* Make sure this is always defined so we don't have to check for ifdefs
    but rather use normal ifs.  */
 #ifndef TARGET_FIX_ERR_A53_835769_DEFAULT
@@ -427,7 +409,7 @@ constexpr auto AARCH64_FL_DEFAULT_ISA_MODE ATTRIBUTE_UNUSED
 
 /* The RCPC2 extensions from Armv8.4-a that allow immediate offsets to LDAPR
    and sign-extending versions.*/
-#define TARGET_RCPC2 ((AARCH64_HAVE_ISA (V8_4A) && TARGET_RCPC) || TARGET_RCPC3)
+#define TARGET_RCPC2 AARCH64_HAVE_ISA (RCPC2)
 
 /* RCPC3 (Release Consistency) extensions, optional from Armv8.2-a.  */
 #define TARGET_RCPC3 AARCH64_HAVE_ISA (RCPC3)
@@ -472,10 +454,14 @@ constexpr auto AARCH64_FL_DEFAULT_ISA_MODE ATTRIBUTE_UNUSED
 /* Floating Point Absolute Maximum/Minimum extension instructions are
    enabled through +faminmax.  */
 #define TARGET_FAMINMAX AARCH64_HAVE_ISA (FAMINMAX)
-#define TARGET_SVE_FAMINMAX (TARGET_SVE && TARGET_FAMINMAX)
 
-/* Lookup table (LUTI) extension instructions are enabled through +lut.  */
+/* Lookup table (LUTI) extension instructions with 2-bit and 4-bit indices are
+   enabled through +lut.  */
 #define TARGET_LUT AARCH64_HAVE_ISA (LUT)
+
+/* Lookup table (LUTI) extension instructions with 4-bit indices and 8-bit
+   elements are enabled through +sme-lutv2.  */
+#define TARGET_SME_LUTv2 AARCH64_HAVE_ISA (SME_LUTv2)
 
 /* Prefer different predicate registers for the output of a predicated
    operation over re-using an existing input predicate.  */
@@ -485,6 +471,16 @@ constexpr auto AARCH64_FL_DEFAULT_ISA_MODE ATTRIBUTE_UNUSED
 
 /* fp8 instructions are enabled through +fp8.  */
 #define TARGET_FP8 AARCH64_HAVE_ISA (FP8)
+
+/* See the comment above the tuning flag for details.  */
+#define TARGET_CHEAP_FPMR_WRITE \
+  (bool (aarch64_tune_params.extra_tuning_flags \
+	 & AARCH64_EXTRA_TUNE_CHEAP_FPMR_WRITE))
+
+/* Enable folding address computation into LDAPUR when RCPC2 is available.  */
+#define TARGET_ENABLE_LDAPUR (TARGET_RCPC2 \
+			      && !(aarch64_tune_params.extra_tuning_flags \
+				   & AARCH64_EXTRA_TUNE_AVOID_LDAPUR))
 
 /* Combinatorial tests.  */
 
@@ -699,6 +695,31 @@ through +ssve-fp8dot2.  */
 #define NUM_ARG_REGS			8
 #define NUM_FP_ARG_REGS			8
 #define NUM_PR_ARG_REGS			4
+
+/* The argument passing regs for preserve_none pcs.  */
+#if TARGET_AARCH64_MS_ABI
+#define NUM_PRESERVE_NONE_ARG_REGS 23
+#define PRESERVE_NONE_REGISTERS \
+{ \
+  R20_REGNUM, R21_REGNUM, R22_REGNUM, R23_REGNUM, R24_REGNUM, R25_REGNUM,\
+  R26_REGNUM, R27_REGNUM, R28_REGNUM,\
+  R0_REGNUM, R1_REGNUM, R2_REGNUM, R3_REGNUM, R4_REGNUM, R5_REGNUM,\
+  R6_REGNUM, R7_REGNUM,\
+  R10_REGNUM, R11_REGNUM, R12_REGNUM, R13_REGNUM, R14_REGNUM, R9_REGNUM\
+}
+#else
+#define NUM_PRESERVE_NONE_ARG_REGS 24
+#define PRESERVE_NONE_REGISTERS \
+{ \
+  R20_REGNUM, R21_REGNUM, R22_REGNUM, R23_REGNUM, R24_REGNUM, R25_REGNUM,\
+  R26_REGNUM, R27_REGNUM, R28_REGNUM,\
+  R0_REGNUM, R1_REGNUM, R2_REGNUM, R3_REGNUM, R4_REGNUM, R5_REGNUM,\
+  R6_REGNUM, R7_REGNUM,\
+  R10_REGNUM, R11_REGNUM, R12_REGNUM, R13_REGNUM, R14_REGNUM, R9_REGNUM,\
+  R15_REGNUM\
+}
+#endif
+
 
 /* A Homogeneous Floating-Point or Short-Vector Aggregate may have at most
    four members.  */
@@ -924,16 +945,9 @@ enum reg_class
 /* CPU/ARCH option handling.  */
 #include "config/aarch64/aarch64-opts.h"
 
-enum target_cpus
-{
-#define AARCH64_CORE(NAME, INTERNAL_IDENT, SCHED, ARCH, FLAGS, COSTS, IMP, PART, VARIANT) \
-  TARGET_CPU_##INTERNAL_IDENT,
-#include "aarch64-cores.def"
-};
-
 /* If there is no CPU defined at configure, use generic as default.  */
 #ifndef TARGET_CPU_DEFAULT
-# define TARGET_CPU_DEFAULT TARGET_CPU_generic_armv8_a
+# define TARGET_CPU_DEFAULT AARCH64_CPU_generic_armv8_a
 #endif
 
 /* If inserting NOP before a mult-accumulate insn remember to adjust the
@@ -949,7 +963,7 @@ enum target_cpus
     aarch64_final_prescan_insn (INSN);			\
 
 /* The processor for which instructions should be scheduled.  */
-extern enum aarch64_processor aarch64_tune;
+extern enum aarch64_cpu aarch64_tune;
 
 /* RTL generation support.  */
 #define INIT_EXPANDERS aarch64_init_expanders ()
@@ -1161,6 +1175,8 @@ enum arm_pcs
   ARM_PCS_SVE,			/* For functions that pass or return
 				   values in SVE registers.  */
   ARM_PCS_TLSDESC,		/* For targets of tlsdesc calls.  */
+  ARM_PCS_PRESERVE_NONE,	/* PCS variant with no call-preserved
+				   registers except X29.  */
   ARM_PCS_UNKNOWN
 };
 
@@ -1477,7 +1493,7 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
 #define HAVE_LOCAL_CPU_DETECT
 # define EXTRA_SPEC_FUNCTIONS                                           \
   { "local_cpu_detect", host_detect_local_cpu },                        \
-  MCPU_TO_MARCH_SPEC_FUNCTIONS
+  AARCH64_BASE_SPEC_FUNCTIONS
 
 /* Rewrite -m{arch,cpu,tune}=native based on the host system information.
    When rewriting -march=native convert it into an -mcpu option if no other
@@ -1494,7 +1510,7 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
  { "tune", "%{!mcpu=*:%{!mtune=*:%{!march=native:-mtune=%(VALUE)}}}" },
 #else
 # define MCPU_MTUNE_NATIVE_SPECS ""
-# define EXTRA_SPEC_FUNCTIONS MCPU_TO_MARCH_SPEC_FUNCTIONS
+# define EXTRA_SPEC_FUNCTIONS AARCH64_BASE_SPEC_FUNCTIONS
 # define CONFIG_TUNE_SPEC                                                \
   {"tune", "%{!mcpu=*:%{!mtune=*:-mtune=%(VALUE)}}"},
 #endif
@@ -1509,18 +1525,21 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
   {"cpu",  "%{!march=*:%{!mcpu=*:-mcpu=%(VALUE)}}" },   \
   CONFIG_TUNE_SPEC
 
-#define MCPU_TO_MARCH_SPEC \
-   " %{mcpu=*:-march=%:rewrite_mcpu(%{mcpu=*:%*})}"
+#define MARCH_REWRITE_SPEC \
+   "%{march=*:-march=%:rewrite_march(%{march=*:%*});" \
+     "mcpu=*:-march=%:rewrite_mcpu(%{mcpu=*:%*})}"
 
+extern const char *aarch64_rewrite_march (int argc, const char **argv);
 extern const char *aarch64_rewrite_mcpu (int argc, const char **argv);
 extern const char *is_host_cpu_not_armv8_base (int argc, const char **argv);
-#define MCPU_TO_MARCH_SPEC_FUNCTIONS		       \
+#define AARCH64_BASE_SPEC_FUNCTIONS		       \
+  { "rewrite_march", aarch64_rewrite_march },          \
   { "rewrite_mcpu",            aarch64_rewrite_mcpu }, \
   { "is_local_not_armv8_base", is_host_cpu_not_armv8_base },
 
 
 #define ASM_CPU_SPEC \
-   MCPU_TO_MARCH_SPEC
+   MARCH_REWRITE_SPEC
 
 #define EXTRA_SPECS						\
   { "asm_cpu_spec",		ASM_CPU_SPEC }
@@ -1651,6 +1670,10 @@ enum class aarch64_tristate_mode : int { NO, YES, MAYBE };
 #define NUM_MODES_FOR_MODE_SWITCHING \
   { int (aarch64_tristate_mode::MAYBE), \
     int (aarch64_local_sme_state::ANY) }
+
+/* Zero terminated list of regnos for which hardreg PRE should be
+   applied.  */
+#define HARDREG_PRE_REGNOS { FPM_REGNUM, 0 }
 
 #endif
 

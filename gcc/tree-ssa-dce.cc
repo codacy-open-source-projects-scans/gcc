@@ -1,5 +1,5 @@
 /* Dead code elimination pass for the GNU compiler.
-   Copyright (C) 2002-2024 Free Software Foundation, Inc.
+   Copyright (C) 2002-2025 Free Software Foundation, Inc.
    Contributed by Ben Elliston <bje@redhat.com>
    and Andrew MacLeod <amacleod@redhat.com>
    Adapted to use control dependence by Steven Bosscher, SUSE Labs.
@@ -243,38 +243,101 @@ mark_operand_necessary (tree op)
 
 /* Return true if STMT is a call to allocation function that can be
    optimized out if the memory block is never used for anything else
-   then NULL pointer check or free.
-   If NON_NULL_CHECK is false, we can furhter assume that return value
-   is never checked to be non-NULL. */
+   than NULL pointer check or free.
+   If NON_NULL_CHECK is false, we can further assume that return value
+   is never checked to be non-NULL.
+   Don't return true if it is called with constant size (or sizes for calloc)
+   and the size is excessively large (larger than PTRDIFF_MAX, for calloc
+   either argument larger than PTRDIFF_MAX or both constant and their product
+   larger than PTRDIFF_MAX).  */
 
 static bool
 is_removable_allocation_p (gcall *stmt, bool non_null_check)
 {
-  tree callee = gimple_call_fndecl (stmt);
+  int arg = -1;
+  tree callee = gimple_call_fndecl (stmt), a1, a2;
   if (callee != NULL_TREE
       && fndecl_built_in_p (callee, BUILT_IN_NORMAL))
     switch (DECL_FUNCTION_CODE (callee))
       {
       case BUILT_IN_MALLOC:
+	arg = 1;
+	goto do_malloc;
       case BUILT_IN_ALIGNED_ALLOC:
+	arg = 2;
+	goto do_malloc;
       case BUILT_IN_CALLOC:
+	arg = 3;
+	goto do_malloc;
       CASE_BUILT_IN_ALLOCA:
+	arg = 1;
+	goto do_malloc;
       case BUILT_IN_STRDUP:
       case BUILT_IN_STRNDUP:
-	return non_null_check ? flag_malloc_dce > 1 : flag_malloc_dce;
+	arg = 0;
+	/* FALLTHRU */
+      do_malloc:
+	if (non_null_check)
+	  {
+	    if (flag_malloc_dce <= 1)
+	      return false;
+	  }
+	else if (!flag_malloc_dce)
+	  return false;
+	break;
 
       case BUILT_IN_GOMP_ALLOC:
-	return true;
+	arg = 2;
+	break;
 
       default:;
       }
 
-  if (callee != NULL_TREE
+  if (arg == -1
+      && callee != NULL_TREE
       && flag_allocation_dce
       && gimple_call_from_new_or_delete (stmt)
       && DECL_IS_REPLACEABLE_OPERATOR_NEW_P (callee))
-    return true;
-  return false;
+    arg = 1;
+
+  switch (arg)
+    {
+    case -1:
+      return false;
+    case 0:
+      return true;
+    case 1:
+    case 2:
+      if (gimple_call_num_args (stmt) < (unsigned) arg)
+	return false;
+      a1 = gimple_call_arg (stmt, arg - 1);
+      if (tree_fits_uhwi_p (a1)
+	  && (tree_to_uhwi (a1)
+	      > tree_to_uhwi (TYPE_MAX_VALUE (ptrdiff_type_node))))
+	return false;
+      return true;
+    case 3:
+      if (gimple_call_num_args (stmt) < 2)
+	return false;
+      a1 = gimple_call_arg (stmt, 0);
+      a2 = gimple_call_arg (stmt, 1);
+      if (tree_fits_uhwi_p (a1)
+	  && (tree_to_uhwi (a1)
+	      > tree_to_uhwi (TYPE_MAX_VALUE (ptrdiff_type_node))))
+	return false;
+      if (tree_fits_uhwi_p (a2)
+	  && (tree_to_uhwi (a2)
+	      > tree_to_uhwi (TYPE_MAX_VALUE (ptrdiff_type_node))))
+	return false;
+      if (TREE_CODE (a1) == INTEGER_CST
+	  && TREE_CODE (a2) == INTEGER_CST
+	  && (wi::to_widest (a1) * wi::to_widest (a2)
+	      > tree_to_uhwi (TYPE_MAX_VALUE (ptrdiff_type_node))))
+	return false;
+      return true;
+    default:
+      gcc_unreachable ();
+    }
 }
 
 /* Return true if STMT is a conditional
@@ -328,14 +391,14 @@ mark_stmt_if_obviously_necessary (gimple *stmt, bool aggressive)
       {
 	gcall *call = as_a <gcall *> (stmt);
 
-	/* Never elide a noreturn call we pruned control-flow for.  */
-	if ((gimple_call_flags (call) & ECF_NORETURN)
-	    && gimple_call_ctrl_altering_p (call))
+	/* Never elide a noreturn call we pruned control-flow for.
+	   Same for statements that can alter control flow in unpredictable
+	   ways.  */
+	if (gimple_call_ctrl_altering_p (call))
 	  {
 	    mark_stmt_necessary (call, true);
 	    return;
 	  }
-
 
 	if (is_removable_allocation_p (call, false))
 	  return;
@@ -1394,6 +1457,70 @@ control_parents_preserved_p (basic_block bb)
   return true;
 }
 
+/* If basic block is empty, we can remove conditionals that controls
+   its execution.  However in some cases the empty BB can stay live
+   (such as when it was a header of empty loop).  In this case we
+   need to update its count.  Since regions of dead BBs are acyclic
+   we simply propagate counts forward from live BBs to dead ones.  */
+
+static void
+propagate_counts ()
+{
+  basic_block bb;
+  auto_vec<basic_block, 16> queue;
+  hash_map <basic_block, int> cnt;
+
+  FOR_EACH_BB_FN (bb, cfun)
+    if (!bitmap_bit_p (bb_contains_live_stmts, bb->index))
+      {
+	int n = 0;
+	for (edge e : bb->preds)
+	  if (e->src != ENTRY_BLOCK_PTR_FOR_FN (cfun)
+	      && !bitmap_bit_p (bb_contains_live_stmts, e->src->index))
+	    n++;
+	if (!n)
+	  queue.safe_push (bb);
+	cnt.put (bb, n);
+      }
+  while (!queue.is_empty ())
+    {
+      basic_block bb = queue.pop ();
+      profile_count sum = profile_count::zero ();
+
+      for (edge e : bb->preds)
+	{
+	  sum += e->count ();
+	  gcc_checking_assert (!cnt.get (e->src));
+	}
+      /* If we have partial profile and some counts of incomming edges are
+	 unknown, it is probably better to keep the existing count.
+	 We could also propagate bi-directionally.  */
+      if (sum.initialized_p () && !(sum == bb->count))
+	{
+	  if (dump_file && (dump_flags & TDF_DETAILS))
+	    {
+	      fprintf (dump_file, "Updating count of empty bb %i from ",
+		       bb->index);
+	      bb->count.dump (dump_file);
+	      fprintf (dump_file, " to ");
+	      sum.dump (dump_file);
+	      fprintf (dump_file, "\n");
+	    }
+	  bb->count = sum;
+	}
+      cnt.remove (bb);
+      for (edge e : bb->succs)
+	if (int *n = cnt.get (e->dest))
+	  {
+	    (*n)--;
+	    if (!*n)
+	      queue.safe_push (e->dest);
+	  }
+    }
+  /* Do not check that all blocks has been processed, since for
+     empty infinite loops this is not the case.  */
+}
+
 /* Eliminate unnecessary statements. Any instruction not marked as necessary
    contributes nothing to the program, and can be deleted.  */
 
@@ -1445,6 +1572,7 @@ eliminate_unnecessary_stmts (bool aggressive)
 
       /* Remove dead statements.  */
       auto_bitmap debug_seen;
+      hash_set<int_hash <location_t, 0>> locs_seen;
       for (gsi = gsi_last_bb (bb); !gsi_end_p (gsi); gsi = psi)
 	{
 	  stmt = gsi_stmt (gsi);
@@ -1554,9 +1682,12 @@ eliminate_unnecessary_stmts (bool aggressive)
 		  update_stmt (call_stmt);
 		  release_ssa_name (name);
 
+		  /* __builtin_stack_save without lhs is not needed.  */
+		  if (gimple_call_builtin_p (call_stmt, BUILT_IN_STACK_SAVE))
+		    remove_dead_stmt (&gsi, bb, to_remove_edges);
 		  /* GOMP_SIMD_LANE (unless three argument) or ASAN_POISON
 		     without lhs is not needed.  */
-		  if (gimple_call_internal_p (call_stmt))
+		  else if (gimple_call_internal_p (call_stmt))
 		    switch (gimple_call_internal_fn (call_stmt))
 		      {
 		      case IFN_GOMP_SIMD_LANE:
@@ -1607,6 +1738,15 @@ eliminate_unnecessary_stmts (bool aggressive)
 		remove_dead_stmt (&gsi, bb, to_remove_edges);
 	      continue;
 	    }
+	  else if (gimple_debug_begin_stmt_p (stmt))
+	    {
+	      /* We are only keeping the last debug-begin in a series of
+		 debug-begin stmts.  */
+	      if (locs_seen.add (gimple_location (stmt)))
+		remove_dead_stmt (&gsi, bb, to_remove_edges);
+	      continue;
+	    }
+	  locs_seen.empty ();
 	  bitmap_clear (debug_seen);
 	}
 
@@ -1727,6 +1867,8 @@ eliminate_unnecessary_stmts (bool aggressive)
 		}
 	    }
 	}
+      if (bb_contains_live_stmts)
+	propagate_counts ();
     }
 
   if (bb_postorder)
@@ -1969,14 +2111,24 @@ make_forwarders_with_degenerate_phis (function *fn)
 		  free_dominance_info (fn, CDI_DOMINATORS);
 		  basic_block forwarder = split_edge (args[start].first);
 		  profile_count count = profile_count::zero ();
+		  bool irr = false;
 		  for (unsigned j = start + 1; j < i; ++j)
 		    {
 		      edge e = args[j].first;
+		      if (e->flags & EDGE_IRREDUCIBLE_LOOP)
+			irr = true;
 		      redirect_edge_and_branch_force (e, forwarder);
 		      redirect_edge_var_map_clear (e);
 		      count += e->count ();
 		    }
 		  forwarder->count = count;
+		  if (irr)
+		    {
+		      forwarder->flags |= BB_IRREDUCIBLE_LOOP;
+		      single_succ_edge (forwarder)->flags
+			|= EDGE_IRREDUCIBLE_LOOP;
+		    }
+
 		  if (vphi)
 		    {
 		      tree def = copy_ssa_name (vphi_args[0]);

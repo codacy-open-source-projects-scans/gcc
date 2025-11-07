@@ -1,5 +1,5 @@
 /* toir.cc -- Lower D frontend statements to GCC trees.
-   Copyright (C) 2006-2024 Free Software Foundation, Inc.
+   Copyright (C) 2006-2025 Free Software Foundation, Inc.
 
 GCC is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -831,7 +831,7 @@ public:
 
     /* A switch statement on a string gets turned into a library call.
        It is not lowered during codegen.  */
-    if (!condtype->isscalar ())
+    if (!condtype->isScalar ())
       {
 	error ("cannot handle switch condition of type %s",
 	       condtype->toChars ());
@@ -920,7 +920,7 @@ public:
     else
       {
 	tree casevalue;
-	if (s->exp->type->isscalar ())
+	if (s->exp->type->isScalar ())
 	  casevalue = build_expr (s->exp);
 	else
 	  casevalue = build_integer_cst (s->index, build_ctype (Type::tint32));
@@ -1008,7 +1008,7 @@ public:
 	/* Returning by hidden reference, store the result into the retval decl.
 	   The result returned then becomes the retval reference itself.  */
 	tree decl = DECL_RESULT (get_symbol_decl (this->func_));
-	gcc_assert (!tf->isref ());
+	gcc_assert (!tf->isRef ());
 
 	/* If returning via NRVO, just refer to the DECL_RESULT; this differs
 	   from using NULL_TREE in that it indicates that we care about the
@@ -1058,13 +1058,8 @@ public:
 
 	if (sle != NULL)
 	  {
-	    StructDeclaration *sd = type->baseElemOf ()->isTypeStruct ()->sym;
 	    sle->sym = build_address (this->func_->shidden);
 	    using_rvo_p = true;
-
-	    /* Fill any alignment holes in the return slot using memset.  */
-	    if (!identity_compare_p (sd) || sd->isUnionDeclaration ())
-	      add_stmt (build_memset_call (this->func_->shidden));
 	  }
 
 	if (using_rvo_p == true)
@@ -1455,7 +1450,8 @@ public:
 	    oconstraints[i] = constraint;
 
 	    if (parse_output_constraint (&constraint, i, ninputs, noutputs,
-					 &allows_mem, &allows_reg, &is_inout))
+					 &allows_mem, &allows_reg, &is_inout,
+					 nullptr))
 	      {
 		/* If the output argument is going to end up in memory.  */
 		if (!allows_reg)
@@ -1474,7 +1470,8 @@ public:
 	      = TREE_STRING_POINTER (TREE_VALUE (TREE_PURPOSE (t)));
 
 	    if (parse_input_constraint (&constraint, i, ninputs, noutputs, 0,
-					oconstraints, &allows_mem, &allows_reg))
+					oconstraints, &allows_mem, &allows_reg,
+					nullptr))
 	      {
 		/* If the input argument is going to end up in memory.  */
 		if (!allows_reg && allows_mem)

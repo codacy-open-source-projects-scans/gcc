@@ -1,5 +1,5 @@
 /* Build executable statement trees.
-   Copyright (C) 2000-2024 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -86,6 +86,10 @@ gfc_free_statement (gfc_code *p)
     gfc_free_expr (p->expr1);
   if (p->expr2)
     gfc_free_expr (p->expr2);
+  if (p->expr3)
+    gfc_free_expr (p->expr3);
+  if (p->expr4)
+    gfc_free_expr (p->expr4);
 
   switch (p->op)
     {
@@ -189,8 +193,11 @@ gfc_free_statement (gfc_code *p)
       break;
 
     case EXEC_DO_CONCURRENT:
+      for (int i = 0; i < LOCALITY_NUM; i++)
+	gfc_free_expr_list (p->ext.concur.locality[i]);
+      gcc_fallthrough ();
     case EXEC_FORALL:
-      gfc_free_forall_iterator (p->ext.forall_iterator);
+      gfc_free_forall_iterator (p->ext.concur.forall_iterator);
       break;
 
     case EXEC_OACC_DECLARE:
@@ -222,6 +229,7 @@ gfc_free_statement (gfc_code *p)
     case EXEC_OMP_CANCELLATION_POINT:
     case EXEC_OMP_CRITICAL:
     case EXEC_OMP_DEPOBJ:
+    case EXEC_OMP_DISPATCH:
     case EXEC_OMP_DISTRIBUTE:
     case EXEC_OMP_DISTRIBUTE_PARALLEL_DO:
     case EXEC_OMP_DISTRIBUTE_PARALLEL_DO_SIMD:
@@ -300,6 +308,10 @@ gfc_free_statement (gfc_code *p)
     case EXEC_OMP_TASKGROUP:
     case EXEC_OMP_TASKWAIT:
     case EXEC_OMP_TASKYIELD:
+      break;
+
+    case EXEC_OMP_METADIRECTIVE:
+      gfc_free_omp_variants (p->ext.omp_variants);
       break;
 
     default:

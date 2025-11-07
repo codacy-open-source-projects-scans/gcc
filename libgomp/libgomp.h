@@ -1,4 +1,4 @@
-/* Copyright (C) 2005-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2005-2025 Free Software Foundation, Inc.
    Contributed by Richard Henderson <rth@redhat.com>.
 
    This file is part of the GNU Offloading and Multi Processing Library
@@ -43,7 +43,14 @@
 
 #include "config.h"
 #include <stdint.h>
+
+/* Include omp.h by parts.  */
+#include "omp-lock.h"
+#define _LIBGOMP_OMP_LOCK_DEFINED 1
+#include "omp.h.in"
+
 #include "libgomp-plugin.h"
+
 #include "gomp-constants.h"
 
 #ifdef HAVE_PTHREAD_H
@@ -1128,6 +1135,8 @@ extern int gomp_get_num_devices (void);
 extern bool gomp_target_task_fn (void *);
 extern void gomp_target_rev (uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
 			     int, struct goacc_asyncqueue *);
+extern bool gomp_page_locked_host_alloc (void **, size_t);
+extern void gomp_page_locked_host_free (void *);
 
 /* Splay tree definitions.  */
 typedef struct splay_tree_node_s *splay_tree_node;
@@ -1353,6 +1362,7 @@ typedef struct acc_dispatch_t
     __typeof (GOMP_OFFLOAD_openacc_async_exec) *exec_func;
     __typeof (GOMP_OFFLOAD_openacc_async_dev2host) *dev2host_func;
     __typeof (GOMP_OFFLOAD_openacc_async_host2dev) *host2dev_func;
+    __typeof (GOMP_OFFLOAD_openacc_async_dev2dev) *dev2dev_func;
   } async;
 
   __typeof (GOMP_OFFLOAD_openacc_get_property) *get_property_func;
@@ -1411,14 +1421,22 @@ struct gomp_device_descr
   __typeof (GOMP_OFFLOAD_unload_image) *unload_image_func;
   __typeof (GOMP_OFFLOAD_alloc) *alloc_func;
   __typeof (GOMP_OFFLOAD_free) *free_func;
+  __typeof (GOMP_OFFLOAD_page_locked_host_alloc) *page_locked_host_alloc_func;
+  __typeof (GOMP_OFFLOAD_page_locked_host_free) *page_locked_host_free_func;
   __typeof (GOMP_OFFLOAD_dev2host) *dev2host_func;
   __typeof (GOMP_OFFLOAD_host2dev) *host2dev_func;
+  __typeof (GOMP_OFFLOAD_dev2dev) *dev2dev_func;
   __typeof (GOMP_OFFLOAD_memcpy2d) *memcpy2d_func;
   __typeof (GOMP_OFFLOAD_memcpy3d) *memcpy3d_func;
-  __typeof (GOMP_OFFLOAD_dev2dev) *dev2dev_func;
+  __typeof (GOMP_OFFLOAD_memset) *memset_func;
   __typeof (GOMP_OFFLOAD_can_run) *can_run_func;
   __typeof (GOMP_OFFLOAD_run) *run_func;
   __typeof (GOMP_OFFLOAD_async_run) *async_run_func;
+  __typeof (GOMP_OFFLOAD_interop) *interop_func;
+  __typeof (GOMP_OFFLOAD_get_interop_int) *get_interop_int_func;
+  __typeof (GOMP_OFFLOAD_get_interop_ptr) *get_interop_ptr_func;
+  __typeof (GOMP_OFFLOAD_get_interop_str) *get_interop_str_func;
+  __typeof (GOMP_OFFLOAD_get_interop_type_desc) *get_interop_type_desc_func;
 
   /* Splay tree containing information about mapped memory regions.  */
   struct splay_tree_s mem_map;
@@ -1455,11 +1473,14 @@ extern void gomp_copy_host2dev (struct gomp_device_descr *,
 extern void gomp_copy_dev2host (struct gomp_device_descr *,
 				struct goacc_asyncqueue *, void *, const void *,
 				size_t);
+extern void gomp_copy_dev2dev (struct gomp_device_descr *,
+			       struct goacc_asyncqueue *, void *, const void *,
+			       size_t);
 extern uintptr_t gomp_map_val (struct target_mem_desc *, void **, size_t);
-extern void gomp_attach_pointer (struct gomp_device_descr *,
+extern bool gomp_attach_pointer (struct gomp_device_descr *,
 				 struct goacc_asyncqueue *, splay_tree,
 				 splay_tree_key, uintptr_t, size_t,
-				 struct gomp_coalesce_buf *, bool);
+				 struct gomp_coalesce_buf *, bool, bool);
 extern void gomp_detach_pointer (struct gomp_device_descr *,
 				 struct goacc_asyncqueue *, splay_tree_key,
 				 uintptr_t, bool, struct gomp_coalesce_buf *);
@@ -1500,11 +1521,6 @@ gomp_work_share_init_done (void)
 
 /* Now that we're back to default visibility, include the globals.  */
 #include "libgomp_g.h"
-
-/* Include omp.h by parts.  */
-#include "omp-lock.h"
-#define _LIBGOMP_OMP_LOCK_DEFINED 1
-#include "omp.h.in"
 
 #if !defined (HAVE_ATTRIBUTE_VISIBILITY) \
     || !defined (HAVE_ATTRIBUTE_ALIAS) \
@@ -1655,5 +1671,17 @@ gomp_thread_to_pthread_t (struct gomp_thread *thr)
   return gomp_thread_self ();
 }
 #endif
+
+/* simple-allocator.c  */
+
+typedef struct gomp_simple_alloc_context *gomp_simple_alloc_ctx_p;
+
+gomp_simple_alloc_ctx_p gomp_simple_alloc_init_context ();
+void gomp_simple_alloc_register_memory (gomp_simple_alloc_ctx_p ctx,
+				        char *base, size_t size);
+void *gomp_simple_alloc (gomp_simple_alloc_ctx_p ctx, size_t size);
+void gomp_simple_free (gomp_simple_alloc_ctx_p ctx, void *addr);
+void *gomp_simple_realloc (gomp_simple_alloc_ctx_p ctx, void *addr,
+			   size_t newsize);
 
 #endif /* LIBGOMP_H */

@@ -1,4 +1,4 @@
-// Copyright (C) 2017-2024 Free Software Foundation, Inc.
+// Copyright (C) 2017-2025 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -142,6 +142,10 @@
 #define try_emplace (
 #endif
 
+#if __cplusplus < 202002L
+#define ranges (
+#endif
+
 // These clash with newlib so don't use them.
 # define __lockable		cannot be used as an identifier
 # define __null_sentinel	cannot be used as an identifier
@@ -244,6 +248,10 @@
 #undef r
 #undef x
 #undef y
+// <stdlib.h> defines drand48_data::a
+#undef a
+// <sys/localedef.h> defines _LC_weight_t::n
+#undef n
 // <sys/poll.h> defines pollfd_ext::u on AIX 7.3
 #undef u
 // <sys/var.h> defines vario::v
@@ -278,6 +286,8 @@
 // <sys/ucontext.h> defines fpreg_t::d and fpreg_t::f
 #undef d
 #undef f
+// <asm/types.h> defines __vector128::u
+#undef u
 #endif
 
 #if defined (__linux__) && defined (__sparc__)
@@ -319,6 +329,7 @@
 
 #ifdef __sun__
 // <fenv.h> defines these as members of fex_numeric_t
+#undef i
 #undef l
 #undef f
 #undef d
@@ -328,8 +339,11 @@
 #undef ptr
 // <sys/timespec_util.h> uses this as parameter
 #undef r
-// <stdlib.h> uses this as member of drand48_data
+// <stdlib.h> uses these as members of drand48_data
+#undef a
 #undef x
+// <string.h> defines this as a parameter of timingsafe_memcmp
+#undef n
 #endif
 
 #ifdef __VXWORKS__
@@ -391,5 +405,9 @@
 #  undef sz
 # endif
 #endif
+
+// PR libstdc++/119496
+// _Temporary_buffer used to have a member with this name
+#define requested_size 1
 
 #include <bits/stdc++.h>

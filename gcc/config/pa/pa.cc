@@ -1,5 +1,5 @@
 /* Subroutines for insn-output.cc for HPPA.
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
    Contributed by Tim Moore (moore@cs.utah.edu), based on sparc.cc
 
 This file is part of GCC.
@@ -1123,8 +1123,7 @@ legitimize_tls_address (rtx addr)
 	else
 	  emit_insn (gen_tld_load (tmp, addr));
 	t1 = hppa_tls_call (tmp);
-	insn = get_insns ();
-	end_sequence ();
+	insn = end_sequence ();
 	t2 = gen_reg_rtx (Pmode);
 	emit_libcall_block (insn, t2, t1,
 			    gen_rtx_UNSPEC (Pmode, gen_rtvec (1, const0_rtx),

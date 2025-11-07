@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, for Sun SPARC.
-   Copyright (C) 1987-2024 Free Software Foundation, Inc.
+   Copyright (C) 1987-2025 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com).
    64-bit SPARC-V9 support by Michael Tiemann, Jim Wilson, and Doug Evans,
    at Cygnus Support.
@@ -409,7 +409,9 @@ along with GCC; see the file COPYING3.  If not see
 
 /* Because libgcc can generate references back to libc (via .umul etc.) we have
    to list libc again after the second libgcc.  */
-#define LINK_GCC_C_SEQUENCE_SPEC "%G %{!nolibc:%L} %G %{!nolibc:%L}"
+#define LINK_GCC_C_SEQUENCE_SPEC \
+  "%G %{!nolibc:" LINK_LIBATOMIC_SPEC "%L} \
+  %G %{!nolibc:" LINK_LIBATOMIC_SPEC "%L}"
 
 
 #define PTRDIFF_TYPE (TARGET_ARCH64 ? "long int" : "int")

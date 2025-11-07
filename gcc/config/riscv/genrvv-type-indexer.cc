@@ -1,5 +1,5 @@
 /* Generate the RVV type indexer tables.
-   Copyright (C) 2023-2024 Free Software Foundation, Inc.
+   Copyright (C) 2023-2025 Free Software Foundation, Inc.
 This file is part of GCC.
 GCC is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
@@ -23,8 +23,14 @@ along with GCC; see the file COPYING3.  If not see
 #include <assert.h>
 #include <math.h>
 
-#define BOOL_SIZE_LIST {1, 2, 4, 8, 16, 32, 64}
-#define EEW_SIZE_LIST {8, 16, 32, 64}
+#define BOOL_SIZE_LIST                                                         \
+  {                                                                            \
+    1, 2, 4, 8, 16, 32, 64                                                     \
+  }
+#define EEW_SIZE_LIST                                                          \
+  {                                                                            \
+    8, 16, 32, 64                                                              \
+  }
 #define LMUL1_LOG2 0
 
 std::string
@@ -165,6 +171,18 @@ floattype (unsigned sew, int lmul_log2)
 }
 
 std::string
+expand_floattype (unsigned sew, int lmul_log2, unsigned nf)
+{
+  if (sew != 8 || nf != 1
+      || (!valid_type (sew * 4, lmul_log2 + 2, /*float_t*/ true)))
+    return "INVALID";
+
+  std::stringstream mode;
+  mode << "vfloat" << sew * 4 << to_lmul (lmul_log2 + 2) << "_t";
+  return mode.str ();
+}
+
+std::string
 floattype (unsigned sew, int lmul_log2, unsigned nf)
 {
   if (!valid_type (sew, lmul_log2, nf, /*float_t*/ true))
@@ -276,6 +294,7 @@ main (int argc, const char **argv)
       fprintf (fp, "  /*QLMUL1*/ INVALID,\n");
       fprintf (fp, "  /*QLMUL1_SIGNED*/ INVALID,\n");
       fprintf (fp, "  /*QLMUL1_UNSIGNED*/ INVALID,\n");
+      fprintf (fp, "  /*XFQF*/ INVALID,\n");
       for (unsigned eew : {8, 16, 32, 64})
 	fprintf (fp, "  /*EEW%d_INTERPRET*/ INVALID,\n", eew);
 
@@ -284,11 +303,13 @@ main (int argc, const char **argv)
 
       for (unsigned eew : EEW_SIZE_LIST)
 	fprintf (fp, "  /*SIGNED_EEW%d_LMUL1_INTERPRET*/ %s,\n", eew,
-		 inttype (eew, LMUL1_LOG2, /* unsigned_p */false).c_str ());
+		 inttype (eew, LMUL1_LOG2, /* unsigned_p */ false).c_str ());
 
       for (unsigned eew : EEW_SIZE_LIST)
 	fprintf (fp, "  /*UNSIGNED_EEW%d_LMUL1_INTERPRET*/ %s,\n", eew,
-		 inttype (eew, LMUL1_LOG2, /* unsigned_p */true).c_str ());
+		 inttype (eew, LMUL1_LOG2, /* unsigned_p */ true).c_str ());
+
+      fprintf (fp, "  /*X2*/ INVALID,\n");
 
       for (unsigned lmul_log2_offset : {1, 2, 3, 4, 5, 6})
 	{
@@ -343,11 +364,11 @@ main (int argc, const char **argv)
 	    fprintf (fp, "  /*QUAD_EMUL_UNSIGNED*/ %s,\n",
 		     inttype (8, lmul_log2 - 1, true).c_str ());
 	    fprintf (fp, "  /*QUAD_FIX*/ %s,\n",
-		     inttype (8, lmul_log2, unsigned_p).c_str ());
+		     inttype (sew / 4, lmul_log2, unsigned_p).c_str ());
 	    fprintf (fp, "  /*QUAD_FIX_SIGNED*/ %s,\n",
-		     inttype (8, lmul_log2, false).c_str ());
+		     inttype (sew / 4, lmul_log2, false).c_str ());
 	    fprintf (fp, "  /*QUAD_FIX_UNSIGNED*/ %s,\n",
-		     inttype (8, lmul_log2, true).c_str ());
+		     inttype (sew / 4, lmul_log2, true).c_str ());
 	    fprintf (fp, "  /*OCT_TRUNC*/ %s,\n",
 		     same_ratio_eew_type (sew, lmul_log2, sew / 8, unsigned_p,
 					  false)
@@ -384,6 +405,8 @@ main (int argc, const char **argv)
 		     inttype (8, /*lmul_log2*/ 0, false).c_str ());
 	    fprintf (fp, "  /*QLMUL1_UNSIGNED*/ %s,\n",
 		     inttype (8, /*lmul_log2*/ 0, true).c_str ());
+	    fprintf (fp, "  /*XFQF*/ %s,\n",
+		     expand_floattype (sew, lmul_log2, nf).c_str ());
 	    for (unsigned eew : {8, 16, 32, 64})
 	      {
 		if (eew == sew)
@@ -410,6 +433,10 @@ main (int argc, const char **argv)
 	    for (unsigned eew : EEW_SIZE_LIST)
 	      fprintf (fp, "  /*UNSIGNED_EEW%d_LMUL1_INTERPRET*/ INVALID,\n",
 		       eew);
+
+	    fprintf (
+	      fp, "  /*X2*/ %s,\n",
+	      inttype (sew * 2, lmul_log2 + 1, /*unsigned_p*/ true).c_str ());
 
 	    for (unsigned lmul_log2_offset : {1, 2, 3, 4, 5, 6})
 	      {
@@ -473,6 +500,7 @@ main (int argc, const char **argv)
 		 bfloat16_wide_type (/*lmul_log2*/ 0).c_str ());
 	fprintf (fp, "  /*QLMUL1_SIGNED*/ INVALID,\n");
 	fprintf (fp, "  /*QLMUL1_UNSIGNED*/ INVALID,\n");
+	fprintf (fp, "  /*XFQF*/ INVALID,\n");
 	for (unsigned eew : {8, 16, 32, 64})
 	  fprintf (fp, "  /*EEW%d_INTERPRET*/ INVALID,\n", eew);
 
@@ -484,6 +512,8 @@ main (int argc, const char **argv)
 
 	for (unsigned eew : EEW_SIZE_LIST)
 	  fprintf (fp, "  /*UNSIGNED_EEW%d_LMUL1_INTERPRET*/ INVALID,\n", eew);
+
+	fprintf (fp, "  /*X2*/ INVALID,\n");
 
 	for (unsigned lmul_log2_offset : {1, 2, 3, 4, 5, 6})
 	  {
@@ -558,6 +588,7 @@ main (int argc, const char **argv)
 		   floattype (sew / 4, /*lmul_log2*/ 0).c_str ());
 	  fprintf (fp, "  /*QLMUL1_SIGNED*/ INVALID,\n");
 	  fprintf (fp, "  /*QLMUL1_UNSIGNED*/ INVALID,\n");
+	  fprintf (fp, "  /*XFQF*/ INVALID,\n");
 	  for (unsigned eew : {8, 16, 32, 64})
 	    fprintf (fp, "  /*EEW%d_INTERPRET*/ INVALID,\n", eew);
 
@@ -570,6 +601,8 @@ main (int argc, const char **argv)
 	  for (unsigned eew : EEW_SIZE_LIST)
 	    fprintf (fp, "  /*UNSIGNED_EEW%d_LMUL1_INTERPRET*/ INVALID,\n",
 		     eew);
+
+	  fprintf (fp, "  /*X2*/ INVALID,\n");
 
 	  for (unsigned lmul_log2_offset : {1, 2, 3, 4, 5, 6})
 	    {

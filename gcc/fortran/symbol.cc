@@ -1,5 +1,5 @@
 /* Maintain binary trees of symbols.
-   Copyright (C) 2000-2024 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -2697,10 +2697,13 @@ free_components (gfc_component *p)
 static int
 compare_st_labels (void *a1, void *b1)
 {
-  int a = ((gfc_st_label *) a1)->value;
-  int b = ((gfc_st_label *) b1)->value;
+  gfc_st_label *a = (gfc_st_label *) a1;
+  gfc_st_label *b = (gfc_st_label *) b1;
 
-  return (b - a);
+  if (a->omp_region == b->omp_region)
+    return b->value - a->value;
+  else
+    return b->omp_region - a->omp_region;
 }
 
 
@@ -2750,6 +2753,7 @@ gfc_get_st_label (int labelno)
 {
   gfc_st_label *lp;
   gfc_namespace *ns;
+  int omp_region = gfc_omp_metadirective_region_stack.last ();
 
   if (gfc_current_state () == COMP_DERIVED)
     ns = gfc_current_block ()->f2k_derived;
@@ -2763,16 +2767,28 @@ gfc_get_st_label (int labelno)
     }
 
   /* First see if the label is already in this namespace.  */
-  lp = ns->st_labels;
-  while (lp)
+  gcc_checking_assert (gfc_omp_metadirective_region_stack.length () > 0);
+  for (int omp_region_idx = gfc_omp_metadirective_region_stack.length () - 1;
+       omp_region_idx >= 0; omp_region_idx--)
     {
-      if (lp->value == labelno)
-	return lp;
-
-      if (lp->value < labelno)
-	lp = lp->left;
-      else
-	lp = lp->right;
+      int omp_region2 = gfc_omp_metadirective_region_stack[omp_region_idx];
+      lp = ns->st_labels;
+      while (lp)
+	{
+	  if (lp->omp_region == omp_region2)
+	    {
+	      if (lp->value == labelno)
+		return lp;
+	      if (lp->value < labelno)
+		lp = lp->left;
+	      else
+		lp = lp->right;
+	    }
+	  else if (lp->omp_region < omp_region2)
+	    lp = lp->left;
+	  else
+	    lp = lp->right;
+	}
     }
 
   lp = XCNEW (gfc_st_label);
@@ -2781,12 +2797,60 @@ gfc_get_st_label (int labelno)
   lp->defined = ST_LABEL_UNKNOWN;
   lp->referenced = ST_LABEL_UNKNOWN;
   lp->ns = ns;
+  lp->omp_region = omp_region;
 
   gfc_insert_bbt (&ns->st_labels, lp, compare_st_labels);
 
   return lp;
 }
 
+/* Rebind a statement label to a new OpenMP region. If a label with the same
+   value already exists in the new region, update it and return it. Otherwise,
+   move the label to the new region.  */
+
+gfc_st_label *
+gfc_rebind_label (gfc_st_label *label, int new_omp_region)
+{
+  gfc_st_label *lp = label->ns->st_labels;
+  int labelno = label->value;
+
+  while (lp)
+    {
+      if (lp->omp_region == new_omp_region)
+	{
+	  if (lp->value == labelno)
+	    {
+	      if (lp == label)
+		return label;
+	      if (lp->defined == ST_LABEL_UNKNOWN
+		  && label->defined != ST_LABEL_UNKNOWN)
+		lp->defined = label->defined;
+	      if (lp->referenced == ST_LABEL_UNKNOWN
+		  && label->referenced != ST_LABEL_UNKNOWN)
+		lp->referenced = label->referenced;
+	      if (lp->format == NULL && label->format != NULL)
+		lp->format = label->format;
+	      gfc_delete_bbt (&label->ns->st_labels, label, compare_st_labels);
+	      return lp;
+	    }
+	  if (lp->value < labelno)
+	    lp = lp->left;
+	  else
+	    lp = lp->right;
+	}
+      else if (lp->omp_region < new_omp_region)
+	lp = lp->left;
+      else
+	lp = lp->right;
+    }
+
+  gfc_delete_bbt (&label->ns->st_labels, label, compare_st_labels);
+  label->left = nullptr;
+  label->right = nullptr;
+  label->omp_region = new_omp_region;
+  gfc_insert_bbt (&label->ns->st_labels, label, compare_st_labels);
+  return label;
+}
 
 /* Called when a statement with a statement label is about to be
    accepted.  We add the label to the list of the current namespace,
@@ -2800,7 +2864,7 @@ gfc_define_st_label (gfc_st_label *lp, gfc_sl_type type, locus *label_locus)
 
   labelno = lp->value;
 
-  if (lp->defined != ST_LABEL_UNKNOWN)
+  if (lp->defined != ST_LABEL_UNKNOWN && !gfc_in_omp_metadirective_body)
     gfc_error ("Duplicate statement label %d at %L and %L", labelno,
 	       &lp->where, label_locus);
   else
@@ -2885,6 +2949,7 @@ gfc_reference_st_label (gfc_st_label *lp, gfc_sl_type type)
     }
 
   if (lp->referenced == ST_LABEL_DO_TARGET && type == ST_LABEL_DO_TARGET
+      && !gfc_in_omp_metadirective_body
       && !gfc_notify_std (GFC_STD_F95_OBS | GFC_STD_F2018_DEL,
 			  "Shared DO termination label %d at %C", labelno))
     return false;
@@ -4612,12 +4677,29 @@ verify_bind_c_derived_type (gfc_symbol *derived_sym)
      entity may be defined by means of C and the Fortran entity is said
      to be interoperable with the C entity.  There does not have to be such
      an interoperating C entity."
+
+     However, later discussion on the J3 mailing list
+     (https://mailman.j3-fortran.org/pipermail/j3/2021-July/013190.html)
+     found this to be a defect, and Fortran 2018 added in section 18.3.4
+     the following constraint:
+     "C1805: A derived type with the BIND attribute shall have at least one
+     component."
+
+     We thus allow empty derived types only as GNU extension while giving a
+     warning by default, or reject empty types in standard conformance mode.
   */
   if (curr_comp == NULL)
     {
-      gfc_warning (0, "Derived type %qs with BIND(C) attribute at %L is empty, "
-		   "and may be inaccessible by the C companion processor",
-		   derived_sym->name, &(derived_sym->declared_at));
+      if (!gfc_notify_std (GFC_STD_GNU, "Derived type %qs with BIND(C) "
+			   "attribute at %L has no components",
+			   derived_sym->name, &(derived_sym->declared_at)))
+	return false;
+      else if (!pedantic)
+	/* Generally emit warning, but not twice if -pedantic is given.  */
+	gfc_warning (0, "Derived type %qs with BIND(C) attribute at %L "
+		     "is empty, and may be inaccessible by the C "
+		     "companion processor",
+		     derived_sym->name, &(derived_sym->declared_at));
       derived_sym->ts.is_c_interop = 1;
       derived_sym->attr.is_bind_c = 1;
       return true;
@@ -5471,7 +5553,16 @@ gfc_namespace *
 gfc_get_procedure_ns (gfc_symbol *sym)
 {
   if (sym->formal_ns
-      && sym->formal_ns->proc_name == sym)
+      && sym->formal_ns->proc_name == sym
+      /* For module procedures used in submodules, there are two namespaces.
+	 The one generated by the host association of the module is directly
+	 accessible through SYM->FORMAL_NS but doesn't have any parent set.
+	 The one generated by the parser is only accessible by walking the
+	 contained namespace but has its parent set.  Prefer the one generated
+	 by the parser below.  */
+      && !(sym->attr.used_in_submodule
+	   && sym->attr.contained
+	   && sym->formal_ns->parent == nullptr))
     return sym->formal_ns;
 
   /* The above should have worked in most cases.  If it hasn't, try some other
@@ -5485,6 +5576,10 @@ gfc_get_procedure_ns (gfc_symbol *sym)
     for (gfc_namespace *ns = sym->ns->contained; ns; ns = ns->sibling)
       if (ns->proc_name == sym)
 	return ns;
+
+  if (sym->formal_ns
+      && sym->formal_ns->proc_name == sym)
+    return sym->formal_ns;
 
   if (sym->formal)
     for (gfc_formal_arglist *f = sym->formal; f != nullptr; f = f->next)

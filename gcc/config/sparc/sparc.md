@@ -1,5 +1,5 @@
 ;; Machine description for SPARC.
-;; Copyright (C) 1987-2024 Free Software Foundation, Inc.
+;; Copyright (C) 1987-2025 Free Software Foundation, Inc.
 ;; Contributed by Michael Tiemann (tiemann@cygnus.com)
 ;; 64-bit SPARC-V9 support by Michael Tiemann, Jim Wilson, and Doug Evans,
 ;; at Cygnus Support.
@@ -3014,17 +3014,18 @@
   rtx shift_16 = GEN_INT (16);
   int op1_subbyte = 0;
 
-  if (GET_CODE (operand1) == SUBREG)
+  if (GET_CODE (operands[1]) == SUBREG)
     {
-      op1_subbyte = SUBREG_BYTE (operand1);
+      op1_subbyte = SUBREG_BYTE (operands[1]);
       op1_subbyte /= GET_MODE_SIZE (SImode);
       op1_subbyte *= GET_MODE_SIZE (SImode);
-      operand1 = XEXP (operand1, 0);
+      operands[1] = XEXP (operands[1], 0);
     }
 
-  emit_insn (gen_ashlsi3 (temp, gen_rtx_SUBREG (SImode, operand1, op1_subbyte),
+  emit_insn (gen_ashlsi3 (temp, gen_rtx_SUBREG (SImode, operands[1],
+						op1_subbyte),
 			  shift_16));
-  emit_insn (gen_lshrsi3 (operand0, temp, shift_16));
+  emit_insn (gen_lshrsi3 (operands[0], temp, shift_16));
   DONE;
 })
 
@@ -3097,17 +3098,18 @@
   rtx shift_48 = GEN_INT (48);
   int op1_subbyte = 0;
 
-  if (GET_CODE (operand1) == SUBREG)
+  if (GET_CODE (operands[1]) == SUBREG)
     {
-      op1_subbyte = SUBREG_BYTE (operand1);
+      op1_subbyte = SUBREG_BYTE (operands[1]);
       op1_subbyte /= GET_MODE_SIZE (DImode);
       op1_subbyte *= GET_MODE_SIZE (DImode);
-      operand1 = XEXP (operand1, 0);
+      operands[1] = XEXP (operands[1], 0);
     }
 
-  emit_insn (gen_ashldi3 (temp, gen_rtx_SUBREG (DImode, operand1, op1_subbyte),
+  emit_insn (gen_ashldi3 (temp, gen_rtx_SUBREG (DImode, operands[1],
+						op1_subbyte),
 			  shift_48));
-  emit_insn (gen_lshrdi3 (operand0, temp, shift_48));
+  emit_insn (gen_lshrdi3 (operands[0], temp, shift_48));
   DONE;
 })
 
@@ -3283,17 +3285,18 @@
   rtx shift_16 = GEN_INT (16);
   int op1_subbyte = 0;
 
-  if (GET_CODE (operand1) == SUBREG)
+  if (GET_CODE (operands[1]) == SUBREG)
     {
-      op1_subbyte = SUBREG_BYTE (operand1);
+      op1_subbyte = SUBREG_BYTE (operands[1]);
       op1_subbyte /= GET_MODE_SIZE (SImode);
       op1_subbyte *= GET_MODE_SIZE (SImode);
-      operand1 = XEXP (operand1, 0);
+      operands[1] = XEXP (operands[1], 0);
     }
 
-  emit_insn (gen_ashlsi3 (temp, gen_rtx_SUBREG (SImode, operand1, op1_subbyte),
+  emit_insn (gen_ashlsi3 (temp, gen_rtx_SUBREG (SImode, operands[1],
+						op1_subbyte),
 			  shift_16));
-  emit_insn (gen_ashrsi3 (operand0, temp, shift_16));
+  emit_insn (gen_ashrsi3 (operands[0], temp, shift_16));
   DONE;
 })
 
@@ -3315,25 +3318,26 @@
   int op1_subbyte = 0;
   int op0_subbyte = 0;
 
-  if (GET_CODE (operand1) == SUBREG)
+  if (GET_CODE (operands[1]) == SUBREG)
     {
-      op1_subbyte = SUBREG_BYTE (operand1);
+      op1_subbyte = SUBREG_BYTE (operands[1]);
       op1_subbyte /= GET_MODE_SIZE (SImode);
       op1_subbyte *= GET_MODE_SIZE (SImode);
-      operand1 = XEXP (operand1, 0);
+      operands[1] = XEXP (operands[1], 0);
     }
-  if (GET_CODE (operand0) == SUBREG)
+  if (GET_CODE (operands[0]) == SUBREG)
     {
-      op0_subbyte = SUBREG_BYTE (operand0);
+      op0_subbyte = SUBREG_BYTE (operands[0]);
       op0_subbyte /= GET_MODE_SIZE (SImode);
       op0_subbyte *= GET_MODE_SIZE (SImode);
-      operand0 = XEXP (operand0, 0);
+      operands[0] = XEXP (operands[0], 0);
     }
-  emit_insn (gen_ashlsi3 (temp, gen_rtx_SUBREG (SImode, operand1, op1_subbyte),
+  emit_insn (gen_ashlsi3 (temp, gen_rtx_SUBREG (SImode, operands[1],
+						op1_subbyte),
 			  shift_24));
-  if (GET_MODE (operand0) != SImode)
-    operand0 = gen_rtx_SUBREG (SImode, operand0, op0_subbyte);
-  emit_insn (gen_ashrsi3 (operand0, temp, shift_24));
+  if (GET_MODE (operands[0]) != SImode)
+    operands[0] = gen_rtx_SUBREG (SImode, operands[0], op0_subbyte);
+  emit_insn (gen_ashrsi3 (operands[0], temp, shift_24));
   DONE;
 })
 
@@ -3354,17 +3358,18 @@
   rtx shift_24 = GEN_INT (24);
   int op1_subbyte = 0;
 
-  if (GET_CODE (operand1) == SUBREG)
+  if (GET_CODE (operands[1]) == SUBREG)
     {
-      op1_subbyte = SUBREG_BYTE (operand1);
+      op1_subbyte = SUBREG_BYTE (operands[1]);
       op1_subbyte /= GET_MODE_SIZE (SImode);
       op1_subbyte *= GET_MODE_SIZE (SImode);
-      operand1 = XEXP (operand1, 0);
+      operands[1] = XEXP (operands[1], 0);
     }
 
-  emit_insn (gen_ashlsi3 (temp, gen_rtx_SUBREG (SImode, operand1, op1_subbyte),
+  emit_insn (gen_ashlsi3 (temp, gen_rtx_SUBREG (SImode, operands[1],
+						op1_subbyte),
 			  shift_24));
-  emit_insn (gen_ashrsi3 (operand0, temp, shift_24));
+  emit_insn (gen_ashrsi3 (operands[0], temp, shift_24));
   DONE;
 })
 
@@ -3385,17 +3390,18 @@
   rtx shift_56 = GEN_INT (56);
   int op1_subbyte = 0;
 
-  if (GET_CODE (operand1) == SUBREG)
+  if (GET_CODE (operands[1]) == SUBREG)
     {
-      op1_subbyte = SUBREG_BYTE (operand1);
+      op1_subbyte = SUBREG_BYTE (operands[1]);
       op1_subbyte /= GET_MODE_SIZE (DImode);
       op1_subbyte *= GET_MODE_SIZE (DImode);
-      operand1 = XEXP (operand1, 0);
+      operands[1] = XEXP (operands[1], 0);
     }
 
-  emit_insn (gen_ashldi3 (temp, gen_rtx_SUBREG (DImode, operand1, op1_subbyte),
+  emit_insn (gen_ashldi3 (temp, gen_rtx_SUBREG (DImode, operands[1],
+						op1_subbyte),
 			  shift_56));
-  emit_insn (gen_ashrdi3 (operand0, temp, shift_56));
+  emit_insn (gen_ashrdi3 (operands[0], temp, shift_56));
   DONE;
 })
 
@@ -3416,17 +3422,18 @@
   rtx shift_48 = GEN_INT (48);
   int op1_subbyte = 0;
 
-  if (GET_CODE (operand1) == SUBREG)
+  if (GET_CODE (operands[1]) == SUBREG)
     {
-      op1_subbyte = SUBREG_BYTE (operand1);
+      op1_subbyte = SUBREG_BYTE (operands[1]);
       op1_subbyte /= GET_MODE_SIZE (DImode);
       op1_subbyte *= GET_MODE_SIZE (DImode);
-      operand1 = XEXP (operand1, 0);
+      operands[1] = XEXP (operands[1], 0);
     }
 
-  emit_insn (gen_ashldi3 (temp, gen_rtx_SUBREG (DImode, operand1, op1_subbyte),
+  emit_insn (gen_ashldi3 (temp, gen_rtx_SUBREG (DImode, operands[1],
+						op1_subbyte),
 			  shift_48));
-  emit_insn (gen_ashrdi3 (operand0, temp, shift_48));
+  emit_insn (gen_ashrdi3 (operands[0], temp, shift_48));
   DONE;
 })
 
@@ -8993,23 +9000,19 @@
 		     (match_operand:FPCMP 2 "register_operand" "e")))]
   "TARGET_VIS
    && (<FPCMP:MODE>mode != V8QImode
-       || (TARGET_VIS3 && (<fpcmpcond:CODE> == EQ || <fpcmpcond:CODE> == NE))
+       || (TARGET_VIS3B && (<fpcmpcond:CODE> == EQ || <fpcmpcond:CODE> == NE))
        || TARGET_VIS4)"
   "fpcmp<fpcmpcond:code><FPCMP:vbits>\t%1, %2, %0"
   [(set_attr "type" "viscmp")])
 
 (define_expand "vec_cmp<FPCMP:mode><P:mode>"
   [(set (match_operand:P 0 "register_operand" "")
-        (match_operator:P 1 "comparison_operator"
+        (match_operator:P 1 "vec_cmp_operator"
           [(match_operand:FPCMP 2 "register_operand" "")
            (match_operand:FPCMP 3 "register_operand" "")]))]
-  "TARGET_VIS3"
+  "TARGET_VIS3B"
 {
   enum rtx_code code = GET_CODE (operands[1]);
-
-  /* VIS 4 is required for ordering comparisons if the mode is V8QI.  */
-  if (<FPCMP:MODE>mode == V8QImode && code != EQ && code != NE && !TARGET_VIS4)
-    FAIL;
 
   if (code == LT || code == GE)
     {
@@ -9022,22 +9025,18 @@
   [(set (match_operand:P 0 "register_operand" "=r")
 	(fpcmpucond:P (match_operand:FPCMP 1 "register_operand" "e")
 		      (match_operand:FPCMP 2 "register_operand" "e")))]
-  "TARGET_VIS3 && (<FPCMP:MODE>mode == V8QImode || TARGET_VIS4)"
+  "TARGET_VIS3B && (<FPCMP:MODE>mode == V8QImode || TARGET_VIS4)"
   "fpcmpu<fpcmpucond:signed_code><FPCMP:vbits>\t%1, %2, %0"
   [(set_attr "type" "viscmp")])
 
 (define_expand "vec_cmpu<FPCMP:mode><P:mode>"
   [(set (match_operand:P 0 "register_operand" "")
-        (match_operator:P 1 "comparison_operator"
+        (match_operator:P 1 "vec_cmpu_operator"
           [(match_operand:FPCMP 2 "register_operand" "")
            (match_operand:FPCMP 3 "register_operand" "")]))]
-  "TARGET_VIS3"
+  "TARGET_VIS3B"
 {
   enum rtx_code code = GET_CODE (operands[1]);
-
-  /* VIS 4 is required for ordering comparisons if the mode is not V8QI.  */
-  if (<FPCMP:MODE>mode != V8QImode && code != EQ && code != NE && !TARGET_VIS4)
-    FAIL;
 
   if (code == LTU || code == GEU)
     {
@@ -9051,7 +9050,7 @@
    (match_operand:FPCMP 1 "register_operand" "")
    (match_operand:FPCMP 2 "register_operand" "")
    (match_operand:P     3 "register_operand" "")]
-  "TARGET_VIS3"
+  "TARGET_VIS3B"
 {
   sparc_expand_vcond_mask (<FPCMP:MODE>mode, operands, UNSPEC_CMASK<vbits>);
   DONE;
@@ -9276,7 +9275,7 @@
   [(set (match_operand:V1DI 0 "register_operand" "=e")
 	(plusminus:V1DI (match_operand:V1DI 1 "register_operand" "e")
 			(match_operand:V1DI 2 "register_operand" "e")))]
-  "TARGET_VIS3"
+  "TARGET_VIS3B"
   "fp<plusminus_insn>64\t%1, %2, %0"
   [(set_attr "type" "fga")
    (set_attr "subtype" "addsub64")])

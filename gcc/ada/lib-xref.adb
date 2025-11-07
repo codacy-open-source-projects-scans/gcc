@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1998-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1998-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -1729,7 +1729,7 @@ package body Lib.Xref is
             --  entity because neither the entity nor its references will
             --  appear in the final tree.
 
-            if Is_Ignored_Ghost_Entity (Ent) then
+            if Is_Ignored_Ghost_Entity_In_Codegen (Ent) then
                goto Orphan_Continue;
             end if;
 
@@ -2190,7 +2190,7 @@ package body Lib.Xref is
                --  entity because neither the entity nor its references will
                --  appear in the final tree.
 
-               if Is_Ignored_Ghost_Entity (Ent) then
+               if Is_Ignored_Ghost_Entity_In_Codegen (Ent) then
                   goto Continue;
                end if;
 

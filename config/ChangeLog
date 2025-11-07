@@ -1,3 +1,26 @@
+2025-11-03  Sam James  <sam@gentoo.org>
+
+	* clang-plugin.m4: Sync with binutils.
+	* gcc-plugin.m4: Ditto.
+
+2025-10-02  H.J. Lu  <hjl.tools@gmail.com>
+
+	* clang-plugin.m4: Synced from binutils-gdb.
+	* gcc-plugin.m4: Likewise.
+
+2025-08-10  Ijaz, Abdul B  <abdul.b.ijaz@intel.com>
+
+	* lib-link.m4: Handle dash in the library name for
+	AC_LIB_LINKFLAGS_BODY.
+
+2025-05-23  Andi Kleen  <ak@gcc.gnu.org>
+
+	* bootstrap-native.mk: New file.
+
+2025-04-15  Kyrylo Tkachov  <ktkachov@nvidia.com>
+
+	* bootstrap-lto-locality.mk: New file.
+
 2024-11-25  Sandra Loosemore  <sloosemore@baylibre.com>
 
 	* mt-nios2-elf: Deleted.

@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 2001-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 2001-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -157,7 +157,6 @@ package body Exp_Imgv is
                      High_Bound => Make_Integer_Literal (Loc, UB))),
                  Component_Definition =>
                    Make_Component_Definition (Loc,
-                     Aliased_Present    => False,
                      Subtype_Indication => New_Occurrence_Of (Ctyp, Loc))),
              Expression          => Make_Aggregate (Loc, Expressions => V)));
       end Append_Table_To;
@@ -1616,9 +1615,9 @@ package body Exp_Imgv is
          end if;
 
       elsif Is_Decimal_Fixed_Point_Type (Rtyp) then
-         if Esize (Rtyp) <= 32 and then abs (Scale_Value (Rtyp)) <= 9 then
+         if Esize (Rtyp) <= 32 and then abs Scale_Value (Rtyp) <= 9 then
             Vid := RE_Value_Decimal32;
-         elsif Esize (Rtyp) <= 64 and then abs (Scale_Value (Rtyp)) <= 18 then
+         elsif Esize (Rtyp) <= 64 and then abs Scale_Value (Rtyp) <= 18 then
             Vid := RE_Value_Decimal64;
          else
             Vid := RE_Value_Decimal128;
@@ -1632,7 +1631,6 @@ package body Exp_Imgv is
                Name => New_Occurrence_Of (RTE (Vid), Loc),
                Parameter_Associations => Args)));
 
-         Set_Etype (N, Btyp);
          Analyze_And_Resolve (N, Btyp);
          return;
 
@@ -1641,23 +1639,22 @@ package body Exp_Imgv is
             Num : constant Uint := Norm_Num (Small_Value (Rtyp));
             Den : constant Uint := Norm_Den (Small_Value (Rtyp));
             Max : constant Uint := UI_Max (Num, Den);
-            Min : constant Uint := UI_Min (Num, Den);
             Siz : constant Uint := Esize (Rtyp);
 
          begin
             if Siz <= 32
               and then Max <= Uint_2 ** 31
-              and then (Min = Uint_1 or else Max <= Uint_2 ** 27)
+              and then (Num = Uint_1 or else Max <= Uint_2 ** 27)
             then
                Vid := RE_Value_Fixed32;
             elsif Siz <= 64
               and then Max <= Uint_2 ** 63
-              and then (Min = Uint_1 or else Max <= Uint_2 ** 59)
+              and then (Num = Uint_1 or else Max <= Uint_2 ** 59)
             then
                Vid := RE_Value_Fixed64;
             elsif System_Max_Integer_Size = 128
               and then Max <= Uint_2 ** 127
-              and then (Min = Uint_1 or else Max <= Uint_2 ** 123)
+              and then (Num = Uint_1 or else Max <= Uint_2 ** 123)
             then
                Vid := RE_Value_Fixed128;
             else
@@ -1677,7 +1674,6 @@ package body Exp_Imgv is
                      Name => New_Occurrence_Of (RTE (Vid), Loc),
                      Parameter_Associations => Args)));
 
-               Set_Etype (N, Btyp);
                Analyze_And_Resolve (N, Btyp);
                return;
             end if;

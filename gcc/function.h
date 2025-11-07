@@ -1,5 +1,5 @@
 /* Structure for saving state for a nested function.
-   Copyright (C) 1989-2024 Free Software Foundation, Inc.
+   Copyright (C) 1989-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -333,7 +333,6 @@ struct GTY(()) function {
 
   /* Properties used by the pass manager.  */
   unsigned int curr_properties;
-  unsigned int last_verified;
 
   /* Different from normal TODO_flags which are handled right at the
      beginning or the end of one pass execution, the pending_TODOs
@@ -449,6 +448,9 @@ struct GTY(()) function {
   /* Set for artificial function created for [[assume (cond)]].
      These should be GIMPLE optimized, but not expanded to RTL.  */
   unsigned int assume_function : 1;
+
+  /* Nonzero if reload will have to split basic blocks.  */
+  unsigned int split_basic_blocks_after_reload : 1;
 };
 
 /* Add the decl D to the local_decls list of FUN.  */

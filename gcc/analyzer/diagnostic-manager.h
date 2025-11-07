@@ -1,5 +1,5 @@
 /* Classes for saving, deduplicating, and emitting analyzer diagnostics.
-   Copyright (C) 2019-2024 Free Software Foundation, Inc.
+   Copyright (C) 2019-2025 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -67,7 +67,8 @@ public:
 
   void emit_any_notes () const;
 
-  void maybe_add_sarif_properties (sarif_object &result_obj) const;
+  void
+  maybe_add_sarif_properties (diagnostics::sarif_object &result_obj) const;
 
   //private:
   const state_machine *m_sm;
@@ -191,6 +192,9 @@ public:
   }
 
 private:
+  const diagnostics::logical_locations::manager &
+  get_logical_location_manager () const;
+
   void build_emission_path (const path_builder &pb,
 			    const exploded_path &epath,
 			    checker_path *emission_path) const;
@@ -229,6 +233,7 @@ private:
   void prune_interproc_events (checker_path *path) const;
   void prune_system_headers (checker_path *path) const;
   void consolidate_conditions (checker_path *path) const;
+  void consolidate_unwind_events (checker_path *path) const;
   void finish_pruning (checker_path *path) const;
 
   engine *m_eng;

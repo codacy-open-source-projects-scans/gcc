@@ -1,5 +1,5 @@
 /* Basic IPA optimizations and utilities.
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -433,6 +433,17 @@ symbol_table::remove_unreachable_nodes (FILE *file)
 						       e, &first, &reachable);
 		    }
 		}
+
+	      /* A reference to the default node implies use of all the other
+		 versions (they get used in the function resolver made later
+		 in multiple_target.cc)  */
+	      cgraph_function_version_info *node_v = cnode->function_version ();
+	      if (node_v && is_function_default_version (node->decl))
+		for (cgraph_function_version_info *fvi = node_v->next;
+		     fvi;
+		     fvi = fvi->next)
+		  enqueue_node (fvi->this_node, &first, &reachable);
+
 	      for (e = cnode->callees; e; e = e->next_callee)
 		{
 	          symtab_node *body = e->callee->function_symbol ();
@@ -451,9 +462,6 @@ symbol_table::remove_unreachable_nodes (FILE *file)
 			reachable.add (body);
 		      reachable.add (e->callee);
 		    }
-		  else if (e->callee->declare_variant_alt
-			   && !e->callee->in_other_partition)
-		    reachable.add (e->callee);
 		  enqueue_node (e->callee, &first, &reachable);
 		}
 

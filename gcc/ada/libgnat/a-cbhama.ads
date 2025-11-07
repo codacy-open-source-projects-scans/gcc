@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2004-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 2004-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -71,7 +71,7 @@ is
    --  Map objects declared without an initialization expression are
    --  initialized to the value Empty_Map.
 
-   function Empty (Capacity : Count_Type) return Map;
+   function Empty (Capacity : Count_Type := 10) return Map;
 
    No_Element : constant Cursor;
    --  Cursor objects declared without an initialization expression are

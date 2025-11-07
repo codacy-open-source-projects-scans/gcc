@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1999-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1999-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -861,6 +861,13 @@ package body Sem_Warn is
       --  Return True if it is OK for an object of type T to be referenced
       --  without having been assigned a value in the source.
 
+      function Source_E1 return Boolean;
+      --  True if E1 is sufficiently "from source" to warrant a warning.
+      --  We are only interested in source entities. We also don't issue
+      --  warnings within instances, since the proper place for such
+      --  warnings is on the template when it is compiled. Expression
+      --  functions are a special case (see body).
+
       function Warnings_Off_E1 return Boolean;
       --  Return True if Warnings_Off is set for E1, or for its Etype (E1T),
       --  or for the base type of E1T.
@@ -1156,6 +1163,34 @@ package body Sem_Warn is
          end if;
       end Type_OK_For_No_Value_Assigned;
 
+      ---------------
+      -- Source_E1 --
+      ---------------
+
+      function Source_E1 return Boolean is
+      begin
+         if Instantiation_Location (Sloc (E1)) /= No_Location then
+            return False;
+         end if;
+
+         if Comes_From_Source (E1) then
+            return True;
+         end if;
+
+         --  In the special case of an expression function, which has been
+         --  turned into an E_Subprogram_Body, we want to warn about unmodified
+         --  [in] out parameters.
+
+         if Ekind (E) = E_Subprogram_Body
+           and then Comes_From_Source (E)
+           and then Ekind (E1) in E_In_Out_Parameter | E_Out_Parameter
+         then
+            return True;
+         end if;
+
+         return False;
+      end Source_E1;
+
       ---------------------
       -- Warnings_Off_E1 --
       ---------------------
@@ -1190,14 +1225,7 @@ package body Sem_Warn is
 
       E1 := First_Entity (E);
       while Present (E1) loop
-         --  We are only interested in source entities. We also don't issue
-         --  warnings within instances, since the proper place for such
-         --  warnings is on the template when it is compiled, and we don't
-         --  issue warnings for variables with names like Junk, Discard etc.
-
-         if Comes_From_Source (E1)
-           and then Instantiation_Location (Sloc (E1)) = No_Location
-         then
+         if Source_E1 then
             E1T := Etype (E1);
 
             --  We are interested in variables and out/in-out parameters, but
@@ -1228,6 +1256,10 @@ package body Sem_Warn is
                else
                   UR := Unset_Reference (E1);
                end if;
+
+               --  Protect again small adjustments of reference
+
+               UR := Unqual_Conv (UR);
 
                --  Special processing for access types
 
@@ -1680,17 +1712,11 @@ package body Sem_Warn is
 
               and then Ekind (E1) /= E_Class_Wide_Type
 
-              --  Objects other than parameters of task types are allowed to
-              --  be non-referenced, since they start up tasks.
+              --  Objects that are not parameters and whose types have tasks
+              --  are allowed to be non-referenced since they start up tasks.
 
-              and then ((Ekind (E1) /= E_Variable
-                          and then Ekind (E1) /= E_Constant
-                          and then Ekind (E1) /= E_Component)
-
-                         --  Check that E1T is not a task or a composite type
-                         --  with a task component.
-
-                         or else not Has_Task (E1T))
+              and then not (Ekind (E1) in E_Variable | E_Constant | E_Component
+                            and then Has_Task (E1T))
 
               --  For subunits, only place warnings on the main unit itself,
               --  since parent units are not completely compiled.
@@ -3438,6 +3464,24 @@ package body Sem_Warn is
       end if;
    end Warn_On_Constant_Valid_Condition;
 
+   ---------------------------------------
+   -- Warn_On_Ignored_Equality_Operator --
+   ---------------------------------------
+
+   procedure Warn_On_Ignored_Equality_Operator
+     (Typ      : Entity_Id;
+      Comp_Typ : Entity_Id;
+      Loc      : Source_Ptr) is
+   begin
+      if Warn_On_Ignored_Equality then
+         Error_Msg_Node_2 := Comp_Typ;
+         Error_Msg_N ("?_q?""="" for type & uses predefined ""="" for }", Typ);
+
+         Error_Msg_Sloc := Loc;
+         Error_Msg_N ("\?_q?""="" # is ignored here", Typ);
+      end if;
+   end Warn_On_Ignored_Equality_Operator;
+
    -----------------------------
    -- Warn_On_Known_Condition --
    -----------------------------
@@ -4638,9 +4682,11 @@ package body Sem_Warn is
                      if Nkind (Parent (LA)) in N_Procedure_Call_Statement
                                              | N_Parameter_Association
                      then
-                        Error_Msg_NE
-                          ("?m?& modified by call, but value overwritten #!",
-                           LA, Ent);
+                        if Warn_On_All_Unread_Out_Parameters then
+                           Error_Msg_NE
+                            ("?m?& modified by call, but value overwritten #!",
+                             LA, Ent);
+                        end if;
                      else
                         Error_Msg_NE -- CODEFIX
                           ("?m?useless assignment to&, value overwritten #!",
@@ -4715,7 +4761,7 @@ package body Sem_Warn is
       Ent : Entity_Id;
 
    begin
-      if Warn_On_Modified_Unread
+      if (Warn_On_Modified_Unread or Warn_On_All_Unread_Out_Parameters)
         and then In_Extended_Main_Source_Unit (E)
       then
          Ent := First_Entity (E);

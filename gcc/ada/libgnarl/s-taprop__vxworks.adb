@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  B o d y                                 --
 --                                                                          --
---         Copyright (C) 1992-2024, Free Software Foundation, Inc.          --
+--         Copyright (C) 1992-2025, Free Software Foundation, Inc.          --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -38,6 +38,7 @@ with Ada.Unchecked_Conversion;
 
 with Interfaces.C;
 
+with System.C_Time;
 with System.Float_Control;
 with System.Interrupt_Management;
 with System.Multiprocessors;
@@ -681,12 +682,12 @@ package body System.Task_Primitives.Operations is
    ---------------------
 
    function Monotonic_Clock return Duration is
-      TS     : aliased timespec;
+      TS     : aliased C_Time.timespec;
       Result : int;
    begin
       Result := clock_gettime (OSC.CLOCK_RT_Ada, TS'Unchecked_Access);
       pragma Assert (Result = 0);
-      return To_Duration (TS);
+      return C_Time.To_Duration (TS);
    end Monotonic_Clock;
 
    -------------------

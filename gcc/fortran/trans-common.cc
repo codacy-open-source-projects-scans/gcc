@@ -1,5 +1,5 @@
 /* Common block and equivalence list handling
-   Copyright (C) 2000-2024 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
    Contributed by Canqun Yang <canqun@nudt.edu.cn>
 
 This file is part of GCC.
@@ -469,9 +469,6 @@ build_common_decl (gfc_common_head *com, tree union_type, bool is_init)
 
       gfc_set_decl_location (decl, &com->where);
 
-      if (com->threadprivate)
-	set_decl_tls_model (decl, decl_default_tls_model (decl));
-
       if (com->omp_device_type != OMP_DEVICE_TYPE_UNSET)
 	{
 	  tree c = build_omp_clause (UNKNOWN_LOCATION, OMP_CLAUSE_DEVICE_TYPE);
@@ -536,6 +533,10 @@ build_common_decl (gfc_common_head *com, tree union_type, bool is_init)
       DECL_COMMON (decl) = 0;
       DECL_DEFER_OUTPUT (decl) = 0;
     }
+
+  if (com->threadprivate)
+    set_decl_tls_model (decl, decl_default_tls_model (decl));
+
   return decl;
 }
 
@@ -1218,7 +1219,7 @@ translate_common (gfc_common_head *common, gfc_symbol *var_list)
   align = 1;
   saw_equiv = false;
 
-  if (var_list->attr.omp_allocate)
+  if (var_list && var_list->attr.omp_allocate)
     gfc_error ("Sorry, !$OMP allocate for COMMON block variable %qs at %L "
 	       "not supported", common->name, &common->where);
 

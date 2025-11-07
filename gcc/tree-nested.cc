@@ -1,5 +1,5 @@
 /* Nested function decomposition for GIMPLE.
-   Copyright (C) 2004-2024 Free Software Foundation, Inc.
+   Copyright (C) 2004-2025 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -1796,6 +1796,8 @@ convert_nonlocal_reference_stmt (gimple_stmt_iterator *gsi, bool *handled_ops_p,
       break;
 
     case GIMPLE_OMP_TARGET:
+      walk_body (convert_nonlocal_reference_stmt, convert_nonlocal_reference_op,
+		 info, gimple_omp_target_iterator_loops_ptr (stmt));
       if (!is_gimple_omp_offloaded (stmt))
 	{
 	  save_suppress = info->suppress_expansion;
@@ -2517,6 +2519,9 @@ convert_local_reference_stmt (gimple_stmt_iterator *gsi, bool *handled_ops_p,
       break;
 
     case GIMPLE_OMP_TARGET:
+      walk_body (convert_local_reference_stmt, convert_local_reference_op, info,
+		 gimple_omp_target_iterator_loops_ptr (stmt));
+
       if (!is_gimple_omp_offloaded (stmt))
 	{
 	  save_suppress = info->suppress_expansion;
@@ -2694,6 +2699,7 @@ convert_nl_goto_reference (gimple_stmt_iterator *gsi, bool *handled_ops_p,
     {
       new_label = create_artificial_label (UNKNOWN_LOCATION);
       DECL_NONLOCAL (new_label) = 1;
+      DECL_CONTEXT (new_label) = target_context;
       *slot = new_label;
     }
   else
@@ -2897,6 +2903,8 @@ convert_tramp_reference_stmt (gimple_stmt_iterator *gsi, bool *handled_ops_p,
 	  *handled_ops_p = false;
 	  return NULL_TREE;
 	}
+      walk_body (convert_tramp_reference_stmt, convert_tramp_reference_op,
+		 info, gimple_omp_target_iterator_loops_ptr (stmt));
       /* FALLTHRU */
     case GIMPLE_OMP_PARALLEL:
     case GIMPLE_OMP_TASK:

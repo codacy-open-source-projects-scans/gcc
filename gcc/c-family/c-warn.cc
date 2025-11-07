@@ -1,5 +1,5 @@
 /* Diagnostic routines shared by all languages that are variants of C.
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -3431,7 +3431,7 @@ expr_to_str (pretty_printer &pp, tree expr, const char *dflt)
    (FNDECL's is set to the location of the redeclaration).  */
 
 void
-warn_parm_array_mismatch (location_t origloc, tree fndecl, tree newparms)
+warn_parms_array_mismatch (location_t origloc, tree fndecl, tree newparms)
 {
   /* The original parameter list (copied from the original declaration
      into the current [re]declaration, FNDECL)).  The two are equal if
@@ -3505,8 +3505,8 @@ warn_parm_array_mismatch (location_t origloc, tree fndecl, tree newparms)
 
       if (!newa)
 	{
-	  /* Continue of both parameters are pointers with no size
-	     associated with it.  */
+	  /* Continue if both parameters are pointers with no size
+	     associated with them.  */
 	  if (!cura)
 	    continue;
 
@@ -3835,7 +3835,7 @@ do_warn_array_compare (location_t location, tree_code code, tree op0, tree op1)
     op1 = TREE_OPERAND (op1, 0);
 
   auto_diagnostic_group d;
-  diagnostic_t kind = DK_WARNING;
+  enum diagnostics::kind kind = diagnostics::kind::warning;
   const char *msg;
   if (c_dialect_cxx () && cxx_dialect >= cxx20)
     {
@@ -3843,7 +3843,7 @@ do_warn_array_compare (location_t location, tree_code code, tree op0, tree op1)
       if (cxx_dialect >= cxx26)
 	{
 	  msg = G_("comparison between two arrays is not allowed in C++26");
-	  kind = DK_PERMERROR;
+	  kind = diagnostics::kind::permerror;
 	}
       else
 	msg = G_("comparison between two arrays is deprecated in C++20");

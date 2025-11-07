@@ -1,5 +1,5 @@
 /* Definitions for C++ contract levels
-   Copyright (C) 2020-2024 Free Software Foundation, Inc.
+   Copyright (C) 2020-2025 Free Software Foundation, Inc.
    Contributed by Jeff Chapman II (jchapman@lock3software.com)
 
 This file is part of GCC.
@@ -159,7 +159,7 @@ bool valid_configs[CCS_MAYBE + 1][CCS_MAYBE + 1] = {
   { 0, 1, 0, 0, 1, },
 };
 
-void
+static void
 validate_contract_role (contract_role *role)
 {
   gcc_assert (role);
@@ -171,7 +171,7 @@ validate_contract_role (contract_role *role)
 		"the %<default%> semantic");
 }
 
-contract_semantic
+static contract_semantic
 lookup_concrete_semantic (const char *name)
 {
   if (strcmp (name, "ignore") == 0)
@@ -210,7 +210,9 @@ role_name_equal (contract_role *role, const char *name)
   return role_name_equal (role->name, name);
 }
 
-contract_role *
+static void setup_default_contract_role (bool update = true);
+
+static contract_role *
 get_contract_role (const char *name)
 {
   for (int i = 0; i < max_custom_roles; ++i)
@@ -227,12 +229,12 @@ get_contract_role (const char *name)
   return NULL;
 }
 
-contract_role *
+static contract_role *
 add_contract_role (const char *name,
 		   contract_semantic des,
 		   contract_semantic aus,
 		   contract_semantic axs,
-		   bool update)
+		   bool update = true)
 {
   for (int i = 0; i < max_custom_roles; ++i)
     {
@@ -271,7 +273,7 @@ get_concrete_axiom_semantic ()
   return flag_contract_assumption_mode ? CCS_ASSUME : CCS_IGNORE;
 }
 
-void
+static void
 setup_default_contract_role (bool update)
 {
   contract_semantic check = get_concrete_check ();
@@ -489,6 +491,14 @@ handle_OPT_fcontract_semantic_ (const char *arg)
   else
     error ("%<-fcontract-semantic=%> level must be default, audit, or axiom");
   validate_contract_role (role);
+}
+
+/* Returns the default role.  */
+
+static contract_role *
+get_default_contract_role ()
+{
+  return get_contract_role ("default");
 }
 
 /* Convert a contract CONFIG into a contract_mode.  */
@@ -860,10 +870,17 @@ cp_contract_assertion_p (const_tree attr)
 void
 remove_contract_attributes (tree fndecl)
 {
+  if (!flag_contracts)
+    return;
+
   tree list = NULL_TREE;
   for (tree p = DECL_ATTRIBUTES (fndecl); p; p = TREE_CHAIN (p))
     if (!cxx_contract_attribute_p (p))
-      list = tree_cons (TREE_PURPOSE (p), TREE_VALUE (p), list);
+      {
+	tree nl = copy_node (p);
+	TREE_CHAIN (nl) = list;
+	list = nl;
+      }
   DECL_ATTRIBUTES (fndecl) = nreverse (list);
 }
 
@@ -1633,19 +1650,22 @@ get_pseudo_contract_violation_type ()
 	   signed char _M_continue;
 	 If this changes, also update the initializer in
 	 build_contract_violation.  */
-      const tree types[] = { const_string_type_node,
-			     const_string_type_node,
-			     const_string_type_node,
-			     const_string_type_node,
-			     const_string_type_node,
-			     uint_least32_type_node,
-			     signed_char_type_node };
+      struct field_info { tree type; const char* name; };
+      const field_info info[] = {
+	{ const_string_type_node, "_M_file" },
+	{ const_string_type_node, "_M_function" },
+	{ const_string_type_node, "_M_comment" },
+	{ const_string_type_node, "_M_level" },
+	{ const_string_type_node, "_M_role" },
+	{ uint_least32_type_node, "_M_line" },
+	{ signed_char_type_node, "_M_continue" }
+      };
       tree fields = NULL_TREE;
-      for (tree type : types)
+      for (const field_info& i : info)
 	{
 	  /* finish_builtin_struct wants fieldss chained in reverse.  */
 	  tree next = build_decl (BUILTINS_LOCATION, FIELD_DECL,
-				  NULL_TREE, type);
+				  get_identifier (i.name), i.type);
 	  DECL_CHAIN (next) = fields;
 	  fields = next;
 	}
@@ -1737,6 +1757,7 @@ declare_handle_contract_violation ()
       create_implicit_typedef (viol_name, violation);
       DECL_SOURCE_LOCATION (TYPE_NAME (violation)) = BUILTINS_LOCATION;
       DECL_CONTEXT (TYPE_NAME (violation)) = current_namespace;
+      TREE_PUBLIC (TYPE_NAME (violation)) = true;
       pushdecl_namespace_level (TYPE_NAME (violation), /*hidden*/true);
       pop_namespace ();
       pop_nested_namespace (std_node);
@@ -1761,6 +1782,11 @@ static void
 build_contract_handler_call (tree contract,
 			     contract_continuation cmode)
 {
+  /* We may need to declare new types, ensure they are not considered
+     attached to a named module.  */
+  auto module_kind_override = make_temp_override
+    (module_kind, module_kind & ~(MK_PURVIEW | MK_ATTACH | MK_EXPORTING));
+
   tree violation = build_contract_violation (contract, cmode);
   tree violation_fn = declare_handle_contract_violation ();
   tree call = build_call_n (violation_fn, 1, build_address (violation));

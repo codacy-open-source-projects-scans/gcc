@@ -1,5 +1,5 @@
 /* Convert function calls to rtl insns, for GNU C compiler.
-   Copyright (C) 1989-2024 Free Software Foundation, Inc.
+   Copyright (C) 1989-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -1273,11 +1273,19 @@ void
 maybe_complain_about_tail_call (tree call_expr, const char *reason)
 {
   gcc_assert (TREE_CODE (call_expr) == CALL_EXPR);
-  if (!CALL_EXPR_MUST_TAIL_CALL (call_expr))
-    return;
-
-  error_at (EXPR_LOCATION (call_expr), "cannot tail-call: %s", reason);
-  CALL_EXPR_MUST_TAIL_CALL (call_expr) = 0;
+  if (CALL_EXPR_TAILCALL (call_expr)
+      && dump_file
+      && (dump_flags & TDF_DETAILS))
+    {
+      fprintf (dump_file, ";; Cannot tail-call: %s: ", reason);
+      print_generic_expr (dump_file, call_expr, TDF_SLIM);
+      fprintf (dump_file, "\n");
+    }
+  if (CALL_EXPR_MUST_TAIL_CALL (call_expr))
+    {
+      error_at (EXPR_LOCATION (call_expr), "cannot tail-call: %s", reason);
+      CALL_EXPR_MUST_TAIL_CALL (call_expr) = 0;
+    }
 }
 
 /* Fill in ARGS_SIZE and ARGS array based on the parameters found in
@@ -1374,6 +1382,11 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
       }
   }
 
+  bool promote_p
+    = targetm.calls.promote_prototypes (fndecl
+					? TREE_TYPE (fndecl)
+					: fntype);
+
   /* I counts args in order (to be) pushed; ARGPOS counts in order written.  */
   for (argpos = 0; argpos < num_actuals; i--, argpos++)
     {
@@ -1383,6 +1396,10 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
       /* Replace erroneous argument with constant zero.  */
       if (type == error_mark_node || !COMPLETE_TYPE_P (type))
 	args[i].tree_value = integer_zero_node, type = integer_type_node;
+      else if (promote_p
+	       && INTEGRAL_TYPE_P (type)
+	       && TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node))
+	type = integer_type_node;
 
       /* If TYPE is a transparent union or record, pass things the way
 	 we would pass the first field of the union or record.  We have
@@ -1447,10 +1464,10 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
 	      if (!call_from_thunk_p && DECL_P (base) && !TREE_STATIC (base))
 		{
 		  *may_tailcall = false;
-		  maybe_complain_about_tail_call (exp,
-						  _("a callee-copied argument is"
-						    " stored in the current"
-						    " function's frame"));
+		  maybe_complain_about_tail_call (exp, _("a callee-copied "
+							 "argument is stored "
+							 "in the current "
+							 "function's frame"));
 		}
 
 	      args[i].tree_value = build_fold_addr_expr_loc (loc,
@@ -2534,10 +2551,9 @@ can_implement_as_sibling_call_p (tree exp,
   if (!targetm.have_sibcall_epilogue ()
       && !targetm.emit_epilogue_for_sibcall)
     {
-      maybe_complain_about_tail_call
-	(exp,
-	 _("machine description does not have"
-	   " a sibcall_epilogue instruction pattern"));
+      maybe_complain_about_tail_call (exp, _("machine description does not "
+					     "have a sibcall_epilogue "
+					     "instruction pattern"));
       return false;
     }
 
@@ -2555,9 +2571,8 @@ can_implement_as_sibling_call_p (tree exp,
      into a sibcall.  */
   if (!targetm.function_ok_for_sibcall (fndecl, exp))
     {
-      maybe_complain_about_tail_call (exp,
-				      _("target is not able to optimize the"
-					" call into a sibling call"));
+      maybe_complain_about_tail_call (exp, _("target is not able to optimize "
+					     "the call into a sibling call"));
       return false;
     }
 
@@ -2568,13 +2583,14 @@ can_implement_as_sibling_call_p (tree exp,
       maybe_complain_about_tail_call (exp, _("callee returns twice"));
       return false;
     }
-  if (flags & ECF_NORETURN)
+  if ((flags & ECF_NORETURN) && !CALL_EXPR_MUST_TAIL_CALL (exp))
     {
       maybe_complain_about_tail_call (exp, _("callee does not return"));
       return false;
     }
 
-  if (TYPE_VOLATILE (TREE_TYPE (TREE_TYPE (addr))))
+  if (TYPE_VOLATILE (TREE_TYPE (TREE_TYPE (addr)))
+      && !CALL_EXPR_MUST_TAIL_CALL (exp))
     {
       maybe_complain_about_tail_call (exp, _("volatile function type"));
       return false;
@@ -2606,9 +2622,8 @@ can_implement_as_sibling_call_p (tree exp,
   if (maybe_gt (args_size.constant,
 		crtl->args.size - crtl->args.pretend_args_size))
     {
-      maybe_complain_about_tail_call (exp,
-				      _("callee required more stack slots"
-					" than the caller"));
+      maybe_complain_about_tail_call (exp, _("callee required more stack "
+					     "slots than the caller"));
       return false;
     }
 
@@ -2621,9 +2636,8 @@ can_implement_as_sibling_call_p (tree exp,
 						(current_function_decl),
 						crtl->args.size)))
     {
-      maybe_complain_about_tail_call (exp,
-				      _("inconsistent number of"
-					" popped arguments"));
+      maybe_complain_about_tail_call (exp, _("inconsistent number of"
+					     " popped arguments"));
       return false;
     }
 
@@ -2685,7 +2699,7 @@ expand_call (tree exp, rtx target, int ignore)
      so this shouldn't really happen unless the
      the musttail pass gave up walking before finding the call.  */
   if (!try_tail_call)
-      maybe_complain_about_tail_call (exp, _("other reasons"));
+    maybe_complain_about_tail_call (exp, _("other reasons"));
   int pass;
 
   /* Register in which non-BLKmode value will be returned,
@@ -3092,8 +3106,9 @@ expand_call (tree exp, rtx target, int ignore)
 	    if (MEM_P (*iter))
 	      {
 		try_tail_call = 0;
-		maybe_complain_about_tail_call (exp,
-				_("hidden string length argument passed on stack"));
+		maybe_complain_about_tail_call (exp, _("hidden string length "
+						       "argument passed on "
+						       "stack"));
 		break;
 	      }
 	}
@@ -3140,10 +3155,9 @@ expand_call (tree exp, rtx target, int ignore)
 		      || partial_subreg_p (caller_mode, callee_mode)))))
 	{
 	  try_tail_call = 0;
-	  maybe_complain_about_tail_call (exp,
-					  _("caller and callee disagree in"
-					    " promotion of function"
-					    " return value"));
+	  maybe_complain_about_tail_call (exp, _("caller and callee disagree "
+						 "in promotion of function "
+						 "return value"));
 	}
     }
 
@@ -3220,11 +3234,6 @@ expand_call (tree exp, rtx target, int ignore)
       /* Precompute any arguments as needed.  */
       if (pass)
 	precompute_arguments (num_actuals, args);
-
-      /* Now we are about to start emitting insns that can be deleted
-	 if a libcall is deleted.  */
-      if (pass && (flags & ECF_MALLOC))
-	start_sequence ();
 
       /* Check the canary value for sibcall or function which doesn't
 	 return and could throw.  */
@@ -3723,19 +3732,16 @@ expand_call (tree exp, rtx target, int ignore)
 		   next_arg_reg, valreg, old_inhibit_defer_pop, call_fusage,
 		   flags, args_so_far);
 
-      if (flag_ipa_ra)
+      rtx_call_insn *last;
+      rtx datum = NULL_RTX;
+      if (fndecl != NULL_TREE)
 	{
-	  rtx_call_insn *last;
-	  rtx datum = NULL_RTX;
-	  if (fndecl != NULL_TREE)
-	    {
-	      datum = XEXP (DECL_RTL (fndecl), 0);
-	      gcc_assert (datum != NULL_RTX
-			  && GET_CODE (datum) == SYMBOL_REF);
-	    }
-	  last = last_call_insn ();
-	  add_reg_note (last, REG_CALL_DECL, datum);
+	  datum = XEXP (DECL_RTL (fndecl), 0);
+	  gcc_assert (datum != NULL_RTX
+		      && GET_CODE (datum) == SYMBOL_REF);
 	}
+      last = last_call_insn ();
+      add_reg_note (last, REG_CALL_DECL, datum);
 
       /* If the call setup or the call itself overlaps with anything
 	 of the argument setup we probably clobbered our call address.
@@ -3760,26 +3766,23 @@ expand_call (tree exp, rtx target, int ignore)
 	  valreg = gen_rtx_REG (TYPE_MODE (rettype), REGNO (valreg));
 	}
 
-      if (pass && (flags & ECF_MALLOC))
+      /* If the return register exists, for malloc like
+	 function calls, mark the return register with the
+	 alignment and noalias reg note.  */
+      if (pass && (flags & ECF_MALLOC) && valreg)
 	{
 	  rtx temp = gen_reg_rtx (GET_MODE (valreg));
-	  rtx_insn *last, *insns;
+	  rtx_insn *last;
 
 	  /* The return value from a malloc-like function is a pointer.  */
 	  if (TREE_CODE (rettype) == POINTER_TYPE)
 	    mark_reg_pointer (temp, MALLOC_ABI_ALIGNMENT);
 
-	  emit_move_insn (temp, valreg);
+	  last = emit_move_insn (temp, valreg);
 
 	  /* The return value from a malloc-like function cannot alias
 	     anything else.  */
-	  last = get_last_insn ();
 	  add_reg_note (last, REG_NOALIAS, temp);
-
-	  /* Write out the sequence.  */
-	  insns = get_insns ();
-	  end_sequence ();
-	  emit_insn (insns);
 	  valreg = temp;
 	}
 
@@ -3994,8 +3997,7 @@ expand_call (tree exp, rtx target, int ignore)
 
       targetm.calls.end_call_args (args_so_far);
 
-      insns = get_insns ();
-      end_sequence ();
+      insns = end_sequence ();
 
       if (pass == 0)
 	{
@@ -4793,13 +4795,10 @@ emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
 	       struct_value_size, call_cookie, valreg,
 	       old_inhibit_defer_pop + 1, call_fusage, flags, args_so_far);
 
-  if (flag_ipa_ra)
-    {
-      rtx datum = orgfun;
-      gcc_assert (GET_CODE (datum) == SYMBOL_REF);
-      rtx_call_insn *last = last_call_insn ();
-      add_reg_note (last, REG_CALL_DECL, datum);
-    }
+  rtx datum = orgfun;
+  gcc_assert (GET_CODE (datum) == SYMBOL_REF);
+  rtx_call_insn *last = last_call_insn ();
+  add_reg_note (last, REG_CALL_DECL, datum);
 
   /* Right-shift returned value if necessary.  */
   if (!pcc_struct_value

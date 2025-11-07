@@ -1,5 +1,5 @@
 /* Implementation of subroutines for the GNU C++ pretty-printer.
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
    Contributed by Gabriel Dos Reis <gdr@integrable-solutions.net>
 
 This file is part of GCC.
@@ -24,7 +24,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "cp-tree.h"
 #include "cxx-pretty-print.h"
 #include "tree-pretty-print.h"
-#include "make-unique.h"
 
 static void pp_cxx_unqualified_id (cxx_pretty_printer *, tree);
 static void pp_cxx_nested_name_specifier (cxx_pretty_printer *, tree);
@@ -234,8 +233,12 @@ pp_cxx_template_keyword_if_needed (cxx_pretty_printer *pp, tree scope, tree t)
 }
 
 /* nested-name-specifier:
-      class-or-namespace-name :: nested-name-specifier(opt)
-      class-or-namespace-name :: template nested-name-specifier   */
+      ::
+      type-name ::
+      namespace-name ::
+      computed-type-specifier ::
+      nested-name-specifier identifier ::
+      nested-name-specifier template(opt) simple-template-id ::  */
 
 static void
 pp_cxx_nested_name_specifier (cxx_pretty_printer *pp, tree t)
@@ -252,7 +255,11 @@ pp_cxx_nested_name_specifier (cxx_pretty_printer *pp, tree t)
       tree scope = get_containing_scope (t);
       pp_cxx_nested_name_specifier (pp, scope);
       pp_cxx_template_keyword_if_needed (pp, scope, t);
-      pp_cxx_unqualified_id (pp, t);
+      /* This is a computed-type-specifier.  */
+      if (TREE_CODE (t) == PACK_INDEX_TYPE || TREE_CODE (t) == DECLTYPE_TYPE)
+	pp->type_id (t);
+      else
+	pp_cxx_unqualified_id (pp, t);
       pp_cxx_colon_colon (pp);
     }
 }
@@ -2130,6 +2137,29 @@ cxx_pretty_printer::statement (tree t)
       pp_needs_newline (this) = true;
       break;
 
+    case TEMPLATE_FOR_STMT:
+      pp_cxx_ws_string (this, "template for");
+      pp_space (this);
+      pp_cxx_left_paren (this);
+      if (TEMPLATE_FOR_INIT_STMT (t))
+	{
+	  statement (TEMPLATE_FOR_INIT_STMT (t));
+	  pp_needs_newline (this) = false;
+	  pp_cxx_whitespace (this);
+	}
+      statement (TEMPLATE_FOR_DECL (t));
+      pp_space (this);
+      pp_needs_newline (this) = false;
+      pp_colon (this);
+      pp_space (this);
+      statement (TEMPLATE_FOR_EXPR (t));
+      pp_cxx_right_paren (this);
+      pp_newline_and_indent (this, 3);
+      statement (TEMPLATE_FOR_BODY (t));
+      pp_indentation (this) -= 3;
+      pp_needs_newline (this) = true;
+      break;
+
       /* expression-statement:
 	    expression(opt) ;  */
     case EXPR_STMT:
@@ -2946,5 +2976,5 @@ cxx_pretty_printer::cxx_pretty_printer ()
 std::unique_ptr<pretty_printer>
 cxx_pretty_printer::clone () const
 {
-  return ::make_unique<cxx_pretty_printer> (*this);
+  return std::make_unique<cxx_pretty_printer> (*this);
 }

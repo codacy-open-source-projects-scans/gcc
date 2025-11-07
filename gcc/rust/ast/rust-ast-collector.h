@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2024 Free Software Foundation, Inc.
+// Copyright (C) 2020-2025 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -210,7 +210,6 @@ public:
   void visit (TupleField &field);
   void visit (StructField &field);
   void visit (SimplePathSegment &segment);
-  void visit (NamedFunctionParam &param);
   void visit (MacroRule &rule);
   void visit (WhereClause &rule);
   void visit (std::vector<LifetimeParam> &for_lifetimes);
@@ -247,7 +246,7 @@ public:
   void visit (AttrInputLiteral &attr_input);
   void visit (AttrInputMacro &attr_input);
   void visit (MetaItemLitExpr &meta_item);
-  void visit (MetaItemPathLit &meta_item);
+  void visit (MetaItemPathExpr &meta_item);
   void visit (BorrowExpr &expr);
   void visit (DereferenceExpr &expr);
   void visit (ErrorPropagationExpr &expr);
@@ -278,6 +277,8 @@ public:
   void visit (ClosureParam &param);
   void visit (ClosureExprInner &expr);
   void visit (BlockExpr &expr);
+  void visit (AnonConst &expr);
+  void visit (ConstBlock &expr);
   void visit (ClosureExprInnerTyped &expr);
   void visit (ContinueExpr &expr);
   void visit (BreakExpr &expr);
@@ -288,6 +289,8 @@ public:
   void visit (RangeFromToInclExpr &expr);
   void visit (RangeToInclExpr &expr);
   void visit (ReturnExpr &expr);
+  void visit (TryExpr &expr);
+  void visit (BoxExpr &expr);
   void visit (UnsafeBlockExpr &expr);
   void visit (LoopExpr &expr);
   void visit (WhileLoopExpr &expr);
@@ -302,7 +305,8 @@ public:
   void visit (MatchExpr &expr);
   void visit (AwaitExpr &expr);
   void visit (AsyncBlockExpr &expr);
-
+  void visit (InlineAsm &expr);
+  void visit (LlvmInlineAsm &expr);
   // rust-item.h
   void visit (TypeParam &param);
   void visit (LifetimeWhereClauseItem &item);
@@ -326,7 +330,6 @@ public:
   void visit (ConstantItem &const_item);
   void visit (StaticItem &static_item);
   void visit (SelfParam &param);
-  void visit (TraitItemConst &item);
   void visit (TraitItemType &item);
   void visit (Trait &trait);
   void visit (InherentImpl &impl);
@@ -366,14 +369,16 @@ public:
   void visit (StructPatternFieldIdent &field);
   void visit (StructPattern &pattern);
   // void visit(TupleStructItems& tuple_items);
-  void visit (TupleStructItemsNoRange &tuple_items);
-  void visit (TupleStructItemsRange &tuple_items);
+  void visit (TupleStructItemsNoRest &tuple_items);
+  void visit (TupleStructItemsHasRest &tuple_items);
   void visit (TupleStructPattern &pattern);
   // void visit(TuplePatternItems& tuple_items);
-  void visit (TuplePatternItemsMultiple &tuple_items);
-  void visit (TuplePatternItemsRanged &tuple_items);
+  void visit (TuplePatternItemsNoRest &tuple_items);
+  void visit (TuplePatternItemsHasRest &tuple_items);
   void visit (TuplePattern &pattern);
   void visit (GroupedPattern &pattern);
+  void visit (SlicePatternItemsNoRest &items);
+  void visit (SlicePatternItemsHasRest &items);
   void visit (SlicePattern &pattern);
   void visit (AltPattern &pattern);
 
@@ -399,6 +404,7 @@ public:
   void visit (BareFunctionType &type);
 
   void visit (FormatArgs &fmt);
+  void visit (OffsetOf &offset_of);
 };
 } // namespace AST
 

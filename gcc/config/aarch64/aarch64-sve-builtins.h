@@ -1,5 +1,5 @@
 /* ACLE support for AArch64 SVE
-   Copyright (C) 2018-2024 Free Software Foundation, Inc.
+   Copyright (C) 2018-2025 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -57,9 +57,10 @@
    function_shape describes how that instruction has been presented at
    the language level.
 
-   The static list of functions uses function_group to describe a group
-   of related functions.  The function_builder class is responsible for
-   expanding this static description into a list of individual functions
+   The static arrays of function_group_info (function_groups,
+   neon_sve_function_groups, sme_function_groups) use function_group to describe
+   a group of related functions.  The function_builder class is responsible for
+   expanding these static description into a list of individual functions
    and registering the associated built-in functions.  function_instance
    describes one of these individual functions in terms of the properties
    described above.
@@ -402,6 +403,8 @@ public:
   bool could_trap_p () const;
 
   vector_type_index gp_type_index () const;
+  tree gp_value (gcall *) const;
+  tree inactive_values (gcall *) const;
   tree gp_type () const;
 
   unsigned int vectors_per_tuple () const;
@@ -435,6 +438,7 @@ public:
   group_suffix_index group_suffix_id;
   predication_index pred;
   fpm_mode_index fpm_mode;
+  int gp_index;
 };
 
 class registered_function;
@@ -649,6 +653,8 @@ public:
   gcall *redirect_call (const function_instance &);
   gimple *redirect_pred_x ();
   gimple *fold_pfalse ();
+  gimple *convert_and_fold (tree, gimple *(*) (gimple_folder &,
+					       tree, vec<tree> &));
 
   gimple *fold_to_cstu (poly_uint64);
   gimple *fold_to_pfalse ();
@@ -798,6 +804,8 @@ public:
   virtual bool has_merge_argument_p (const function_instance &,
 				     unsigned int) const;
 
+  virtual bool has_gp_argument_p (const function_instance &) const;
+
   virtual bool explicit_type_suffix_p (unsigned int) const = 0;
 
   /* True if the group suffix is present in overloaded names.
@@ -820,24 +828,17 @@ public:
   virtual bool check (function_checker &) const { return true; }
 };
 
-/* RAII class for enabling enough SVE features to define the built-in
-   types and implement the arm_sve.h pragma.  */
-class sve_switcher : public aarch64_simd_switcher
+/* RAII class for temporarily disabling the effect of any -fpack-struct option.
+   This is used to ensure that sve vector tuple types are defined with the
+   correct alignment.  */
+class sve_alignment_switcher
 {
 public:
-  sve_switcher (aarch64_feature_flags = 0);
-  ~sve_switcher ();
+  sve_alignment_switcher ();
+  ~sve_alignment_switcher ();
 
 private:
   unsigned int m_old_maximum_field_alignment;
-  bool m_old_have_regs_of_mode[MAX_MACHINE_MODE];
-};
-
-/* Extends sve_switch enough for defining arm_sme.h.  */
-class sme_switcher : public sve_switcher
-{
-public:
-  sme_switcher () : sve_switcher (AARCH64_FL_SME) {}
 };
 
 extern const type_suffix_info type_suffixes[NUM_TYPE_SUFFIXES + 1];
@@ -894,6 +895,14 @@ tuple_type_field (tree type)
   gcc_unreachable ();
 }
 
+/* Return the vector type associated with TYPE.  */
+inline tree
+get_vector_type (sve_type type)
+{
+  auto vector_type = type_suffixes[type.type].vector_type;
+  return acle_vector_types[type.num_vectors - 1][vector_type];
+}
+
 inline function_instance::
 function_instance (const char *base_name_in, const function_base *base_in,
 		   const function_shape *shape_in,
@@ -943,6 +952,33 @@ inline tree
 function_instance::gp_type () const
 {
   return acle_vector_types[0][gp_type_index ()];
+}
+
+/* Return the tree value that should be used as the governing predicate of
+   this function.  If none then return NULL_TREE.  */
+inline tree
+function_instance::gp_value (gcall *call) const
+{
+  if (gp_index < 0)
+    return NULL_TREE;
+
+  return gimple_call_arg (call, gp_index);
+}
+
+/* Return the tree value that should be used for the inactive lanes should this
+   function be a predicated function with a gp.  Otherwise return NULL_TREE.  */
+inline tree
+function_instance::inactive_values (gcall *call) const
+{
+  if (gp_index < 0)
+    return NULL_TREE;
+
+  /* Function is unary with m predicate.  */
+  if (gp_index == 1)
+    return gimple_call_arg (call, 0);
+
+  /* Else the inactive values are the next element.  */
+  return gimple_call_arg (call, 1);
 }
 
 /* If the function operates on tuples of vectors, return the number
@@ -1117,6 +1153,14 @@ function_shape::has_merge_argument_p (const function_instance &instance,
 				      unsigned int nargs) const
 {
   return nargs == 1 && instance.pred == PRED_m;
+}
+
+/* Return true if INSTANCE has an predicate argument that can be used as the global
+   predicate.  */
+inline bool
+function_shape::has_gp_argument_p (const function_instance &instance) const
+{
+  return instance.pred != PRED_none;
 }
 
 /* Return the mode of the result of a call.  */

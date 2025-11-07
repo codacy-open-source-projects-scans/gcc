@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2024 Free Software Foundation, Inc.
+// Copyright (C) 2020-2025 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -19,8 +19,10 @@
 #include "rust-cfg-strip.h"
 #include "rust-ast-full.h"
 #include "rust-ast-visitor.h"
+#include "rust-path.h"
 #include "rust-session-manager.h"
 #include "rust-attribute-values.h"
+#include "rust-macro-expand.h"
 
 namespace Rust {
 
@@ -29,7 +31,7 @@ namespace Rust {
  * should be stripped. Note that attributes must be expanded before calling.
  */
 bool
-fails_cfg (const AST::AttrVec &attrs)
+CfgStrip::fails_cfg (const AST::AttrVec &attrs) const
 {
   auto &session = Session::get_instance ();
 
@@ -37,6 +39,9 @@ fails_cfg (const AST::AttrVec &attrs)
     {
       if (attr.get_path () == Values::Attributes::CFG
 	  && !attr.check_cfg_predicate (session))
+	return true;
+      else if (!expansion_cfg.should_test
+	       && attr.get_path () == Values::Attributes::TEST)
 	return true;
     }
   return false;
@@ -47,7 +52,7 @@ fails_cfg (const AST::AttrVec &attrs)
  * should be stripped. Will expand attributes as well.
  */
 bool
-fails_cfg_with_expand (AST::AttrVec &attrs)
+CfgStrip::fails_cfg_with_expand (AST::AttrVec &attrs) const
 {
   auto &session = Session::get_instance ();
 
@@ -84,6 +89,9 @@ fails_cfg_with_expand (AST::AttrVec &attrs)
 			  attr.as_string ().c_str ());
 	    }
 	}
+      else if (!expansion_cfg.should_test
+	       && attr.get_path () == Values::Attributes::TEST)
+	return true;
     }
   return false;
 }
@@ -195,6 +203,26 @@ CfgStrip::maybe_strip_struct_fields (std::vector<AST::StructField> &fields)
 }
 
 void
+CfgStrip::maybe_strip_struct_expr_fields (
+  std::vector<std::unique_ptr<AST::StructExprField>> &fields)
+{
+  for (auto it = fields.begin (); it != fields.end ();)
+    {
+      auto &field = *it;
+
+      auto &field_attrs = field->get_outer_attrs ();
+      expand_cfg_attrs (field_attrs);
+      if (fails_cfg_with_expand (field_attrs))
+	{
+	  it = fields.erase (it);
+	  continue;
+	}
+
+      ++it;
+    }
+}
+
+void
 CfgStrip::maybe_strip_tuple_fields (std::vector<AST::TupleField> &fields)
 {
   for (auto it = fields.begin (); it != fields.end ();)
@@ -268,7 +296,8 @@ CfgStrip::maybe_strip_generic_args (AST::GenericArgs &args)
     {
       switch (arg.get_kind ())
 	{
-	  case AST::GenericArg::Kind::Type: {
+	case AST::GenericArg::Kind::Type:
+	  {
 	    auto &type = arg.get_type ();
 	    type.accept_vis (*this);
 
@@ -277,7 +306,8 @@ CfgStrip::maybe_strip_generic_args (AST::GenericArgs &args)
 			     "cannot strip type in this position");
 	    break;
 	  }
-	  case AST::GenericArg::Kind::Const: {
+	case AST::GenericArg::Kind::Const:
+	  {
 	    auto &expr = arg.get_expression ();
 	    expr.accept_vis (*this);
 
@@ -414,10 +444,13 @@ CfgStrip::visit (AST::PathInExpression &path)
       return;
     }
 
-  for (auto &segment : path.get_segments ())
+  if (!path.is_lang_item ())
     {
-      if (segment.has_generic_args ())
-	maybe_strip_generic_args (segment.get_generic_args ());
+      for (auto &segment : path.get_segments ())
+	{
+	  if (segment.has_generic_args ())
+	    maybe_strip_generic_args (segment.get_generic_args ());
+	}
     }
 }
 
@@ -962,6 +995,8 @@ CfgStrip::visit (AST::StructExprStructFields &expr)
 		       "cannot strip expression in this position - outer "
 		       "attributes not allowed");
     }
+
+  maybe_strip_struct_expr_fields (expr.get_fields ());
 }
 
 void
@@ -1164,7 +1199,7 @@ CfgStrip::visit (AST::ClosureExprInnerTyped &expr)
     rust_error_at (type.get_locus (), "cannot strip type in this position");
 
   // can't strip expression itself, but can strip sub-expressions
-  auto &definition_block = expr.get_definition_block ();
+  auto &definition_block = expr.get_definition_expr ();
   definition_block.accept_vis (*this);
   if (definition_block.is_marked_for_strip ())
     rust_error_at (definition_block.get_locus (),
@@ -1737,16 +1772,17 @@ CfgStrip::visit (AST::Module &module)
       return;
     }
 
-  // A loaded module might have inner attributes
-  if (module.get_kind () == AST::Module::ModuleKind::LOADED)
+  if (module.get_kind () == AST::Module::UNLOADED)
     {
-      // strip test based on inner attrs
-      expand_cfg_attrs (module.get_inner_attrs ());
-      if (fails_cfg_with_expand (module.get_inner_attrs ()))
-	{
-	  module.mark_for_strip ();
-	  return;
-	}
+      module.load_items ();
+    }
+
+  // strip test based on inner attrs
+  expand_cfg_attrs (module.get_inner_attrs ());
+  if (fails_cfg_with_expand (module.get_inner_attrs ()))
+    {
+      module.mark_for_strip ();
+      return;
     }
 
   // strip items if required
@@ -1852,6 +1888,10 @@ CfgStrip::visit (AST::StructStruct &struct_item)
     }
 
   AST::DefaultASTVisitor::visit (struct_item);
+
+  /* strip struct fields if required - this is presumably
+   * allowed by spec */
+  maybe_strip_struct_fields (struct_item.get_fields ());
 }
 void
 CfgStrip::visit (AST::TupleStruct &tuple_struct)
@@ -2029,38 +2069,6 @@ CfgStrip::visit (AST::StaticItem &static_item)
 }
 
 void
-CfgStrip::visit (AST::TraitItemConst &item)
-{
-  // initial test based on outer attrs
-  expand_cfg_attrs (item.get_outer_attrs ());
-  if (fails_cfg_with_expand (item.get_outer_attrs ()))
-    {
-      item.mark_for_strip ();
-      return;
-    }
-
-  AST::DefaultASTVisitor::visit (item);
-
-  // strip any sub-types
-  auto &type = item.get_type ();
-
-  if (type.is_marked_for_strip ())
-    rust_error_at (type.get_locus (), "cannot strip type in this position");
-
-  /* strip any internal sub-expressions - expression itself isn't
-   * allowed to have external attributes in this position so can't be
-   * stripped */
-  if (item.has_expression ())
-    {
-      auto &expr = item.get_expr ();
-      if (expr.is_marked_for_strip ())
-	rust_error_at (expr.get_locus (),
-		       "cannot strip expression in this position - outer "
-		       "attributes not allowed");
-    }
-}
-
-void
 CfgStrip::visit (AST::TraitItemType &item)
 {
   // initial test based on outer attrs
@@ -2230,12 +2238,12 @@ void
 CfgStrip::visit (AST::IdentifierPattern &pattern)
 {
   // can only strip sub-patterns of the inner pattern to bind
-  if (!pattern.has_pattern_to_bind ())
+  if (!pattern.has_subpattern ())
     return;
 
   AST::DefaultASTVisitor::visit (pattern);
 
-  auto &sub_pattern = pattern.get_pattern_to_bind ();
+  auto &sub_pattern = pattern.get_subpattern ();
   if (sub_pattern.is_marked_for_strip ())
     rust_error_at (sub_pattern.get_locus (),
 		   "cannot strip pattern in this position");
@@ -2341,7 +2349,7 @@ CfgStrip::visit (AST::StructPattern &pattern)
   maybe_strip_pointer_allow_strip (elems.get_struct_pattern_fields ());
 
   // assuming you can strip the ".." part
-  if (elems.has_etc ())
+  if (elems.has_rest ())
     {
       expand_cfg_attrs (elems.get_etc_outer_attrs ());
       if (fails_cfg_with_expand (elems.get_etc_outer_attrs ()))
@@ -2350,7 +2358,7 @@ CfgStrip::visit (AST::StructPattern &pattern)
 }
 
 void
-CfgStrip::visit (AST::TupleStructItemsNoRange &tuple_items)
+CfgStrip::visit (AST::TupleStructItemsNoRest &tuple_items)
 {
   AST::DefaultASTVisitor::visit (tuple_items);
   // can't strip individual patterns, only sub-patterns
@@ -2363,7 +2371,7 @@ CfgStrip::visit (AST::TupleStructItemsNoRange &tuple_items)
     }
 }
 void
-CfgStrip::visit (AST::TupleStructItemsRange &tuple_items)
+CfgStrip::visit (AST::TupleStructItemsHasRest &tuple_items)
 {
   AST::DefaultASTVisitor::visit (tuple_items);
   // can't strip individual patterns, only sub-patterns
@@ -2396,7 +2404,7 @@ CfgStrip::visit (AST::TupleStructPattern &pattern)
 }
 
 void
-CfgStrip::visit (AST::TuplePatternItemsMultiple &tuple_items)
+CfgStrip::visit (AST::TuplePatternItemsNoRest &tuple_items)
 {
   AST::DefaultASTVisitor::visit (tuple_items);
 
@@ -2411,7 +2419,7 @@ CfgStrip::visit (AST::TuplePatternItemsMultiple &tuple_items)
 }
 
 void
-CfgStrip::visit (AST::TuplePatternItemsRanged &tuple_items)
+CfgStrip::visit (AST::TuplePatternItemsHasRest &tuple_items)
 {
   AST::DefaultASTVisitor::visit (tuple_items);
 
@@ -2445,17 +2453,41 @@ CfgStrip::visit (AST::GroupedPattern &pattern)
 }
 
 void
+CfgStrip::visit (AST::SlicePatternItemsNoRest &items)
+{
+  AST::DefaultASTVisitor::visit (items);
+  // can't strip individual patterns, only sub-patterns
+  for (auto &pattern : items.get_patterns ())
+    {
+      if (pattern->is_marked_for_strip ())
+	rust_error_at (pattern->get_locus (),
+		       "cannot strip pattern in this position");
+    }
+}
+
+void
+CfgStrip::visit (AST::SlicePatternItemsHasRest &items)
+{
+  AST::DefaultASTVisitor::visit (items);
+  // can't strip individual patterns, only sub-patterns
+  for (auto &pattern : items.get_lower_patterns ())
+    {
+      if (pattern->is_marked_for_strip ())
+	rust_error_at (pattern->get_locus (),
+		       "cannot strip pattern in this position");
+    }
+  for (auto &pattern : items.get_upper_patterns ())
+    {
+      if (pattern->is_marked_for_strip ())
+	rust_error_at (pattern->get_locus (),
+		       "cannot strip pattern in this position");
+    }
+}
+
+void
 CfgStrip::visit (AST::SlicePattern &pattern)
 {
   AST::DefaultASTVisitor::visit (pattern);
-  // can't strip individual patterns, only sub-patterns
-  for (auto &item : pattern.get_items ())
-    {
-      if (item->is_marked_for_strip ())
-	rust_error_at (item->get_locus (),
-		       "cannot strip pattern in this position");
-      // TODO: quit stripping now? or keep going?
-    }
 }
 
 void

@@ -1,5 +1,5 @@
 /* Definitions of target machine for TI PRU.
-   Copyright (C) 2014-2024 Free Software Foundation, Inc.
+   Copyright (C) 2014-2025 Free Software Foundation, Inc.
    Contributed by Dimitar Dimitrov <dimitar@dinux.eu>
 
    This file is part of GCC.
@@ -64,6 +64,9 @@
 
 #undef  ENDFILE_SPEC
 #define ENDFILE_SPEC "%{!mabi=ti:-lgloss} "
+
+#undef  MULTILIB_DEFAULTS
+#define MULTILIB_DEFAULTS { "mloop", "mmul", "mfillzero" }
 
 /* TI ABI mandates that ELF symbols do not start with any prefix.  */
 #undef USER_LABEL_PREFIX

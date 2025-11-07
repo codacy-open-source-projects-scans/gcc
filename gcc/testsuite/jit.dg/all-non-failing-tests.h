@@ -73,6 +73,13 @@
 #undef create_code
 #undef verify_code
 
+/* test-arrays-u64.c */
+#define create_code create_code_arrays_u64
+#define verify_code verify_code_arrays_u64
+#include "test-arrays-u64.c"
+#undef create_code
+#undef verify_code
+
 /* test-autovectorize.c */
 #define create_code create_code_autovectorize
 #define verify_code verify_code_autovectorize
@@ -344,6 +351,13 @@
 #undef create_code
 #undef verify_code
 
+/* test-pr117886-write-reproducer.c.  */
+#define create_code create_code_pr117886_write_reproducer
+#define verify_code verify_code_pr117886_write_reproducer
+#include "test-pr117886-write-reproducer.c"
+#undef create_code
+#undef verify_code
+
 /* test-pure-attribute.c: This can't be in the testcases array as it needs
    the `-O3` flag.  */
 
@@ -390,6 +404,13 @@
 #undef create_code
 #undef verify_code
 
+/* test-sized-float.c */
+#define create_code create_code_sized_float
+#define verify_code verify_code_sized_float
+#include "test-sized-float.c"
+#undef create_code
+#undef verify_code
+
 /* test-target-builtins.c: This can't be in the testcases array as it
    is target-specific.  */
 
@@ -416,6 +437,9 @@
 #include "test-switch.c"
 #undef create_code
 #undef verify_code
+
+/* test-target-info.c: This can't be in the testcases array as it
+   is target-specific.  */
 
 /* test-types.c */
 #define create_code create_code_types
@@ -507,6 +531,9 @@ const struct testcase testcases[] = {
   {"arrays",
    create_code_arrays,
    verify_code_arrays},
+  {"arrays-u64",
+   create_code_arrays_u64,
+   verify_code_arrays_u64},
   {"autovectorize",
    create_code_autovectorize,
    verify_code_autovectorize},
@@ -603,6 +630,9 @@ const struct testcase testcases[] = {
   {"pr95314_rvalue_reuse",
    create_code_pr95314_rvalue_reuse,
    verify_code_pr95314_rvalue_reuse},
+  {"pr117886_write_reproducer",
+   create_code_pr117886_write_reproducer,
+   verify_code_pr117886_write_reproducer},
   {"reading_struct ",
    create_code_reading_struct ,
    verify_code_reading_struct },
@@ -615,6 +645,9 @@ const struct testcase testcases[] = {
   {"sizeof",
    create_code_sizeof,
    verify_code_sizeof},
+  {"sized-float",
+   create_code_sized_float,
+   verify_code_sized_float},
   {"string_literal",
    create_code_string_literal,
    verify_code_string_literal},

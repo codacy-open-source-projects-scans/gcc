@@ -1,5 +1,5 @@
 ;; ARM NEON coprocessor Machine Description
-;; Copyright (C) 2006-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2006-2025 Free Software Foundation, Inc.
 ;; Written by CodeSourcery.
 ;;
 ;; This file is part of GCC.
@@ -215,8 +215,8 @@
 })
 
 (define_split
-  [(set (match_operand:OI 0 "s_register_operand" "")
-	(match_operand:OI 1 "s_register_operand" ""))]
+  [(set (match_operand:VSTRUCT2 0 "s_register_operand" "")
+	(match_operand:VSTRUCT2 1 "s_register_operand" ""))]
   "(TARGET_NEON || TARGET_HAVE_MVE)&& reload_completed"
   [(set (match_dup 0) (match_dup 1))
    (set (match_dup 2) (match_dup 3))]
@@ -256,8 +256,8 @@
 })
 
 (define_split
-  [(set (match_operand:XI 0 "s_register_operand" "")
-	(match_operand:XI 1 "s_register_operand" ""))]
+  [(set (match_operand:VSTRUCT4 0 "s_register_operand" "")
+	(match_operand:VSTRUCT4 1 "s_register_operand" ""))]
   "(TARGET_NEON || TARGET_HAVE_MVE) && reload_completed"
   [(set (match_dup 0) (match_dup 1))
    (set (match_dup 2) (match_dup 3))
@@ -321,7 +321,9 @@
             (match_operand:<V_elem> 1 "nonimmediate_operand" "Um,r"))
           (match_operand:VD_LANE 3 "s_register_operand" "0,0")
           (match_operand:SI 2 "immediate_operand" "i,i")))]
-  "TARGET_NEON"
+  "TARGET_NEON
+   && (GET_MODE_NUNITS (<MODE>mode)
+       > (unsigned) exact_log2 (INTVAL (operands[2])))"
 {
   int elt = ffs ((int) INTVAL (operands[2])) - 1;
   if (BYTES_BIG_ENDIAN)
@@ -342,7 +344,10 @@
             (match_operand:<V_elem> 1 "nonimmediate_operand" "Um,r"))
           (match_operand:VQ2 3 "s_register_operand" "0,0")
           (match_operand:SI 2 "immediate_operand" "i,i")))]
-  "TARGET_NEON"
+  "TARGET_NEON
+   && (GET_MODE_NUNITS (<MODE>mode)
+       > (unsigned) exact_log2 (INTVAL (operands[2])))"
+
 {
   HOST_WIDE_INT elem = ffs ((int) INTVAL (operands[2])) - 1;
   int half_elts = GET_MODE_NUNITS (<MODE>mode) / 2;
@@ -371,7 +376,9 @@
             (match_operand:DI 1 "nonimmediate_operand" "Um,r"))
           (match_operand:V2DI_ONLY 3 "s_register_operand" "0,0")
           (match_operand:SI 2 "immediate_operand" "i,i")))]
-  "TARGET_NEON"
+  "TARGET_NEON
+   && (GET_MODE_NUNITS (<MODE>mode)
+       > (unsigned) exact_log2 (INTVAL (operands[2])))"
 {
   HOST_WIDE_INT elem = ffs ((int) INTVAL (operands[2])) - 1;
   int regno = REGNO (operands[0]) + 2 * elem;
@@ -974,7 +981,7 @@
 
 ;; Widening operations
 
-(define_expand "widen_ssum<mode>3"
+(define_expand "widen_ssum<v_double_width><mode>3"
   [(set (match_operand:<V_double_width> 0 "s_register_operand")
 	(plus:<V_double_width>
 	 (sign_extend:<V_double_width>
@@ -1033,7 +1040,7 @@
 }
   [(set_attr "type" "neon_add_widen")])
 
-(define_insn "widen_ssum<mode>3"
+(define_insn "widen_ssum<V_widen_l><mode>3"
   [(set (match_operand:<V_widen> 0 "s_register_operand" "=w")
 	(plus:<V_widen>
 	 (sign_extend:<V_widen>
@@ -1044,7 +1051,7 @@
   [(set_attr "type" "neon_add_widen")]
 )
 
-(define_expand "widen_usum<mode>3"
+(define_expand "widen_usum<v_double_width><mode>3"
   [(set (match_operand:<V_double_width> 0 "s_register_operand")
 	(plus:<V_double_width>
 	 (zero_extend:<V_double_width>
@@ -1103,7 +1110,7 @@
 }
   [(set_attr "type" "neon_add_widen")])
 
-(define_insn "widen_usum<mode>3"
+(define_insn "widen_usum<V_widen_l><mode>3"
   [(set (match_operand:<V_widen> 0 "s_register_operand" "=w")
 	(plus:<V_widen> (zero_extend:<V_widen>
 			  (match_operand:VW 1 "s_register_operand" "%w"))
@@ -2729,17 +2736,6 @@
 
 ;; v<maxmin>nm intrinsics.
 (define_insn "neon_<fmaxmin_op><mode>"
-  [(set (match_operand:VCVTF 0 "s_register_operand" "=w")
-	(unspec:VCVTF [(match_operand:VCVTF 1 "s_register_operand" "w")
-		       (match_operand:VCVTF 2 "s_register_operand" "w")]
-		       VMAXMINFNM))]
-  "TARGET_NEON && TARGET_VFP5"
-  "<fmaxmin_op>.<V_s_elem>\t%<V_reg>0, %<V_reg>1, %<V_reg>2"
-  [(set_attr "type" "neon_fp_minmax_s<q>")]
-)
-
-;; Vector forms for the IEEE-754 fmax()/fmin() functions
-(define_insn "<fmaxmin><mode>3"
   [(set (match_operand:VCVTF 0 "s_register_operand" "=w")
 	(unspec:VCVTF [(match_operand:VCVTF 1 "s_register_operand" "w")
 		       (match_operand:VCVTF 2 "s_register_operand" "w")]

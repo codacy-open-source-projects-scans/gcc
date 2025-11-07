@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -262,9 +262,8 @@ package body Sem_Res is
 
    function Operator_Kind
      (Op_Name   : Name_Id;
-      Is_Binary : Boolean) return Node_Kind;
-   --  Utility to map the name of an operator into the corresponding Node. Used
-   --  by other node rewriting procedures.
+      Is_Binary : Boolean) return N_Op;
+   --  Map the name of an operator into the corresponding Node_Kind
 
    procedure Resolve_Actuals (N : Node_Id; Nam : Entity_Id);
    --  Resolve actuals of call, and add default expressions for missing ones.
@@ -525,11 +524,16 @@ package body Sem_Res is
            Entity (Expression (Find_Aspect (Typ, Lit_Aspect)));
          Name := Make_Identifier (Loc, Chars (Callee));
 
-         if Is_Derived_Type (Typ)
-           and then Base_Type (Etype (Callee)) /= Base_Type (Typ)
-         then
+         --  It seems that we shouldn't need to retrieve the corresponding
+         --  primitive for a derived type at this point, because it should
+         --  have been determined earlier by Inherit_Nonoverridable_Aspects,
+         --  but the wrapper function created for a literal function when the
+         --  type is frozen gets created too late, so we search again at this
+         --  point. Would be nice to find a way to avoid this. ???
+
+         if Is_Derived_Type (Typ) then
             Callee :=
-              Corresponding_Primitive_Op
+              Corresponding_Op_Of_Derived_Type
                 (Ancestor_Op     => Callee,
                  Descendant_Type => Base_Type (Typ));
          end if;
@@ -654,6 +658,24 @@ package body Sem_Res is
       P    : Node_Id;
       D    : Node_Id;
 
+      procedure Check_Legality_In_Constraint (Alone : Boolean);
+      --  RM 3.8(12/3): Check that the discriminant mentioned in a constraint
+      --  appears alone as a direct name.
+
+      ----------------------------------
+      -- Check_Legality_In_Constraint --
+      ----------------------------------
+
+      procedure Check_Legality_In_Constraint (Alone : Boolean) is
+      begin
+         if not Alone then
+            Error_Msg_N ("discriminant in constraint must appear alone", N);
+
+         elsif Nkind (N) = N_Expanded_Name and then Comes_From_Source (N) then
+            Error_Msg_N ("discriminant must appear alone as a direct name", N);
+         end if;
+      end Check_Legality_In_Constraint;
+
    begin
       --  Any use in a spec-expression is legal
 
@@ -690,19 +712,11 @@ package body Sem_Res is
             --  processing for records). See Sem_Ch3.Build_Derived_Record_Type
             --  for more info.
 
-            if Ekind (Current_Scope) = E_Record_Type
-              and then Scope (Disc) = Current_Scope
-              and then not
-                (Nkind (Parent (P)) = N_Subtype_Indication
-                  and then
-                    Nkind (Parent (Parent (P))) in N_Component_Definition
-                                                 | N_Subtype_Declaration
-                  and then Paren_Count (N) = 0)
-            then
-               Error_Msg_N
-                 ("discriminant must appear alone in component constraint", N);
-               return;
-            end if;
+            Check_Legality_In_Constraint
+              (Nkind (Parent (P)) = N_Subtype_Indication
+                and then Nkind (Parent (Parent (P))) in N_Component_Definition
+                                                      | N_Subtype_Declaration
+                and then Paren_Count (N) = 0);
 
             --   Detect a common error:
 
@@ -752,14 +766,6 @@ package body Sem_Res is
                   goto No_Danger;
                end if;
 
-               --  If the enclosing type is limited, we allocate only the
-               --  default value, not the maximum, and there is no need for
-               --  a warning.
-
-               if Is_Limited_Type (Scope (Disc)) then
-                  goto No_Danger;
-               end if;
-
                --  Check that it is the high bound
 
                if N /= High_Bound (PN)
@@ -806,11 +812,9 @@ package body Sem_Res is
                   goto No_Danger;
                end if;
 
-               --  Warn about the danger
-
-               Error_Msg_N
-                 ("??creation of & object may raise Storage_Error!",
-                  Scope (Disc));
+               if Ekind (Scope (Disc)) = E_Record_Type then
+                  Set_Is_Large_Unconstrained_Definite (Scope (Disc));
+               end if;
 
                <<No_Danger>>
                   null;
@@ -823,18 +827,7 @@ package body Sem_Res is
       elsif Nkind (PN) in N_Index_Or_Discriminant_Constraint
                         | N_Discriminant_Association
       then
-         if Paren_Count (N) > 0 then
-            Error_Msg_N
-              ("discriminant in constraint must appear alone",  N);
-
-         elsif Nkind (N) = N_Expanded_Name
-           and then Comes_From_Source (N)
-         then
-            Error_Msg_N
-              ("discriminant must appear alone as a direct name", N);
-         end if;
-
-         return;
+         Check_Legality_In_Constraint (Paren_Count (N) = 0);
 
       --  Otherwise, context is an expression. It should not be within (i.e. a
       --  subexpression of) a constraint for a component.
@@ -869,8 +862,7 @@ package body Sem_Res is
            or else Nkind (P) = N_Entry_Declaration
            or else Nkind (D) = N_Defining_Identifier
          then
-            Error_Msg_N
-              ("discriminant in constraint must appear alone",  N);
+            Check_Legality_In_Constraint (False);
          end if;
       end if;
    end Check_Discriminant_Use;
@@ -1991,7 +1983,7 @@ package body Sem_Res is
 
    function Operator_Kind
      (Op_Name   : Name_Id;
-      Is_Binary : Boolean) return Node_Kind
+      Is_Binary : Boolean) return N_Op
    is
       Kind : Node_Kind;
 
@@ -2101,8 +2093,6 @@ package body Sem_Res is
       Full_Analysis := False;
       Expander_Mode_Save_And_Set (False);
 
-      --  See also Preanalyze_And_Resolve in sem.adb for similar handling
-
       --  Normally, we suppress all checks for this preanalysis. There is no
       --  point in processing them now, since they will be applied properly
       --  and in the proper location when the default expressions reanalyzed
@@ -2145,8 +2135,13 @@ package body Sem_Res is
       Full_Analysis := False;
       Expander_Mode_Save_And_Set (False);
 
-      Analyze (N);
-      Resolve (N, Etype (N), Suppress => All_Checks);
+      --  See previous version of Preanalyze_And_Resolve for similar handling
+
+      if GNATprove_Mode then
+         Analyze_And_Resolve (N);
+      else
+         Analyze_And_Resolve (N, Suppress => All_Checks);
+      end if;
 
       Expander_Mode_Restore;
       Full_Analysis := Save_Full_Analysis;
@@ -4844,6 +4839,7 @@ package body Sem_Res is
 
                if not Is_OK_Variable_For_Out_Formal (A)
                  and then not Is_Init_Proc (Nam)
+                 and then not Is_Expanded_Constructor_Call (N)
                then
                   Error_Msg_NE ("actual for& must be a variable", A, F);
 
@@ -5274,7 +5270,7 @@ package body Sem_Res is
             end if;
 
             --  The actual parameter of a Ghost subprogram whose formal is of
-            --  mode IN OUT or OUT must be a Ghost variable (SPARK RM 6.9(12)).
+            --  mode IN OUT or OUT must be a Ghost variable (SPARK RM 6.9(15)).
 
             if Comes_From_Source (Nam)
               and then Is_Ghost_Entity (Nam)
@@ -5816,13 +5812,13 @@ package body Sem_Res is
               and then Nkind (Associated_Node_For_Itype (Typ)) =
                          N_Discriminant_Specification
             then
+               Check_Restriction (No_Coextensions, N);
+
                declare
                   Discr : constant Entity_Id :=
                     Defining_Identifier (Associated_Node_For_Itype (Typ));
 
                begin
-                  Check_Restriction (No_Coextensions, N);
-
                   --  Ada 2012 AI05-0052: If the designated type of the
                   --  allocator is limited, then the allocator shall not
                   --  be used to define the value of an access discriminant
@@ -6096,6 +6092,8 @@ package body Sem_Res is
                elsif Is_Fixed_Point_Type (It.Typ) then
                   if Analyzed (N) then
                      Error_Msg_N ("ambiguous operand in fixed operation", N);
+                  elsif It.Typ = Any_Fixed then
+                     Resolve (N, B_Typ);
                   else
                      Resolve (N, It.Typ);
                   end if;
@@ -6953,7 +6951,7 @@ package body Sem_Res is
                   --  checkable, the case of calling an immediately containing
                   --  subprogram is easy to catch.
 
-                  if not Is_Ignored_Ghost_Entity (Nam) then
+                  if not Is_Ignored_Ghost_Entity_In_Codegen (Nam) then
                      Check_Restriction (No_Recursion, N);
                   end if;
 
@@ -7091,7 +7089,7 @@ package body Sem_Res is
         and then Ekind (Nam) in E_Function | E_Subprogram_Type
         and then Requires_Transient_Scope (Etype (Nam))
         and then not Is_Intrinsic_Subprogram (Nam)
-        and then not Is_Ignored_Ghost_Entity (Nam)
+        and then not Is_Ignored_Ghost_Entity_In_Codegen (Nam)
         and then not Is_Build_In_Place_Function (Nam)
         and then not Is_Inlinable_Expression_Function (Nam)
         and then not (Is_Inlined (Nam)
@@ -7269,7 +7267,9 @@ package body Sem_Res is
 
       if Restriction_Check_Required (No_Relative_Delay)
         and then Is_RTE (Nam, RE_Set_Handler)
-        and then Is_RTE (Etype (Next_Actual (First_Actual (N))), RE_Time_Span)
+        and then
+          Is_RTE
+            (Base_Type (Etype (Next_Actual (First_Actual (N)))), RE_Time_Span)
       then
          Check_Restriction (No_Relative_Delay, N);
       end if;
@@ -7796,6 +7796,7 @@ package body Sem_Res is
          then
             Set_Entity (N, Local);
             Set_Etype (N, Etype (Local));
+            Generate_Reference (Local, N);
          end if;
 
          return OK;
@@ -8142,9 +8143,10 @@ package body Sem_Res is
            and then Comes_From_Source (E)
            and then No (Constant_Value (E))
            and then Is_Frozen (Etype (E))
-           and then not In_Spec_Expression
+           and then not Preanalysis_Active
            and then not Is_Imported (E)
            and then Nkind (Parent (E)) /= N_Object_Renaming_Declaration
+           and then not Needs_Construction (Etype (E))
          then
             if No_Initialization (Parent (E))
               or else (Present (Full_View (E))
@@ -10807,7 +10809,12 @@ package body Sem_Res is
         and then Is_Character_Type (Component_Type (Typ))
       then
          Set_String_Literal_Subtype (Op1, Typ);
-         Set_String_Literal_Subtype (Op2, Typ);
+
+         --  See Resolve_String_Literal for the asymmetry
+
+         if Ekind (Etype (Op2)) /= E_String_Literal_Subtype then
+            Set_String_Literal_Subtype (Op2, Typ);
+         end if;
       end if;
    end Resolve_Op_Concat_Rest;
 
@@ -12027,11 +12034,14 @@ package body Sem_Res is
    begin
       --  For a string appearing in a concatenation, defer creation of the
       --  string_literal_subtype until the end of the resolution of the
-      --  concatenation, because the literal may be constant-folded away. This
-      --  is a useful optimization for long concatenation expressions.
+      --  concatenation, because the literal may be constant-folded away.
+      --  This is a useful optimization for long concatenation expressions,
+      --  but it cannot be done if the string is the right operand and the
+      --  left operand may be null, because 4.5.3(5) says that the result is
+      --  the right operand and, in particular, has its original subtype.
 
       --  If the string is an aggregate built for a single character (which
-      --  happens in a non-static context) or a is null string to which special
+      --  happens in a non-static context) or is a null string to which special
       --  checks may apply, we build the subtype. Wide strings must also get a
       --  string subtype if they come from a one character aggregate. Strings
       --  generated by attributes might be static, but it is often hard to
@@ -12044,6 +12054,11 @@ package body Sem_Res is
           or else Nkind (Parent (N)) /= N_Op_Concat
           or else (N /= Left_Opnd (Parent (N))
                     and then N /= Right_Opnd (Parent (N)))
+          or else (N = Right_Opnd (Parent (N))
+                    and then
+                      (Nkind (Left_Opnd (Parent (N))) /= N_String_Literal
+                        or else
+                          String_Length (Strval (Left_Opnd (Parent (N)))) = 0))
           or else ((Typ = Standard_Wide_String
                       or else Typ = Standard_Wide_Wide_String)
                     and then Nkind (Original_Node (N)) /= N_String_Literal);
@@ -12384,7 +12399,7 @@ package body Sem_Res is
 
             if Nkind (Rop) = N_Real_Literal
               and then Realval (Rop) /= Ureal_0
-              and then abs (Realval (Rop)) < Delta_Value (Standard_Duration)
+              and then abs Realval (Rop) < Delta_Value (Standard_Duration)
             then
                Error_Msg_N
                  ("??universal real operand can only "
@@ -12460,16 +12475,6 @@ package body Sem_Res is
          Orig_N := Original_Node (Expression (Orig_N));
          Orig_T := Target_Typ;
 
-         --  If the node is part of a larger expression, the Target_Type
-         --  may not be the original type of the node if the context is a
-         --  condition. Recover original type to see if conversion is needed.
-
-         if Is_Boolean_Type (Orig_T)
-          and then Nkind (Parent (N)) in N_Op
-         then
-            Orig_T := Etype (Parent (N));
-         end if;
-
          --  If we have an entity name, then give the warning if the entity
          --  is the right type, or if it is a loop parameter covered by the
          --  original type (that's needed because loop parameters have an
@@ -12542,6 +12547,16 @@ package body Sem_Res is
             elsif Is_Class_Wide_Type (Orig_T)
               and then Is_Subprogram_Or_Generic_Subprogram (Current_Scope)
               and then Present (Class_Preconditions_Subprogram (Current_Scope))
+            then
+               null;
+
+            --  Do not warn if original source-level conversion was
+            --  between two different types.
+
+            elsif Nkind (Original_Node (N)) = N_Type_Conversion
+              and then
+                Base_Type (Etype (Subtype_Mark (Original_Node (N))))
+                  /= Base_Type (Etype (Expression (Original_Node (N))))
             then
                null;
 

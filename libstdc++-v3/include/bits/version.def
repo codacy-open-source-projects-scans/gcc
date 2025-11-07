@@ -1,5 +1,5 @@
 // Feature test macro definitions                                  -*- C++ -*-
-// Copyright (C) 2023-2024 Free Software Foundation, Inc.
+// Copyright (C) 2023-2025 Free Software Foundation, Inc.
 
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -30,6 +30,7 @@ AutoGen Definitions version.tpl;
 // ftms = {
 //   name = FTM NAME;
 //   [stdname = FTM STANDARD MACRO NAME;]
+//   [no_stdname = true;]
 //   values = {
 //     v = VALUE FOR FTM IF MATCHING;
 //     [extra_cond = STRING;]
@@ -56,7 +57,8 @@ AutoGen Definitions version.tpl;
 
 // stdname configures the name of the *standard* macro emitted, i.e. it
 // replaces only the __cpp_lib_ macro in the emitted definition.  Defaults to
-// __cpp_lib_${name}
+// __cpp_lib_${name}.  If no_stdname exists (with any value), the stdname
+// define is not emitted.
 
 // N.B This list needs to be in topological sort order, as later entries in
 // this list can and do use the earlier entries.
@@ -392,6 +394,14 @@ ftms = {
 };
 
 ftms = {
+  name = constant_wrapper;
+  values = {
+    v = 202506;
+    cxxmin = 26;
+  };
+};
+
+ftms = {
   name = has_unique_object_representations;
   values = {
     v = 201606;
@@ -462,6 +472,10 @@ ftms = {
 ftms = {
   name = not_fn;
   values = {
+    v = 202306;
+    cxxmin = 26;
+  };
+  values = {
     v = 201603;
     cxxmin = 17;
   };
@@ -521,6 +535,11 @@ ftms = {
 
 ftms = {
   name = raw_memory_algorithms;
+  values = {
+    v = 202411;
+    cxxmin = 26;
+    extra_cond = "__cpp_constexpr >= 202406L";
+  };
   values = {
     v = 201606;
     cxxmin = 17;
@@ -588,6 +607,16 @@ ftms = {
 };
 
 ftms = {
+  // Unofficial macro for C++20 chrono features supported for old string ABI.
+  name = chrono_cxx20;
+  values = {
+    v = 201800;
+    cxxmin = 20;
+    no_stdname = yes;
+  };
+};
+
+ftms = {
   name = execution;
   values = {
     v = 201902;  // FIXME: should be 201603L
@@ -642,7 +671,7 @@ ftms = {
   };
   values = {
     v = 1;
-    /* For when there's no gthread.  */
+    // For when there is no gthread.
     cxxmin = 17;
     hosted = yes;
     gthread = no;
@@ -672,8 +701,6 @@ ftms = {
   values = {
     v = 201703;
     cxxmin = 17;
-    hosted = yes;
-    gthread = yes;
   };
 };
 
@@ -728,6 +755,14 @@ ftms = {
 };
 
 ftms = {
+  name = is_sufficiently_aligned;
+  values = {
+    v = 202411;
+    cxxmin = 26;
+  };
+};
+
+ftms = {
   name = atomic_flag_test;
   values = {
     v = 201907;
@@ -755,6 +790,10 @@ ftms = {
 ftms = {
   name = atomic_ref;
   values = {
+    v = 202411;
+    cxxmin = 26;
+  };
+  values = {
     v = 201806;
     cxxmin = 20;
   };
@@ -765,11 +804,16 @@ ftms = {
   values = {
     v = 201911;
     cxxmin = 20;
+    extra_cond = "__cpp_concepts >= 201907L";
   };
 };
 
 ftms = {
   name = bind_front;
+  values = {
+    v = 202306;
+    cxxmin = 26;
+  };
   values = {
     v = 201907;
     cxxmin = 20;
@@ -778,6 +822,10 @@ ftms = {
 
 ftms = {
   name = bind_back;
+  values = {
+    v = 202306;
+    cxxmin = 26;
+  };
   values = {
     v = 202202;
     cxxmin = 23;
@@ -830,18 +878,31 @@ ftms = {
 // Moved down here (after concepts) by topological sort.
 ftms = {
   name = optional;
-  values = {
+  values = { // optional<T&>
+    v = 202506;
+    cxxmin = 26;
+    extra_cond = "__glibcxx_concepts";
+  };
+  values = { // monadic operations
     v = 202110;
     cxxmin = 23;
     extra_cond = "__glibcxx_concepts";
   };
-  values = {
+  values = { // full constexpr support
     v = 202106;
     cxxmin = 20;
   };
   values = {
     v = 201606;
     cxxmin = 17;
+  };
+};
+
+ftms = {
+  name = optional_range_support;
+  values = {
+    v = 202406;
+    cxxmin = 26;
   };
 };
 
@@ -951,6 +1012,7 @@ ftms = {
 
 ftms = {
   name = make_obj_using_allocator;
+  no_stdname = true;
   values = {
     // Not specified by C++20, used internally
     v = 201811;
@@ -987,6 +1049,47 @@ ftms = {
     v = 202002;
     cxxmin = 20;
     extra_cond = "__glibcxx_concepts";
+  };
+};
+
+ftms = {
+  name = mdspan;
+  values = {
+    v = 202406;
+    cxxmin = 26;
+  };
+  values = {
+    v = 202207;
+    cxxmin = 23;
+  };
+};
+
+ftms = {
+  name = aligned_accessor;
+  values = {
+    v = 202411;
+    cxxmin = 26;
+    extra_cond = "__glibcxx_assume_aligned "
+    "&& __glibcxx_is_sufficiently_aligned";
+    };
+};
+
+// Purely internal macro padded layouts.
+ftms = {
+  name = padded_layouts;
+  no_stdname = true; // internal
+  values = {
+    v = 1;
+    cxxmin = 26;
+  };
+};
+
+ftms = {
+  name = submdspan;
+  no_stdname = true; // TODO: change once complete
+  values = {
+    v = 1;
+    cxxmin = 26;
   };
 };
 
@@ -1068,6 +1171,10 @@ ftms = {
 ftms = {
   name = shift;
   values = {
+    v = 202202;
+    cxxmin = 23;
+  };
+  values = {
     v = 201806;
     cxxmin = 20;
   };
@@ -1110,6 +1217,10 @@ ftms = {
 
 ftms = {
   name = constexpr_algorithms;
+  values = {
+    v = 202306;
+    cxxmin = 26;
+  };
   values = {
     v = 201806;
     cxxmin = 20;
@@ -1261,7 +1372,12 @@ ftms = {
 ftms = {
   name = constrained_equality;
   values = {
-    v = 202411; // FIXME: 202403 for P2944R3, ??? for P3379R0
+    v = 202411;
+    cxxmin = 23;
+    extra_cond = "__glibcxx_three_way_comparison";
+  };
+  values = {
+    v = 202403;
     cxxmin = 20;
     extra_cond = "__glibcxx_three_way_comparison";
   };
@@ -1338,7 +1454,7 @@ ftms = {
     v = 201907;
     cxxmin = 20;
     hosted = yes;
-    extra_cond = "__glibcxx_atomic_wait || _GLIBCXX_HAVE_POSIX_SEMAPHORE";
+    extra_cond = "__glibcxx_atomic_wait";
   };
 };
 
@@ -1394,18 +1510,17 @@ ftms = {
   };
 };
 
-// ftms = {
-  // name = format_ranges;
+ftms = {
+  name = format_ranges;
   // 202207 P2286R8 Formatting Ranges
   // 202207 P2585R1 Improving default container formatting
   // LWG3750 Too many papers bump __cpp_lib_format
-  // TODO: #define __cpp_lib_format_ranges 202207L
-  // values = {
-    // v = 202207;
-    // cxxmin = 23;
-    // hosted = yes;
-  // };
-// };
+  values = {
+    v = 202207;
+    cxxmin = 23;
+    hosted = yes;
+  };
+};
 
 ftms = {
   name = freestanding_algorithm;
@@ -1498,14 +1613,14 @@ ftms = {
   };
 };
 
-//ftms = {
-//  name = containers_ranges;
-//  values = {
-//    v = 202202;
-//    cxxmin = 23;
-//    hosted = yes;
-//  };
-//};
+ftms = {
+  name = containers_ranges;
+  values = {
+    v = 202202;
+    cxxmin = 23;
+    hosted = yes;
+  };
+};
 
 ftms = {
   name = ranges_to_container;
@@ -1637,6 +1752,22 @@ ftms = {
 };
 
 ftms = {
+  name = ranges_starts_ends_with;
+  values = {
+    v = 202106;
+    cxxmin = 23;
+  };
+};
+
+ftms = {
+  name = ranges_indices;
+  values = {
+    v = 202506;
+    cxxmin = 26;
+  };
+};
+
+ftms = {
   name = constexpr_bitset;
   values = {
     v = 202202;
@@ -1660,6 +1791,22 @@ ftms = {
     v = 202106;
     cxxmin = 23;
     hosted = yes;
+  };
+};
+
+ftms = {
+  name = flat_map;
+  values = {
+    v = 202207;
+    cxxmin = 23;
+  };
+};
+
+ftms = {
+  name = flat_set;
+  values = {
+    v = 202207;
+    cxxmin = 23;
   };
 };
 
@@ -1708,6 +1855,23 @@ ftms = {
 };
 
 ftms = {
+  name = copyable_function;
+  values = {
+    v = 202306;
+    cxxmin = 26;
+    hosted = yes;
+  };
+};
+
+ftms = {
+  name = function_ref;
+  values = {
+    v = 202306;
+    cxxmin = 26;
+  };
+};
+
+ftms = {
   name = out_ptr;
   values = {
     v = 202311;
@@ -1718,7 +1882,7 @@ ftms = {
 ftms = {
   name = print;
   values = {
-    v = 202211;
+    v = 202406;
     cxxmin = 23;
     hosted = yes;
   };
@@ -1741,6 +1905,14 @@ ftms = {
     cxxmin = 23;
     hosted = yes;
     extra_cond = "_GLIBCXX_HAVE_STACKTRACE";
+  };
+};
+
+ftms = {
+  name = start_lifetime_as;
+  values = {
+    v =  202207;
+    cxxmin = 23;
   };
 };
 
@@ -1773,6 +1945,11 @@ ftms = {
 ftms = {
   name = tuple_like;
   values = {
+    v = 202311;
+    cxxmin = 26;
+    extra_cond = "__cpp_explicit_this_parameter >= 202110L";
+  };
+  values = {
     v = 202207;
     cxxmin = 23;
   };
@@ -1783,6 +1960,15 @@ ftms = {
   values = {
     v = 202202;
     cxxmin = 23;
+  };
+};
+
+ftms = {
+  name = observable_checkpoint;
+  values = {
+    v = 202506;
+    cxxmin = 26;
+    extra_cond = "__has_builtin(__builtin_observable_checkpoint)";
   };
 };
 
@@ -1800,6 +1986,14 @@ ftms = {
     v = 202406;
     cxxmin = 26;
     extra_cond = "__cpp_constexpr >= 202406L";
+  };
+};
+
+ftms = {
+  name = debugging;
+  values = {
+    v = 202403;
+    cxxmin = 26;
   };
 };
 
@@ -1822,10 +2016,19 @@ ftms = {
 };
 
 ftms = {
+  name = ranges_cache_latest;
+  values = {
+    v = 202411;
+    cxxmin = 26;
+  };
+};
+
+ftms = {
   name = ranges_concat;
   values = {
     v = 202403;
     cxxmin = 26;
+    extra_cond = "__cpp_pack_indexing";
   };
 };
 
@@ -1854,12 +2057,28 @@ ftms = {
 };
 
 ftms = {
+  name = span_initializer_list;
+  values = {
+    v = 202311;
+    cxxmin = 26;
+  };
+};
+
+ftms = {
   name = text_encoding;
   values = {
     v = 202306;
     cxxmin = 26;
     hosted = yes;
     extra_cond = "_GLIBCXX_USE_NL_LANGINFO_L";
+  };
+};
+
+ftms = {
+  name = ranges_to_input;
+  values = {
+    v = 202502;
+    cxxmin = 26;
   };
 };
 
@@ -1879,6 +2098,105 @@ ftms = {
     v = 202207;
     cxxmin = 20;
     extra_cond = "__cpp_modules";
+  };
+};
+
+ftms = {
+  name = inplace_vector;
+  values = {
+    v = 202406;
+    cxxmin = 26;
+  };
+};
+
+ftms = {
+  name = indirect;
+  values = {
+    v = 202502;
+    cxxmin = 26;
+    hosted = yes;
+  };
+};
+
+ftms = {
+  name = polymorphic;
+  values = {
+    v = 202502;
+    cxxmin = 26;
+    hosted = yes;
+  };
+};
+
+ftms = {
+  name = smart_ptr_owner_equality;
+  values = {
+    v = 202306;
+    cxxmin = 26;
+    hosted = yes;
+  };
+};
+
+ftms = {
+  name = sstream_from_string_view;
+  values = {
+    v = 202306;
+    cxxmin = 26;
+    hosted = yes;
+  };
+};
+
+ftms = {
+  name = type_order;
+  values = {
+    v = 202506;
+    cxxmin = 26;
+    extra_cond = "__has_builtin(__builtin_type_order) "
+    "&& __cpp_lib_three_way_comparison >= 201907L";
+  };
+};
+
+ftms = {
+  name = exception_ptr_cast;
+  values = {
+    v = 202506;
+    cxxmin = 26;
+  };
+};
+
+ftms = {
+  name = bitset;  // ...construct from string_view
+  values = {
+    v = 202306;
+    cxxmin = 26;
+  };
+};
+
+ftms = {
+  name = constexpr_exceptions;
+  // TODO Remove when PR121114 is resolved
+  no_stdname = true;
+  values = {
+    v = 1; // TODO 202411;
+    cxxmin = 26;
+    extra_cond = "__cpp_constexpr_exceptions >= 202411L";
+  };
+};
+
+ftms = {
+  name = philox_engine;
+  values = {
+    v = 202406;
+    cxxmin = 26;
+    extra_cond = "__SIZEOF_INT128__";
+  };
+};
+
+ftms = {
+  name = is_implicit_lifetime;
+  values = {
+    v =  202302;
+    cxxmin = 23;
+    extra_cond = "__has_builtin(__builtin_is_implicit_lifetime)";
   };
 };
 

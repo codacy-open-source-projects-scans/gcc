@@ -27,6 +27,9 @@ UrlSuffix(gcc/LoongArch-Options.html#index-mabi-2)
 mbranch-cost=
 UrlSuffix(gcc/LoongArch-Options.html#index-mbranch-cost-2)
 
+maddr-reg-reg-cost=
+UrlSuffix(gcc/LoongArch-Options.html#index-maddr-reg-reg-cost)
+
 mcheck-zero-division
 UrlSuffix(gcc/LoongArch-Options.html#index-mcheck-zero-division)
 
@@ -44,6 +47,9 @@ UrlSuffix(gcc/LoongArch-Options.html#index-mstrict-align-1)
 
 mmax-inline-memcpy-size=
 UrlSuffix(gcc/LoongArch-Options.html#index-mmax-inline-memcpy-size)
+
+mbreak-code=
+UrlSuffix(gcc/LoongArch-Options.html#index-mbreak-code)
 
 mexplicit-relocs=
 UrlSuffix(gcc/LoongArch-Options.html#index-mexplicit-relocs-1)
@@ -86,6 +92,9 @@ UrlSuffix(gcc/LoongArch-Options.html#index-mlam-bh)
 
 mlamcas
 UrlSuffix(gcc/LoongArch-Options.html#index-mlamcas)
+
+mscq
+UrlSuffix(gcc/LoongArch-Options.html#index-mscq)
 
 mld-seq-sa
 UrlSuffix(gcc/LoongArch-Options.html#index-mld-seq-sa)

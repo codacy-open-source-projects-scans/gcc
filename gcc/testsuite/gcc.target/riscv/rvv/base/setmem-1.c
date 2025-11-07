@@ -1,4 +1,4 @@
-/* { dg-do compile } */
+/* { dg-do compile { target { ! riscv_abi_e } } } */
 /* { dg-add-options riscv_v } */
 /* { dg-additional-options "-O3 -mrvv-max-lmul=dynamic" } */
 /* { dg-final { check-function-bodies "**" "" } } */
@@ -94,7 +94,7 @@ f6 (void *a, int const b)
 /* Don't vectorise if the move is too large for one operation.
 ** f7:
 **  li\s+a2,\d+
-**  tail\s+memset
+**  tail\s+memset(?:@plt)?
 */
 void *
 f7 (void *a, int const b)

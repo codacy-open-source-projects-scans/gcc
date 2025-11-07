@@ -1,6 +1,6 @@
 /* Read the GIMPLE representation from a file stream.
 
-   Copyright (C) 2009-2024 Free Software Foundation, Inc.
+   Copyright (C) 2009-2025 Free Software Foundation, Inc.
    Contributed by Kenneth Zadeck <zadeck@naturalbridge.com>
    Re-implemented by Diego Novillo <dnovillo@google.com>
 
@@ -2004,6 +2004,7 @@ lto_input_toplevel_asms (struct lto_file_decl_data *file_data, int order_base)
     {
       asm_node *node = symtab->finalize_toplevel_asm (str);
       node->order = streamer_read_hwi (&ib) + order_base;
+      node->lto_file_data = file_data;
       if (node->order >= symtab->order)
 	symtab->order = node->order + 1;
     }

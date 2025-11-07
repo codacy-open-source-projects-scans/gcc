@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -413,7 +413,9 @@ package body Exp_Disp is
             if Nkind (D) = N_Package_Declaration then
                Build_Package_Dispatch_Tables (D);
 
-            elsif Nkind (D) = N_Package_Body then
+            elsif Nkind (D) = N_Package_Body
+              and then Ekind (Corresponding_Spec (D)) /= E_Generic_Package
+            then
                Build_Dispatch_Tables (Declarations (D));
 
             elsif Nkind (D) = N_Package_Body_Stub
@@ -799,7 +801,7 @@ package body Exp_Disp is
 
         --  No action needed if the dispatching call has been already expanded
 
-        or else Is_Expanded_Dispatching_Call (Name (Call_Node))
+        or else Is_Expanded_Dispatching_Call (Call_Node)
       then
          return;
       end if;
@@ -924,6 +926,8 @@ package body Exp_Disp is
          New_Formal  : Entity_Id;
          Last_Formal : Entity_Id := Empty;
 
+         use Deferred_Extra_Formals_Support;
+
       begin
          if Present (Old_Formal) then
             New_Formal := New_Copy (Old_Formal);
@@ -960,51 +964,21 @@ package body Exp_Disp is
          end if;
 
          --  Now that the explicit formals have been duplicated, any extra
-         --  formals needed by the subprogram must be duplicated; we know
-         --  that extra formals are available because they were added when
-         --  the tagged type was frozen (see Expand_Freeze_Record_Type).
+         --  formals needed by the subprogram must be added; we know that
+         --  extra formals are available because they were added when the
+         --  tagged type was frozen (see Expand_Freeze_Record_Type).
 
          pragma Assert (Is_Frozen (Typ));
 
-         --  Warning: The addition of the extra formals cannot be performed
-         --  here invoking Create_Extra_Formals since we must ensure that all
-         --  the extra formals of the pointer type and the target subprogram
-         --  match (and for functions that return a tagged type the profile of
-         --  the built subprogram type always returns a class-wide type, which
-         --  may affect the addition of some extra formals).
+         if Extra_Formals_Known (Subp) then
+            Create_Extra_Formals (Subp_Typ, Related_Nod => Call_Node);
 
-         if Present (Last_Formal)
-           and then Present (Extra_Formal (Last_Formal))
-         then
-            Old_Formal := Extra_Formal (Last_Formal);
-            New_Formal := New_Copy (Old_Formal);
-            Set_Scope (New_Formal, Subp_Typ);
+         --  Extra formals were previously deferred
 
-            Set_Extra_Formal (Last_Formal, New_Formal);
-            Set_Extra_Formals (Subp_Typ, New_Formal);
-
-            if Ekind (Subp) = E_Function
-              and then Present (Extra_Accessibility_Of_Result (Subp))
-              and then Extra_Accessibility_Of_Result (Subp) = Old_Formal
-            then
-               Set_Extra_Accessibility_Of_Result (Subp_Typ, New_Formal);
-            end if;
-
-            Old_Formal := Extra_Formal (Old_Formal);
-            while Present (Old_Formal) loop
-               Set_Extra_Formal (New_Formal, New_Copy (Old_Formal));
-               New_Formal := Extra_Formal (New_Formal);
-               Set_Scope (New_Formal, Subp_Typ);
-
-               if Ekind (Subp) = E_Function
-                 and then Present (Extra_Accessibility_Of_Result (Subp))
-                 and then Extra_Accessibility_Of_Result (Subp) = Old_Formal
-               then
-                  Set_Extra_Accessibility_Of_Result (Subp_Typ, New_Formal);
-               end if;
-
-               Old_Formal := Extra_Formal (Old_Formal);
-            end loop;
+         else
+            pragma Assert (Is_Deferred_Extra_Formals_Entity (Subp));
+            Register_Deferred_Extra_Formals_Entity (Subp_Typ);
+            Register_Deferred_Extra_Formals_Call (Call_Node, Current_Scope);
          end if;
       end;
 
@@ -1235,6 +1209,8 @@ package body Exp_Disp is
       --  the generation of spurious warnings under ZFP run-time.
 
       Analyze_And_Resolve (Call_Node, Call_Typ, Suppress => All_Checks);
+
+      Set_Is_Expanded_Dispatching_Call (Call_Node);
    end Expand_Dispatching_Call;
 
    ---------------------------------
@@ -1525,10 +1501,8 @@ package body Exp_Disp is
                 Defining_Identifier => Make_Temporary (Loc, 'T'),
                 Type_Definition =>
                   Make_Access_To_Object_Definition (Loc,
-                    All_Present            => True,
-                    Null_Exclusion_Present => False,
-                    Constant_Present       => False,
-                    Subtype_Indication     =>
+                    All_Present        => True,
+                    Subtype_Indication =>
                       New_Occurrence_Of (Desig_Typ, Loc)));
 
             Stats := New_List (
@@ -1974,7 +1948,6 @@ package body Exp_Disp is
                   Make_Access_To_Object_Definition (Loc,
                     All_Present            => True,
                     Null_Exclusion_Present => False,
-                    Constant_Present       => False,
                     Subtype_Indication     =>
                       New_Occurrence_Of (Ftyp, Loc)));
 
@@ -2378,17 +2351,6 @@ package body Exp_Disp is
       return not Is_Interface (Typ)
         and then not Restriction_Active (No_Dispatching_Calls);
    end Has_DT;
-
-   ----------------------------------
-   -- Is_Expanded_Dispatching_Call --
-   ----------------------------------
-
-   function Is_Expanded_Dispatching_Call (N : Node_Id) return Boolean is
-   begin
-      return Nkind (N) in N_Subprogram_Call
-        and then Nkind (Name (N)) = N_Explicit_Dereference
-        and then Is_Dispatch_Table_Entity (Etype (Name (N)));
-   end Is_Expanded_Dispatching_Call;
 
    -------------------------------------
    -- Is_Predefined_Dispatching_Alias --
@@ -4631,8 +4593,7 @@ package body Exp_Disp is
       Name_TSD          : constant Name_Id :=
                             New_External_Name (Tname, 'B', Suffix_Index => -1);
 
-      Saved_GM  : constant Ghost_Mode_Type := Ghost_Mode;
-      Saved_IGR : constant Node_Id         := Ignored_Ghost_Region;
+      Saved_Ghost_Config : constant Ghost_Config_Type := Ghost_Config;
       --  Save the Ghost-related attributes to restore on exit
 
       AI                 : Elmt_Id;
@@ -4650,7 +4611,6 @@ package body Exp_Disp is
       Name_ITable        : Name_Id;
       Nb_Prim            : Nat := 0;
       New_Node           : Node_Id;
-      Num_Ifaces         : Nat := 0;
       Parent_Typ         : Entity_Id;
       Predef_Prims       : Entity_Id;
       Prim               : Entity_Id;
@@ -4923,7 +4883,7 @@ package body Exp_Disp is
       if not Building_Static_DT (Typ) then
 
          --  Generate:
-         --    DT     : No_Dispatch_Table_Wrapper;
+         --    DT     : aliased No_Dispatch_Table_Wrapper;
          --    DT_Ptr : Tag := !Tag (DT.NDT_Prims_Ptr'Address);
 
          if not Has_DT (Typ) then
@@ -4931,7 +4891,6 @@ package body Exp_Disp is
               Make_Object_Declaration (Loc,
                 Defining_Identifier => DT,
                 Aliased_Present     => True,
-                Constant_Present    => False,
                 Object_Definition   =>
                   New_Occurrence_Of
                     (RTE (RE_No_Dispatch_Table_Wrapper), Loc)));
@@ -4974,7 +4933,7 @@ package body Exp_Disp is
             end if;
 
          --  Generate:
-         --    DT : Dispatch_Table_Wrapper (Nb_Prim);
+         --    DT : aliased Dispatch_Table_Wrapper (Nb_Prim);
          --    DT_Ptr : Tag := !Tag (DT.Prims_Ptr'Address);
 
          else
@@ -4993,7 +4952,6 @@ package body Exp_Disp is
               Make_Object_Declaration (Loc,
                 Defining_Identifier => DT,
                 Aliased_Present     => True,
-                Constant_Present    => False,
                 Object_Definition   =>
                   Make_Subtype_Indication (Loc,
                     Subtype_Mark =>
@@ -5494,23 +5452,18 @@ package body Exp_Disp is
 
          Collect_Interfaces (Typ, Typ_Ifaces);
 
-         AI := First_Elmt (Typ_Ifaces);
-         while Present (AI) loop
-            Num_Ifaces := Num_Ifaces + 1;
-            Next_Elmt (AI);
-         end loop;
-
-         if Num_Ifaces = 0 then
+         if Is_Empty_Elmt_List (Typ_Ifaces) then
             Iface_Table_Node := Make_Null (Loc);
 
          --  Generate the Interface_Table object
 
          else
             declare
-               TSD_Ifaces_List  : constant List_Id := New_List;
-               Elmt             : Elmt_Id;
-               Offset_To_Top    : Node_Id;
-               Sec_DT_Tag       : Node_Id;
+               Num_Ifaces      : constant Pos := List_Length (Typ_Ifaces);
+               TSD_Ifaces_List : constant List_Id := New_List;
+               Elmt            : Elmt_Id;
+               Offset_To_Top   : Node_Id;
+               Sec_DT_Tag      : Node_Id;
 
                Dummy_Object_Ifaces_List      : Elist_Id := No_Elist;
                Dummy_Object_Ifaces_Comp_List : Elist_Id := No_Elist;
@@ -6103,7 +6056,7 @@ package body Exp_Disp is
                     --  Skip ignored Ghost subprograms as those will be removed
                     --  from the executable.
 
-                    and then not Is_Ignored_Ghost_Entity (E)
+                    and then not Is_Ignored_Ghost_Entity_In_Codegen (E)
                   then
                      pragma Assert
                        (UI_To_Int (DT_Position (Prim)) <= Nb_Prim);
@@ -6572,7 +6525,7 @@ package body Exp_Disp is
       Register_CG_Node (Typ);
 
    <<Leave>>
-      Restore_Ghost_Region (Saved_GM, Saved_IGR);
+      Restore_Ghost_Region (Saved_Ghost_Config);
 
       return Result;
    end Make_DT;
@@ -8354,13 +8307,15 @@ package body Exp_Disp is
                         Defining_Unit_Name       => IP,
                         Parameter_Specifications => Parms)));
 
-               Set_Init_Proc (Typ, IP);
-               Set_Is_Imported    (IP);
-               Set_Is_Constructor (IP);
-               Set_Interface_Name (IP, Interface_Name (E));
-               Set_Convention     (IP, Convention_CPP);
-               Set_Is_Public      (IP);
-               Set_Has_Completion (IP);
+               Set_Init_Proc   (Typ, IP);
+               Set_Is_Imported      (IP);
+               Set_Is_Constructor   (IP);
+               Set_Interface_Name   (IP, Interface_Name (E));
+               Set_Convention       (IP, Convention_CPP);
+               Set_Is_Public        (IP);
+               Set_Has_Completion   (IP);
+               Mutate_Ekind         (IP, E_Procedure);
+               Freeze_Extra_Formals (IP);
 
             --  Case 2: Constructor of a tagged type
 
@@ -8493,6 +8448,8 @@ package body Exp_Disp is
 
                   Discard_Node (IP_Body);
                   Set_Init_Proc (Typ, IP);
+                  Mutate_Ekind (IP, E_Procedure);
+                  Freeze_Extra_Formals (IP);
                end;
             end if;
 
@@ -8558,6 +8515,8 @@ package body Exp_Disp is
 
             Discard_Node (IP_Body);
             Set_Init_Proc (Typ, IP);
+            Mutate_Ekind (IP, E_Procedure);
+            Freeze_Extra_Formals (IP);
          end;
       end if;
 
@@ -8685,9 +8644,10 @@ package body Exp_Disp is
 
    begin
       --  Protect this procedure against wrong usage. Required because it will
-      --  be used directly from GDB
+      --  be used directly from GDB.
 
-      if not (Typ <= Last_Node_Id)
+      if Typ not in First_Node_Id .. Last_Node_Id
+        or else Nkind (Typ) not in N_Entity
         or else not Is_Tagged_Type (Typ)
       then
          Write_Str ("wrong usage: Write_DT must be used with tagged types");

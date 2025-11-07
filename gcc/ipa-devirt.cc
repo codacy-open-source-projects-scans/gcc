@@ -1,6 +1,6 @@
 /* Basic IPA utilities for type inheritance graph construction and
    devirtualization.
-   Copyright (C) 2013-2024 Free Software Foundation, Inc.
+   Copyright (C) 2013-2025 Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
 This file is part of GCC.
@@ -1259,11 +1259,19 @@ odr_types_equivalent_p (tree t1, tree t2, bool warn, bool *warned,
       || TREE_CODE (t1) == OFFSET_TYPE
       || POINTER_TYPE_P (t1))
     {
-      if (TYPE_PRECISION (t1) != TYPE_PRECISION (t2))
+      if (!VECTOR_TYPE_P (t1) && TYPE_PRECISION (t1) != TYPE_PRECISION (t2))
 	{
 	  warn_odr (t1, t2, NULL, NULL, warn, warned,
 		    G_("a type with different precision is defined "
 		       "in another translation unit"));
+	  return false;
+	}
+      if (VECTOR_TYPE_P (t1)
+	  && maybe_ne (TYPE_VECTOR_SUBPARTS (t1), TYPE_VECTOR_SUBPARTS (t2)))
+	{
+	  warn_odr (t1, t2, NULL, NULL, warn, warned,
+		    G_("a vector type with different number of elements "
+		       "is defined in another translation unit"));
 	  return false;
 	}
       if (TYPE_UNSIGNED (t1) != TYPE_UNSIGNED (t2))
@@ -1755,7 +1763,7 @@ add_type_duplicate (odr_type val, tree type)
 	      }
 	    /* One base is polymorphic and the other not.
 	       This ought to be diagnosed earlier, but do not ICE in the
-	       checking bellow.  */
+	       checking below.  */
 	    else if (TYPE_BINFO (type1)
 		     && polymorphic_type_binfo_p (TYPE_BINFO (type1))
 		        != polymorphic_type_binfo_p (TYPE_BINFO (type2)))
@@ -1793,7 +1801,7 @@ add_type_duplicate (odr_type val, tree type)
      before we can pass them to odr_types_equivalent_p (PR lto/83121).  */
   if (lto_location_cache::current_cache)
     lto_location_cache::current_cache->apply_location_cache ();
-  /* As a special case we stream mangles names of integer types so we can see
+  /* As a special case we stream mangled names of integer types so we can see
      if they are believed to be same even though they have different
      representation.  Avoid bogus warning on mismatches in these.  */
   if (TREE_CODE (type) != INTEGER_TYPE
@@ -3686,7 +3694,6 @@ ipa_devirt (void)
       for (e = n->indirect_calls; e; e = e->next_callee)
 	if (e->indirect_info->polymorphic)
 	  {
-	    struct cgraph_node *likely_target = NULL;
 	    void *cache_token;
 	    bool final;
 
@@ -3757,20 +3764,22 @@ ipa_devirt (void)
 		nmultiple++;
 		continue;
 	      }
+	    auto_vec <cgraph_node *, 20> likely_targets;
 	    for (i = 0; i < targets.length (); i++)
 	      if (likely_target_p (targets[i]))
 		{
-		  if (likely_target)
+		  if ((int)likely_targets.length () >= param_max_devirt_targets)
 		    {
-		      likely_target = NULL;
+		      likely_targets.truncate (0);
 		      if (dump_file)
-			fprintf (dump_file, "More than one likely target\n\n");
+			fprintf (dump_file, "More than %i likely targets\n\n",
+				 param_max_devirt_targets);
 		      nmultiple++;
 		      break;
 		    }
-		  likely_target = targets[i];
+		  likely_targets.safe_push (targets[i]);
 		}
-	    if (!likely_target)
+	    if (!likely_targets.length ())
 	      {
 		bad_call_targets.add (cache_token);
 	        continue;
@@ -3779,7 +3788,13 @@ ipa_devirt (void)
  	       with the speculation.  */
 	    if (e->speculative)
 	      {
-		bool found = e->speculative_call_for_target (likely_target);
+		bool found = false;
+		for (cgraph_node * likely_target: likely_targets)
+		  if (e->speculative_call_for_target (likely_target))
+		    {
+		      found = true;
+		      break;
+		    }
 		if (found)
 		  {
 		    fprintf (dump_file, "We agree with speculation\n\n");
@@ -3792,63 +3807,79 @@ ipa_devirt (void)
 		  }
 		continue;
 	      }
-	    if (!likely_target->definition)
+	    bool first = true;
+	    unsigned speculative_id = 0;
+	    for (cgraph_node * likely_target: likely_targets)
 	      {
-		if (dump_file)
-		  fprintf (dump_file, "Target is not a definition\n\n");
-		nnotdefined++;
-		continue;
-	      }
-	    /* Do not introduce new references to external symbols.  While we
-	       can handle these just well, it is common for programs to
-	       incorrectly with headers defining methods they are linked
-	       with.  */
-	    if (DECL_EXTERNAL (likely_target->decl))
-	      {
-		if (dump_file)
-		  fprintf (dump_file, "Target is external\n\n");
-		nexternal++;
-		continue;
-	      }
-	    /* Don't use an implicitly-declared destructor (c++/58678).  */
-	    struct cgraph_node *non_thunk_target
-	      = likely_target->function_symbol ();
-	    if (DECL_ARTIFICIAL (non_thunk_target->decl))
-	      {
-		if (dump_file)
-		  fprintf (dump_file, "Target is artificial\n\n");
-		nartificial++;
-		continue;
-	      }
-	    if (likely_target->get_availability () <= AVAIL_INTERPOSABLE
-		&& likely_target->can_be_discarded_p ())
-	      {
-		if (dump_file)
-		  fprintf (dump_file, "Target is overwritable\n\n");
-		noverwritable++;
-		continue;
-	      }
-	    else if (dbg_cnt (devirt))
-	      {
-		if (dump_enabled_p ())
-                  {
-                    dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, e->call_stmt,
-				     "speculatively devirtualizing call "
-				     "in %s to %s\n",
-				     n->dump_name (),
-				     likely_target->dump_name ());
-                  }
-		if (!likely_target->can_be_discarded_p ())
+		if (!likely_target->definition)
 		  {
-		    cgraph_node *alias;
-		    alias = dyn_cast<cgraph_node *> (likely_target->noninterposable_alias ());
-		    if (alias)
-		      likely_target = alias;
+		    if (dump_file)
+		      fprintf (dump_file, "Target is not a definition\n\n");
+		    nnotdefined++;
+		    continue;
 		  }
-		nconverted++;
-		update = true;
-		e->make_speculative
-		  (likely_target, e->count.apply_scale (8, 10));
+		/* Do not introduce new references to external symbols.  While we
+		   can handle these just well, it is common for programs to
+		   incorrectly with headers defining methods they are linked
+		   with.  */
+		if (DECL_EXTERNAL (likely_target->decl))
+		  {
+		    if (dump_file)
+		      fprintf (dump_file, "Target is external\n\n");
+		    nexternal++;
+		    continue;
+		  }
+		/* Don't use an implicitly-declared destructor (c++/58678).  */
+		struct cgraph_node *non_thunk_target
+		  = likely_target->function_symbol ();
+		if (DECL_ARTIFICIAL (non_thunk_target->decl))
+		  {
+		    if (dump_file)
+		      fprintf (dump_file, "Target is artificial\n\n");
+		    nartificial++;
+		    continue;
+		  }
+		if (likely_target->get_availability () <= AVAIL_INTERPOSABLE
+		    && likely_target->can_be_discarded_p ())
+		  {
+		    if (dump_file)
+		      fprintf (dump_file, "Target is overwritable\n\n");
+		    noverwritable++;
+		    continue;
+		  }
+		else if (dbg_cnt (devirt))
+		  {
+		    if (dump_enabled_p ())
+		      {
+			dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, e->call_stmt,
+					 "speculatively devirtualizing call "
+					 "in %s to %s\n",
+					 n->dump_name (),
+					 likely_target->dump_name ());
+		      }
+		    if (!likely_target->can_be_discarded_p ())
+		      {
+			cgraph_node *alias;
+			alias = dyn_cast<cgraph_node *> (likely_target->noninterposable_alias ());
+			if (alias)
+			  likely_target = alias;
+		      }
+		    if (first)
+		      nconverted++;
+		    first = false;
+		    update = true;
+		    e->make_speculative
+		      (likely_target,
+		       e->count.apply_scale (8, 10 * likely_targets.length ()),
+		       speculative_id++);
+		  }
+	      }
+	    if (speculative_id > 1 && dump_enabled_p ())
+	      {
+		dump_printf_loc (MSG_OPTIMIZED_LOCATIONS, e->call_stmt,
+				 "devirtualized call in %s to %i targets\n",
+				 n->dump_name (),
+				 speculative_id);
 	      }
 	  }
       if (update)

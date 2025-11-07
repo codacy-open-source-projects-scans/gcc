@@ -1,5 +1,5 @@
 /* Prototypes for tm_p.h for AVR 8-bit microcontrollers.
-   Copyright (C) 2000-2024 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
    Contributed by Denis Chertykov (chertykov@gmail.com)
 
    This file is part of GCC.
@@ -69,6 +69,7 @@ extern const char *avr_out_insert_notbit (rtx_insn *, rtx*, int*);
 extern const char *avr_out_insv (rtx_insn *, rtx*, int*);
 extern const char *avr_out_extr (rtx_insn *, rtx*, int*);
 extern const char *avr_out_extr_not (rtx_insn *, rtx*, int*);
+extern const char *avr_out_sextr (rtx_insn *, rtx*, int*);
 extern const char *avr_out_plus_set_ZN (rtx*, int*);
 extern const char *avr_out_plus_set_N (rtx*, int*);
 extern const char *avr_out_op8_set_ZN (rtx_code, rtx*, int*);
@@ -102,6 +103,8 @@ extern void avr_expand_prologue (void);
 extern void avr_expand_epilogue (bool);
 extern bool avr_emit_cpymemhi (rtx*);
 extern void avr_emit_xior_with_shift (rtx_insn*, rtx*, int);
+extern void avr_emit_skip_pixop (rtx_code, rtx, rtx, rtx, rtx_code, rtx, int);
+extern void avr_emit_skip_clear (rtx, rtx, rtx_code, rtx, int);
 extern bool avr_epilogue_uses (int regno);
 
 extern void avr_output_addr_vec (rtx_insn*, rtx);
@@ -133,6 +136,7 @@ extern bool reg_unused_after (rtx_insn *insn, rtx reg);
 extern int avr_jump_mode (rtx x, rtx_insn *insn, int = 0);
 extern bool test_hard_reg_class (enum reg_class rclass, rtx x);
 extern bool jump_over_one_insn_p (rtx_insn *insn, rtx dest);
+extern bool avr_nonzero_bits_lsr_operands_p (rtx_code, rtx *);
 
 extern void avr_final_prescan_insn (rtx_insn *insn, rtx *operand,
 				    int num_operands);
@@ -142,7 +146,6 @@ extern void out_shift_with_cnt (const char *templ, rtx_insn *insn,
 extern enum reg_class avr_mode_code_base_reg_class (machine_mode, addr_space_t, rtx_code, rtx_code);
 extern bool avr_regno_mode_code_ok_for_base_p (int, machine_mode, addr_space_t, rtx_code, rtx_code);
 extern rtx avr_incoming_return_addr_rtx (void);
-extern rtx avr_legitimize_reload_address (rtx*, machine_mode, int, int, int, int, rtx (*)(rtx,int));
 extern bool avr_adiw_reg_p (rtx);
 extern bool avr_mem_flash_p (rtx);
 extern bool avr_mem_flashx_p (rtx);
@@ -164,6 +167,8 @@ regmask (machine_mode mode, unsigned regno)
 
 extern void avr_fix_inputs (rtx*, unsigned, unsigned);
 extern bool avr_emit3_fix_outputs (rtx (*)(rtx,rtx,rtx), rtx*, unsigned, unsigned);
+extern rtx avr_add_ccclobber (rtx_insn *);
+#define DONE_ADD_CCC emit (avr_add_ccclobber (curr_insn)); DONE;
 
 extern rtx lpm_reg_rtx;
 extern rtx lpm_addr_reg_rtx;
@@ -202,7 +207,9 @@ extern rtl_opt_pass *make_avr_pass_pre_proep (gcc::context *);
 extern rtl_opt_pass *make_avr_pass_recompute_notes (gcc::context *);
 extern rtl_opt_pass *make_avr_pass_casesi (gcc::context *);
 extern rtl_opt_pass *make_avr_pass_ifelse (gcc::context *);
+extern rtl_opt_pass *make_avr_pass_split_nzb (gcc::context *);
 extern rtl_opt_pass *make_avr_pass_split_after_peephole2 (gcc::context *);
+extern rtl_opt_pass *make_avr_pass_2moves (gcc::context *);
 #ifdef RTX_CODE
 extern bool avr_casei_sequence_check_operands (rtx *xop);
 extern bool avr_split_fake_addressing_move (rtx_insn *insn, rtx *operands);
@@ -233,7 +240,6 @@ typedef struct
   unsigned insn_addresses :1;
   unsigned legitimate_address_p :1;
   unsigned legitimize_address :1;
-  unsigned legitimize_reload_address :1;
   unsigned progmem :1;
   unsigned rtx_costs :1;
 } avr_log_t;

@@ -1,4 +1,4 @@
-/* { dg-do compile } */
+/* { dg-do compile { target { ! riscv_abi_e } } } */
 /* { dg-add-options riscv_v } */
 /* { dg-additional-options "-O3 -mrvv-max-lmul=m8" } */
 /* { dg-final { check-function-bodies "**" "" } } */
@@ -62,7 +62,7 @@ f3 (void *a, int const b)
 /* Don't vectorise if the move is too large for requested lmul.
 ** f4:
 **  li\s+a2,\d+
-**  tail\s+memset
+**  tail\s+memset(?:@plt)?
 */
 void *
 f4 (void *a, int const b)

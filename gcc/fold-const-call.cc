@@ -1,5 +1,5 @@
 /* Constant folding for calls to built-in and internal functions.
-   Copyright (C) 1988-2024 Free Software Foundation, Inc.
+   Copyright (C) 1988-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -788,6 +788,36 @@ fold_const_call_ss (real_value *result, combined_fn fn,
     CASE_CFN_TANH_FN:
       return do_mpfr_arg1 (result, mpfr_tanh, arg, format);
 
+#if MPFR_VERSION >= MPFR_VERSION_NUM(4, 2, 0)
+    CASE_CFN_ACOSPI:
+    CASE_CFN_ACOSPI_FN:
+      return (real_compare (GE_EXPR, arg, &dconstm1)
+	      && real_compare (LE_EXPR, arg, &dconst1)
+	      && do_mpfr_arg1 (result, mpfr_acospi, arg, format));
+
+    CASE_CFN_ASINPI:
+    CASE_CFN_ASINPI_FN:
+      return (real_compare (GE_EXPR, arg, &dconstm1)
+	      && real_compare (LE_EXPR, arg, &dconst1)
+	      && do_mpfr_arg1 (result, mpfr_asinpi, arg, format));
+
+    CASE_CFN_ATANPI:
+    CASE_CFN_ATANPI_FN:
+      return do_mpfr_arg1 (result, mpfr_atanpi, arg, format);
+
+    CASE_CFN_COSPI:
+    CASE_CFN_COSPI_FN:
+      return do_mpfr_arg1 (result, mpfr_cospi, arg, format);
+
+    CASE_CFN_SINPI:
+    CASE_CFN_SINPI_FN:
+      return do_mpfr_arg1 (result, mpfr_sinpi, arg, format);
+
+    CASE_CFN_TANPI:
+    CASE_CFN_TANPI_FN:
+      return do_mpfr_arg1 (result, mpfr_tanpi, arg, format);
+#endif
+
     CASE_CFN_ERF:
     CASE_CFN_ERF_FN:
       return do_mpfr_arg1 (result, mpfr_erf, arg, format);
@@ -1410,6 +1440,25 @@ fold_const_fold_left (tree type, tree arg0, tree arg1, tree_code code)
   return arg0;
 }
 
+/* Fold a call to IFN_VEC_SHL_INSERT (ARG0, ARG1), returning a value
+   of type TYPE.  */
+
+static tree
+fold_const_vec_shl_insert (tree, tree arg0, tree arg1)
+{
+  if (TREE_CODE (arg0) != VECTOR_CST)
+    return NULL_TREE;
+
+  /* vec_shl_insert ( dup(CST), CST) -> dup (CST). */
+  if (tree elem = uniform_vector_p (arg0))
+    {
+      if (operand_equal_p (elem, arg1))
+	return arg0;
+    }
+
+  return NULL_TREE;
+}
+
 /* Try to evaluate:
 
       *RESULT = FN (*ARG0, *ARG1)
@@ -1431,6 +1480,12 @@ fold_const_call_sss (real_value *result, combined_fn fn,
     CASE_CFN_ATAN2:
     CASE_CFN_ATAN2_FN:
       return do_mpfr_arg2 (result, mpfr_atan2, arg0, arg1, format);
+
+#if MPFR_VERSION >= MPFR_VERSION_NUM(4, 2, 0)
+    CASE_CFN_ATAN2PI:
+    CASE_CFN_ATAN2PI_FN:
+      return do_mpfr_arg2 (result, mpfr_atan2pi, arg0, arg1, format);
+#endif
 
     CASE_CFN_FDIM:
     CASE_CFN_FDIM_FN:
@@ -1806,6 +1861,9 @@ fold_const_call (combined_fn fn, tree type, tree arg0, tree arg1)
 
     case CFN_FOLD_LEFT_PLUS:
       return fold_const_fold_left (type, arg0, arg1, PLUS_EXPR);
+
+    case CFN_VEC_SHL_INSERT:
+      return fold_const_vec_shl_insert (type, arg0, arg1);
 
     case CFN_UBSAN_CHECK_ADD:
     case CFN_ADD_OVERFLOW:

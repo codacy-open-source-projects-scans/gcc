@@ -1,6 +1,6 @@
 // <utility> -*- C++ -*-
 
-// Copyright (C) 2001-2024 Free Software Foundation, Inc.
+// Copyright (C) 2001-2025 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -98,6 +98,7 @@
 #define __glibcxx_want_tuple_element_t
 #define __glibcxx_want_tuples_by_type
 #define __glibcxx_want_unreachable
+#define __glibcxx_want_observable_checkpoint
 #define __glibcxx_want_tuple_like
 #define __glibcxx_want_constrained_equality
 #include <bits/version.h>
@@ -201,7 +202,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 #ifdef __cpp_lib_to_underlying // C++ >= 23
   /// Convert an object of enumeration type to its underlying type.
   template<typename _Tp>
-    [[nodiscard]]
+    [[nodiscard, __gnu__::__always_inline__]]
     constexpr underlying_type_t<_Tp>
     to_underlying(_Tp __value) noexcept
     { return static_cast<underlying_type_t<_Tp>>(__value); }
@@ -231,6 +232,24 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 #else
     __builtin_unreachable();
 #endif
+  }
+#endif
+
+
+#ifdef __cpp_lib_observable_checkpoint // C++ >= 26
+  /// Informs the compiler that prior actions are considered observable.
+  /**
+   * This may be used to limit the extent to which optimisations based on the
+   * assumed unreachability of undefined behaviour can propagate to earlier
+   * code.
+   *
+   * @since C++26
+   */
+  [[__gnu__::__always_inline__]]
+  inline void
+  observable_checkpoint() noexcept
+  {
+    return __builtin_observable_checkpoint();
   }
 #endif
 

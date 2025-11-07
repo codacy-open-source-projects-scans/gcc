@@ -1,5 +1,5 @@
 /* Fold a constant sub-tree into a single node for C-compiler
-   Copyright (C) 1987-2024 Free Software Foundation, Inc.
+   Copyright (C) 1987-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -35,6 +35,10 @@ extern bool folding_cxx_constexpr;
 extern int native_encode_expr (const_tree, unsigned char *, int, int off = -1);
 extern int native_encode_initializer (tree, unsigned char *, int,
 				      int off = -1, unsigned char * = nullptr);
+extern int native_encode_wide_int (tree, const wide_int_ref &,
+				   unsigned char *, int, int off = -1);
+extern int native_encode_real (scalar_float_mode, const REAL_VALUE_TYPE *,
+			       unsigned char *, int, int off = -1);
 extern tree native_interpret_expr (tree, const unsigned char *, int);
 extern tree native_interpret_real (tree, const unsigned char *, int);
 extern bool can_native_interpret_type_p (tree);
@@ -149,7 +153,6 @@ extern tree build_simple_mem_ref_loc (location_t, tree);
 extern poly_offset_int mem_ref_offset (const_tree);
 extern tree build_invariant_address (tree, tree, poly_int64);
 extern tree constant_boolean_node (bool, tree);
-extern tree div_if_zero_remainder (const_tree, const_tree);
 
 extern bool tree_swap_operands_p (const_tree, const_tree);
 extern enum tree_code swap_tree_comparison (enum tree_code);
@@ -250,6 +253,9 @@ extern tree fold_build_pointer_plus_hwi_loc (location_t loc, tree ptr, HOST_WIDE
 #define fold_build_pointer_plus_hwi(p,o) \
 	fold_build_pointer_plus_hwi_loc (UNKNOWN_LOCATION, p, o)
 
+extern tree_code minmax_from_comparison (tree_code, tree,
+					 const widest_int,
+					 const widest_int);
 extern tree_code minmax_from_comparison (tree_code, tree, tree,
 					 tree, tree);
 

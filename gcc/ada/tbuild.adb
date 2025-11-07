@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -150,6 +150,21 @@ package body Tbuild is
    begin
       null;
    end Discard_Node;
+
+   --------------------------
+   -- Make_Assertion_Level --
+   --------------------------
+
+   function Make_Assertion_Level
+     (Loc : Source_Ptr; Nam : Name_Id) return Entity_Id
+   is
+      Level : constant Entity_Id := Make_Defining_Identifier (Loc, Nam);
+   begin
+      Mutate_Ekind (Level, E_Assertion_Level);
+      Set_Etype (Level, Standard_Void_Type);
+      Set_Scope (Level, Standard_Standard);
+      return Level;
+   end Make_Assertion_Level;
 
    -------------------------------------------
    -- Make_Byte_Aligned_Attribute_Reference --
@@ -492,7 +507,7 @@ package body Tbuild is
    -- Make_SC --
    -------------
 
-   function  Make_SC (Pre, Sel : Node_Id) return Node_Id is
+   function Make_SC (Pre, Sel : Node_Id) return Node_Id is
    begin
       return
         Make_Selected_Component (System_Location,

@@ -1,6 +1,6 @@
 (* M2Options.mod initializes the user options.
 
-Copyright (C) 2001-2024 Free Software Foundation, Inc.
+Copyright (C) 2001-2025 Free Software Foundation, Inc.
 Contributed by Gaius Mulley <gaius.mulley@southwales.ac.uk>.
 
 This file is part of GNU Modula-2.
@@ -85,6 +85,7 @@ VAR
    DumpDecl,         (* -fm2-dump=decl.  *)
    DumpGimple,       (* -fm2-dump=gimple.  *)
    DumpQuad,         (* -fq, -fm2-dump=quad dump quadruples.  *)
+   WidesetFlag,      (* -fwideset.  *)
    MFlag,
    MMFlag,
    MPFlag,
@@ -95,6 +96,7 @@ VAR
    UselistFlag,
    CC1Quiet,
    SeenSources          : BOOLEAN ;
+   OffTBits             : CARDINAL ;
    ForcedLocationValue  : location_t ;
 
 
@@ -653,6 +655,26 @@ PROCEDURE SetStrictTypeChecking (value: BOOLEAN) ;
 BEGIN
    StrictTypeChecking := value
 END SetStrictTypeChecking ;
+
+
+(*
+   SetStrictTypeAssignment - assigns the StrictTypeAssignment flag to value.
+*)
+
+PROCEDURE SetStrictTypeAssignment (value: BOOLEAN) ;
+BEGIN
+   StrictTypeAssignment := value
+END SetStrictTypeAssignment ;
+
+
+(*
+   SetStrictTypeReason - assigns the StrictTypeReason flag to value.
+*)
+
+PROCEDURE SetStrictTypeReason (value: BOOLEAN) ;
+BEGIN
+   StrictTypeReason := value
+END SetStrictTypeReason ;
 
 
 (*
@@ -1305,12 +1327,14 @@ BEGIN
       Optimizing := TRUE ;
       OptimizeBasicBlock := TRUE ;
       OptimizeUncalledProcedures := TRUE ;
-      OptimizeCommonSubExpressions := TRUE
+      OptimizeCommonSubExpressions := TRUE ;
+      OptimizeSets := TRUE
    ELSE
       Optimizing := FALSE ;
       OptimizeBasicBlock := FALSE ;
       OptimizeUncalledProcedures := FALSE ;
-      OptimizeCommonSubExpressions := FALSE
+      OptimizeCommonSubExpressions := FALSE ;
+      OptimizeSets := FALSE
    END
 END SetOptimizing ;
 
@@ -2029,6 +2053,70 @@ BEGIN
 END SetEnableForward ;
 
 
+(*
+   SetFileOffsetBits - create SYSTEM.COFF_T as a signed integer of size bits.
+*)
+
+PROCEDURE SetFileOffsetBits (value: BOOLEAN; bits: CARDINAL) : BOOLEAN ;
+BEGIN
+   IF value
+   THEN
+      OffTBits := bits
+   END ;
+   RETURN TRUE
+END SetFileOffsetBits ;
+
+
+(*
+   GetFileOffsetBits - return the number of bits used to create SYSTEM.COFF_T.
+*)
+
+PROCEDURE GetFileOffsetBits () : CARDINAL ;
+BEGIN
+   RETURN OffTBits
+END GetFileOffsetBits ;
+
+
+(*
+   SetMemReport - set MemReport to value.
+*)
+
+PROCEDURE SetMemReport (value: BOOLEAN) ;
+BEGIN
+   MemReport := value
+END SetMemReport ;
+
+
+(*
+   SetTimeReport - set TimeReport to value.
+*)
+
+PROCEDURE SetTimeReport (value: BOOLEAN) ;
+BEGIN
+   TimeReport := value
+END SetTimeReport ;
+
+
+(*
+   SetWideset - set the Wideset flag to value.
+*)
+
+PROCEDURE SetWideset (value: BOOLEAN) ;
+BEGIN
+   WidesetFlag := value
+END SetWideset ;
+
+
+(*
+   GetWideset - return the Wideset flag value.
+*)
+
+PROCEDURE GetWideset () : BOOLEAN ;
+BEGIN
+   RETURN WidesetFlag
+END GetWideset ;
+
+
 BEGIN
    cflag                             := FALSE ;  (* -c.  *)
    RuntimeModuleOverride             := InitString (DefaultRuntimeModuleOverride) ;
@@ -2054,6 +2142,7 @@ BEGIN
    OptimizeBasicBlock                := FALSE ;
    OptimizeUncalledProcedures        := FALSE ;
    OptimizeCommonSubExpressions      := FALSE ;
+   OptimizeSets                      := FALSE ;
    NilChecking                       := FALSE ;
    WholeDivChecking                  := FALSE ;
    WholeValueChecking                := FALSE ;
@@ -2086,6 +2175,8 @@ BEGIN
    UnusedVariableChecking            := FALSE ;
    UnusedParameterChecking           := FALSE ;
    StrictTypeChecking                := TRUE ;
+   StrictTypeAssignment              := TRUE ;
+   StrictTypeReason                  := TRUE ;
    AutoInit                          := FALSE ;
    SaveTemps                         := FALSE ;
    ScaffoldDynamic                   := TRUE ;
@@ -2121,5 +2212,9 @@ BEGIN
    DumpGimple                        := FALSE ;
    M2Dump                            := NIL ;
    M2DumpFilter                      := NIL ;
-   EnableForward                     := TRUE
+   TimeReport                        := FALSE ;
+   MemReport                         := FALSE ;
+   EnableForward                     := TRUE ;
+   OffTBits                          := 0 ;  (* Default to CSSIZE_T.  *)
+   WidesetFlag                       := TRUE ;
 END M2Options.

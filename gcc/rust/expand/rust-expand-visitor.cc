@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2024 Free Software Foundation, Inc.
+// Copyright (C) 2020-2025 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -17,6 +17,8 @@
 // <http://www.gnu.org/licenses/>.
 
 #include "rust-expand-visitor.h"
+#include "rust-ast-fragment.h"
+#include "rust-item.h"
 #include "rust-proc-macro.h"
 #include "rust-attributes.h"
 #include "rust-ast.h"
@@ -42,7 +44,7 @@ ExpandVisitor::go (AST::Crate &crate)
   visit (crate);
 }
 
-static std::unique_ptr<AST::Item>
+static std::vector<std::unique_ptr<AST::Item>>
 builtin_derive_item (AST::Item &item, const AST::Attribute &derive,
 		     BuiltinMacro to_derive)
 {
@@ -61,7 +63,7 @@ derive_item (AST::Item &item, AST::SimplePath &to_derive,
 	{
 	  switch (node.get_kind ())
 	    {
-	    case AST::SingleASTNode::ITEM:
+	    case AST::SingleASTNode::Kind::Item:
 	      result.push_back (node.take_item ());
 	      break;
 	    default:
@@ -84,7 +86,7 @@ expand_item_attribute (AST::Item &item, AST::SimplePath &name,
 	{
 	  switch (node.get_kind ())
 	    {
-	    case AST::SingleASTNode::ITEM:
+	    case AST::SingleASTNode::Kind::Item:
 	      result.push_back (node.take_item ());
 	      break;
 	    default:
@@ -113,7 +115,7 @@ expand_stmt_attribute (T &statement, AST::SimplePath &attribute,
 	{
 	  switch (node.get_kind ())
 	    {
-	    case AST::SingleASTNode::STMT:
+	    case AST::SingleASTNode::Kind::Stmt:
 	      result.push_back (node.take_stmt ());
 	      break;
 	    default:
@@ -166,10 +168,10 @@ ExpandVisitor::expand_inner_items (
 
   for (auto it = items.begin (); it != items.end (); it++)
     {
-      auto &item = *it;
-      if (item->has_outer_attrs ())
+      Rust::AST::Item &item = **it;
+      if (item.has_outer_attrs ())
 	{
-	  auto &attrs = item->get_outer_attrs ();
+	  auto &attrs = item.get_outer_attrs ();
 
 	  for (auto attr_it = attrs.begin (); attr_it != attrs.end ();
 	       /* erase => No increment*/)
@@ -188,17 +190,19 @@ ExpandVisitor::expand_inner_items (
 			to_derive.get ().as_string ());
 		      if (maybe_builtin.has_value ())
 			{
-			  auto new_item
-			    = builtin_derive_item (*item, current,
+			  auto new_items
+			    = builtin_derive_item (item, current,
 						   maybe_builtin.value ());
-			  // this inserts the derive *before* the item - is it a
-			  // problem?
-			  it = items.insert (it, std::move (new_item));
+
+			  for (auto &&new_item : new_items)
+			    it = items.insert (it, std::move (new_item));
 			}
 		      else
 			{
+			  // Macro is not a builtin, so it must be a
+			  // user-defined derive macro.
 			  auto new_items
-			    = derive_item (*item, to_derive, expander);
+			    = derive_item (item, to_derive, expander);
 			  std::move (new_items.begin (), new_items.end (),
 				     std::inserter (items, it));
 			}
@@ -214,7 +218,7 @@ ExpandVisitor::expand_inner_items (
 		    {
 		      attr_it = attrs.erase (attr_it);
 		      auto new_items
-			= expand_item_attribute (*item, current.get_path (),
+			= expand_item_attribute (item, current.get_path (),
 						 expander);
 		      it = items.erase (it);
 		      std::move (new_items.begin (), new_items.end (),
@@ -230,10 +234,7 @@ ExpandVisitor::expand_inner_items (
 	}
     }
 
-  std::function<std::unique_ptr<AST::Item> (AST::SingleASTNode)> extractor
-    = [] (AST::SingleASTNode node) { return node.take_item (); };
-
-  expand_macro_children (items, extractor);
+  expand_macro_children (items, &AST::SingleASTNode::take_item);
 
   expander.pop_context ();
 }
@@ -274,12 +275,14 @@ ExpandVisitor::expand_inner_stmts (AST::BlockExpr &expr)
 			to_derive.get ().as_string ());
 		      if (maybe_builtin.has_value ())
 			{
-			  auto new_item
+			  auto new_items
 			    = builtin_derive_item (item, current,
 						   maybe_builtin.value ());
+
 			  // this inserts the derive *before* the item - is it a
 			  // problem?
-			  it = stmts.insert (it, std::move (new_item));
+			  for (auto &&new_item : new_items)
+			    it = stmts.insert (it, std::move (new_item));
 			}
 		      else
 			{
@@ -319,10 +322,7 @@ ExpandVisitor::expand_inner_stmts (AST::BlockExpr &expr)
   if (!expr.has_tail_expr ())
     expr.normalize_tail_expr ();
 
-  std::function<std::unique_ptr<AST::Stmt> (AST::SingleASTNode)> extractor
-    = [] (AST::SingleASTNode node) { return node.take_stmt (); };
-
-  expand_macro_children (stmts, extractor);
+  expand_macro_children (stmts, &AST::SingleASTNode::take_stmt);
 
   expander.pop_context ();
 }
@@ -330,9 +330,14 @@ ExpandVisitor::expand_inner_stmts (AST::BlockExpr &expr)
 void
 ExpandVisitor::maybe_expand_expr (std::unique_ptr<AST::Expr> &expr)
 {
+  NodeId old_expect = expr->get_node_id ();
+  std::swap (macro_invoc_expect_id, old_expect);
+
   expander.push_context (MacroExpander::ContextType::EXPR);
   expr->accept_vis (*this);
   expander.pop_context ();
+
+  std::swap (macro_invoc_expect_id, old_expect);
 
   auto final_fragment = expander.take_expanded_fragment ();
   if (final_fragment.should_expand ()
@@ -343,14 +348,54 @@ ExpandVisitor::maybe_expand_expr (std::unique_ptr<AST::Expr> &expr)
 void
 ExpandVisitor::maybe_expand_type (std::unique_ptr<AST::Type> &type)
 {
-  expander.push_context (MacroExpander::ContextType::TYPE);
+  NodeId old_expect = type->get_node_id ();
+  std::swap (macro_invoc_expect_id, old_expect);
 
+  expander.push_context (MacroExpander::ContextType::TYPE);
   type->accept_vis (*this);
+  expander.pop_context ();
+
+  std::swap (macro_invoc_expect_id, old_expect);
+
   auto final_fragment = expander.take_expanded_fragment ();
   if (final_fragment.should_expand () && final_fragment.is_type_fragment ())
     type = final_fragment.take_type_fragment ();
+}
 
+// HACK: maybe we shouldn't have TypeNoBounds as a base class
+void
+ExpandVisitor::maybe_expand_type (std::unique_ptr<AST::TypeNoBounds> &type)
+{
+  NodeId old_expect = type->get_node_id ();
+  std::swap (macro_invoc_expect_id, old_expect);
+
+  expander.push_context (MacroExpander::ContextType::TYPE);
+  type->accept_vis (*this);
   expander.pop_context ();
+
+  std::swap (macro_invoc_expect_id, old_expect);
+
+  auto final_fragment = expander.take_expanded_fragment ();
+  if (final_fragment.should_expand () && final_fragment.is_type_fragment ())
+    type = std::make_unique<AST::ParenthesisedType> (
+      final_fragment.take_type_fragment (), BUILTINS_LOCATION);
+}
+
+void
+ExpandVisitor::maybe_expand_pattern (std::unique_ptr<AST::Pattern> &pattern)
+{
+  NodeId old_expect = pattern->get_node_id ();
+  std::swap (macro_invoc_expect_id, old_expect);
+
+  expander.push_context (MacroExpander::ContextType::PATTERN);
+  pattern->accept_vis (*this);
+  expander.pop_context ();
+
+  std::swap (macro_invoc_expect_id, old_expect);
+
+  auto final_fragment = expander.take_expanded_fragment ();
+  if (final_fragment.should_expand () && final_fragment.is_pattern_fragment ())
+    pattern = final_fragment.take_pattern_fragment ();
 }
 
 // FIXME: Can this be refactored into a `scoped` method? Which takes a
@@ -425,6 +470,8 @@ ExpandVisitor::expand_closure_params (std::vector<AST::ClosureParam> &params)
 {
   for (auto &param : params)
     {
+      maybe_expand_pattern (param.get_pattern_ptr ());
+
       if (param.has_type_given ())
 	maybe_expand_type (param.get_type_ptr ());
     }
@@ -466,21 +513,35 @@ ExpandVisitor::visit (AST::ConstGenericParam &)
 void
 ExpandVisitor::visit (AST::MacroInvocation &macro_invoc)
 {
+  if (macro_invoc_expect_id != macro_invoc.get_node_id ())
+    {
+      rust_internal_error_at (
+	macro_invoc.get_locus (),
+	"attempting to expand node with id %d into position with node id %d",
+	(int) macro_invoc.get_node_id (), (int) macro_invoc_expect_id);
+    }
+
   // TODO: Can we do the AST fragment replacing here? Probably not, right?
-  expander.expand_invoc (macro_invoc, macro_invoc.has_semicolon ());
+  expander.expand_invoc (macro_invoc, macro_invoc.has_semicolon ()
+					? AST::InvocKind::Semicoloned
+					: AST::InvocKind::Expr);
 }
 
 void
 ExpandVisitor::visit (AST::PathInExpression &path)
 {
-  for (auto &segment : path.get_segments ())
-    if (segment.has_generic_args ())
-      expand_generic_args (segment.get_generic_args ());
+  if (!path.is_lang_item ())
+    for (auto &segment : path.get_segments ())
+      if (segment.has_generic_args ())
+	expand_generic_args (segment.get_generic_args ());
 }
 
 void
 ExpandVisitor::visit (AST::TypePathSegmentGeneric &segment)
-{}
+{
+  if (segment.has_generic_args ())
+    expand_generic_args (segment.get_generic_args ());
+}
 
 void
 ExpandVisitor::visit (AST::TypePathSegmentFunction &segment)
@@ -533,14 +594,8 @@ ExpandVisitor::visit (AST::MetaItemLitExpr &)
 {}
 
 void
-ExpandVisitor::visit (AST::MetaItemPathLit &)
+ExpandVisitor::visit (AST::MetaItemPathExpr &)
 {}
-
-void
-ExpandVisitor::visit (AST::ErrorPropagationExpr &expr)
-{
-  visit (expr.get_propagating_expr ());
-}
 
 void
 ExpandVisitor::visit (AST::ArithmeticOrLogicalExpr &expr)
@@ -561,6 +616,13 @@ ExpandVisitor::visit (AST::LazyBooleanExpr &expr)
 {
   maybe_expand_expr (expr.get_left_expr_ptr ());
   maybe_expand_expr (expr.get_right_expr_ptr ());
+}
+
+void
+ExpandVisitor::visit (AST::TypeCastExpr &expr)
+{
+  maybe_expand_expr (expr.get_casted_expr_ptr ());
+  maybe_expand_type (expr.get_type_to_cast_to_ptr ());
 }
 
 void
@@ -597,20 +659,11 @@ ExpandVisitor::visit (AST::CallExpr &expr)
 }
 
 void
-ExpandVisitor::visit (AST::MethodCallExpr &expr)
-{
-  visit (expr.get_receiver_expr ());
-
-  for (auto &param : expr.get_params ())
-    maybe_expand_expr (param);
-}
-
-void
 ExpandVisitor::visit (AST::ClosureExprInner &expr)
 {
   expand_closure_params (expr.get_params ());
 
-  visit (expr.get_definition_expr ());
+  maybe_expand_expr (expr.get_definition_expr_ptr ());
 }
 
 void
@@ -630,7 +683,7 @@ ExpandVisitor::visit (AST::ClosureExprInnerTyped &expr)
 
   maybe_expand_type (expr.get_return_type_ptr ());
 
-  visit (expr.get_definition_block ());
+  visit (expr.get_definition_expr ());
 }
 
 void
@@ -672,22 +725,10 @@ ExpandVisitor::visit (AST::IfLetExprConseqElse &expr)
 }
 
 void
-ExpandVisitor::visit (AST::MatchExpr &expr)
+ExpandVisitor::visit (AST::TupleExpr &expr)
 {
-  visit (expr.get_scrutinee_expr ());
-
-  for (auto &match_case : expr.get_match_cases ())
-    {
-      auto &arm = match_case.get_arm ();
-
-      for (auto &pattern : arm.get_patterns ())
-	visit (pattern);
-
-      if (arm.has_match_arm_guard ())
-	maybe_expand_expr (arm.get_guard_expr_ptr ());
-
-      maybe_expand_expr (match_case.get_expr_ptr ());
-    }
+  for (auto &sub : expr.get_tuple_elems ())
+    maybe_expand_expr (sub);
 }
 
 void
@@ -711,6 +752,12 @@ ExpandVisitor::visit (AST::TypeBoundWhereClauseItem &item)
 
   for (auto &bound : item.get_type_param_bounds ())
     visit (bound);
+}
+
+void
+ExpandVisitor::visit (AST::Module &module)
+{
+  expand_inner_items (module.get_items ());
 }
 
 void
@@ -827,15 +874,6 @@ ExpandVisitor::visit (AST::StaticItem &static_item)
 }
 
 void
-ExpandVisitor::visit (AST::TraitItemConst &const_item)
-{
-  maybe_expand_type (const_item.get_type_ptr ());
-
-  if (const_item.has_expr ())
-    maybe_expand_expr (const_item.get_expr_ptr ());
-}
-
-void
 ExpandVisitor::visit (AST::Trait &trait)
 {
   for (auto &generic : trait.get_generic_params ())
@@ -849,12 +887,9 @@ ExpandVisitor::visit (AST::Trait &trait)
 
   expander.push_context (MacroExpander::ContextType::TRAIT);
 
-  std::function<std::unique_ptr<AST::AssociatedItem> (AST::SingleASTNode)>
-    extractor
-    = [] (AST::SingleASTNode node) { return node.take_trait_item (); };
-
   expand_macro_children (MacroExpander::ContextType::TRAIT,
-			 trait.get_trait_items (), extractor);
+			 trait.get_trait_items (),
+			 &AST::SingleASTNode::take_assoc_item);
 
   expander.pop_context ();
 }
@@ -877,11 +912,9 @@ ExpandVisitor::visit (AST::InherentImpl &impl)
   if (impl.has_where_clause ())
     expand_where_clause (impl.get_where_clause ());
 
-  std::function<std::unique_ptr<AST::AssociatedItem> (AST::SingleASTNode)>
-    extractor = [] (AST::SingleASTNode node) { return node.take_impl_item (); };
-
   expand_macro_children (MacroExpander::ContextType::IMPL,
-			 impl.get_impl_items (), extractor);
+			 impl.get_impl_items (),
+			 &AST::SingleASTNode::take_assoc_item);
 }
 
 void
@@ -904,12 +937,9 @@ ExpandVisitor::visit (AST::TraitImpl &impl)
   if (impl.has_where_clause ())
     expand_where_clause (impl.get_where_clause ());
 
-  std::function<std::unique_ptr<AST::AssociatedItem> (AST::SingleASTNode)>
-    extractor
-    = [] (AST::SingleASTNode node) { return node.take_trait_impl_item (); };
-
   expand_macro_children (MacroExpander::ContextType::TRAIT_IMPL,
-			 impl.get_impl_items (), extractor);
+			 impl.get_impl_items (),
+			 &AST::SingleASTNode::take_assoc_item);
 }
 
 void
@@ -926,12 +956,10 @@ void
 ExpandVisitor::visit (AST::ExternBlock &block)
 {
   visit_inner_attrs (block);
-  std::function<std::unique_ptr<AST::ExternalItem> (AST::SingleASTNode)>
-    extractor
-    = [] (AST::SingleASTNode node) { return node.take_external_item (); };
 
   expand_macro_children (MacroExpander::ContextType::EXTERN,
-			 block.get_extern_items (), extractor);
+			 block.get_extern_items (),
+			 &AST::SingleASTNode::take_external_item);
 }
 
 void
@@ -969,13 +997,70 @@ ExpandVisitor::visit (AST::StructPatternFieldIdent &field)
 void
 ExpandVisitor::visit (AST::GroupedPattern &pattern)
 {
-  visit (pattern.get_pattern_in_parens ());
+  maybe_expand_pattern (pattern.get_pattern_in_parens_ptr ());
+}
+
+void
+ExpandVisitor::visit (AST::SlicePatternItemsNoRest &items)
+{
+  for (auto &sub : items.get_patterns ())
+    maybe_expand_pattern (sub);
+}
+
+void
+ExpandVisitor::visit (AST::SlicePatternItemsHasRest &items)
+{
+  for (auto &sub : items.get_lower_patterns ())
+    maybe_expand_pattern (sub);
+  for (auto &sub : items.get_upper_patterns ())
+    maybe_expand_pattern (sub);
+}
+
+void
+ExpandVisitor::visit (AST::AltPattern &pattern)
+{
+  for (auto &alt : pattern.get_alts ())
+    maybe_expand_pattern (alt);
+}
+
+void
+ExpandVisitor::visit (AST::TupleStructItemsNoRest &tuple_items)
+{
+  for (auto &sub : tuple_items.get_patterns ())
+    maybe_expand_pattern (sub);
+}
+
+void
+ExpandVisitor::visit (AST::TupleStructItemsHasRest &tuple_items)
+{
+  for (auto &sub : tuple_items.get_lower_patterns ())
+    maybe_expand_pattern (sub);
+
+  for (auto &sub : tuple_items.get_upper_patterns ())
+    maybe_expand_pattern (sub);
+}
+
+void
+ExpandVisitor::visit (AST::TuplePatternItemsNoRest &tuple_items)
+{
+  for (auto &sub : tuple_items.get_patterns ())
+    maybe_expand_pattern (sub);
+}
+
+void
+ExpandVisitor::visit (AST::TuplePatternItemsHasRest &tuple_items)
+{
+  for (auto &sub : tuple_items.get_lower_patterns ())
+    maybe_expand_pattern (sub);
+
+  for (auto &sub : tuple_items.get_upper_patterns ())
+    maybe_expand_pattern (sub);
 }
 
 void
 ExpandVisitor::visit (AST::LetStmt &stmt)
 {
-  visit (stmt.get_pattern ());
+  maybe_expand_pattern (stmt.get_pattern_ptr ());
 
   if (stmt.has_type ())
     maybe_expand_type (stmt.get_type_ptr ());
@@ -1005,7 +1090,15 @@ ExpandVisitor::visit (AST::BareFunctionType &type)
 void
 ExpandVisitor::visit (AST::FunctionParam &param)
 {
+  maybe_expand_pattern (param.get_pattern_ptr ());
   maybe_expand_type (param.get_type_ptr ());
+}
+
+void
+ExpandVisitor::visit (AST::VariadicParam &param)
+{
+  if (param.has_pattern ())
+    maybe_expand_pattern (param.get_pattern_ptr ());
 }
 
 void

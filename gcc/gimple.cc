@@ -1,6 +1,6 @@
 /* Gimple IR support functions.
 
-   Copyright (C) 2007-2024 Free Software Foundation, Inc.
+   Copyright (C) 2007-2025 Free Software Foundation, Inc.
    Contributed by Aldy Hernandez <aldyh@redhat.com>
 
 This file is part of GCC.
@@ -1278,14 +1278,30 @@ gimple_build_omp_dispatch (gimple_seq body, tree clauses)
   return p;
 }
 
+/* Build a GIMPLE_OMP_INTEROP statement.
+
+   CLAUSES are any of the OMP interop construct's clauses.  */
+
+gimple *
+gimple_build_omp_interop (tree clauses)
+{
+  gimple *p = gimple_alloc (GIMPLE_OMP_INTEROP, 0);
+  gimple_omp_interop_set_clauses (p, clauses);
+
+  return p;
+}
+
 /* Build a GIMPLE_OMP_TARGET statement.
 
    BODY is the sequence of statements that will be executed.
    KIND is the kind of the region.
-   CLAUSES are any of the construct's clauses.  */
+   CLAUSES are any of the construct's clauses.
+   ITERATOR_LOOPS is an optional sequence containing constructed loops
+   for OpenMP iterators.  */
 
 gomp_target *
-gimple_build_omp_target (gimple_seq body, int kind, tree clauses)
+gimple_build_omp_target (gimple_seq body, int kind, tree clauses,
+			 gimple_seq iterator_loops)
 {
   gomp_target *p
     = as_a <gomp_target *> (gimple_alloc (GIMPLE_OMP_TARGET, 0));
@@ -1293,6 +1309,7 @@ gimple_build_omp_target (gimple_seq body, int kind, tree clauses)
     gimple_omp_set_body (p, body);
   gimple_omp_target_set_clauses (p, clauses);
   gimple_omp_target_set_kind (p, kind);
+  gimple_omp_target_set_iterator_loops (p, iterator_loops);
 
   return p;
 }
@@ -2205,6 +2222,11 @@ gimple_copy (gimple *stmt)
 	  gimple_omp_dispatch_set_clauses (copy, t);
 	  goto copy_omp_body;
 
+	case GIMPLE_OMP_INTEROP:
+	  t = unshare_expr (gimple_omp_interop_clauses (stmt));
+	  gimple_omp_interop_set_clauses (copy, t);
+	  break;
+
 	case GIMPLE_OMP_TARGET:
 	  {
 	    gomp_target *omp_target_stmt = as_a <gomp_target *> (stmt);
@@ -2259,6 +2281,28 @@ gimple_copy (gimple *stmt)
 	default:
 	  gcc_unreachable ();
 	}
+    }
+
+  switch (gimple_code (stmt))
+    {
+    case GIMPLE_OMP_ATOMIC_LOAD:
+      {
+	gomp_atomic_load *g = as_a <gomp_atomic_load *> (copy);
+	gimple_omp_atomic_load_set_lhs (g,
+	  unshare_expr (gimple_omp_atomic_load_lhs (g)));
+	gimple_omp_atomic_load_set_rhs (g,
+	  unshare_expr (gimple_omp_atomic_load_rhs (g)));
+	break;
+      }
+    case GIMPLE_OMP_ATOMIC_STORE:
+      {
+	gomp_atomic_store *g = as_a <gomp_atomic_store *> (copy);
+	gimple_omp_atomic_store_set_val (g,
+	  unshare_expr (gimple_omp_atomic_store_val (g)));
+	break;
+      }
+    default:
+      break;
     }
 
   /* Make copy of operands.  */
@@ -2500,7 +2544,9 @@ get_gimple_rhs_num_ops (enum tree_code code)
       || (SYM) == OBJ_TYPE_REF						    \
       || (SYM) == ADDR_EXPR						    \
       || (SYM) == WITH_SIZE_EXPR					    \
-      || (SYM) == SSA_NAME) ? GIMPLE_SINGLE_RHS				    \
+      || (SYM) == SSA_NAME						    \
+      || (SYM) == OMP_NEXT_VARIANT					    \
+      || (SYM) == OMP_TARGET_DEVICE_MATCHES) ? GIMPLE_SINGLE_RHS	    \
    : GIMPLE_INVALID_RHS),
 #define END_OF_BASE_TREE_CODES (unsigned char) GIMPLE_INVALID_RHS,
 
@@ -2896,15 +2942,7 @@ gimple_builtin_call_types_compatible_p (const gimple *stmt, tree fndecl)
 	return true;
       tree arg = gimple_call_arg (stmt, i);
       tree type = TREE_VALUE (targs);
-      if (!useless_type_conversion_p (type, TREE_TYPE (arg))
-	  /* char/short integral arguments are promoted to int
-	     by several frontends if targetm.calls.promote_prototypes
-	     is true.  Allow such promotion too.  */
-	  && !(INTEGRAL_TYPE_P (type)
-	       && TYPE_PRECISION (type) < TYPE_PRECISION (integer_type_node)
-	       && targetm.calls.promote_prototypes (TREE_TYPE (fndecl))
-	       && useless_type_conversion_p (integer_type_node,
-					     TREE_TYPE (arg))))
+      if (!useless_type_conversion_p (type, TREE_TYPE (arg)))
 	return false;
       targs = TREE_CHAIN (targs);
     }
@@ -3142,16 +3180,20 @@ infer_nonnull_range_by_dereference (gimple *stmt, tree op)
 }
 
 /* Return true if OP can be inferred to be a non-NULL after STMT
-   executes by using attributes.  If OP2 is non-NULL and nonnull_if_nonzero
-   is the only attribute implying OP being non-NULL and the corresponding
-   argument isn't non-zero INTEGER_CST, set *OP2 to the corresponding
-   argument and return true (in that case returning true doesn't mean
-   OP can be unconditionally inferred to be non-NULL, but conditionally).  */
+   executes by using attributes.  If OP2 and OP3 are non-NULL and
+   nonnull_if_nonzero is the only attribute implying OP being non-NULL
+   and the corresponding argument(s) aren't non-zero INTEGER_CST, set *OP2
+   and *OP3 to the corresponding arguments and return true (in that case
+   returning true doesn't mean OP can be unconditionally inferred to be
+   non-NULL, but conditionally).  */
 bool
-infer_nonnull_range_by_attribute (gimple *stmt, tree op, tree *op2)
+infer_nonnull_range_by_attribute (gimple *stmt, tree op, tree *op2, tree *op3)
 {
   if (op2)
-    *op2 = NULL_TREE;
+    {
+      *op2 = NULL_TREE;
+      *op3 = NULL_TREE;
+    }
 
   /* We can only assume that a pointer dereference will yield
      non-NULL if -fdelete-null-pointer-checks is enabled.  */
@@ -3208,26 +3250,33 @@ infer_nonnull_range_by_attribute (gimple *stmt, tree op, tree *op2)
 	  unsigned int idx = TREE_INT_CST_LOW (TREE_VALUE (args)) - 1;
 	  unsigned int idx2
 	    = TREE_INT_CST_LOW (TREE_VALUE (TREE_CHAIN (args))) - 1;
+	  unsigned int idx3 = idx2;
+	  if (tree chain2 = TREE_CHAIN (TREE_CHAIN (args)))
+	    idx3 = TREE_INT_CST_LOW (TREE_VALUE (chain2)) - 1;
 	  if (idx < gimple_call_num_args (stmt)
 	      && idx2 < gimple_call_num_args (stmt)
+	      && idx3 < gimple_call_num_args (stmt)
 	      && operand_equal_p (op, gimple_call_arg (stmt, idx), 0))
 	    {
 	      tree arg2 = gimple_call_arg (stmt, idx2);
-	      if (!INTEGRAL_TYPE_P (TREE_TYPE (arg2)))
+	      tree arg3 = gimple_call_arg (stmt, idx3);
+	      if (!INTEGRAL_TYPE_P (TREE_TYPE (arg2))
+		  || !INTEGRAL_TYPE_P (TREE_TYPE (arg3)))
 		return false;
-	      if (integer_nonzerop (arg2))
+	      if (integer_nonzerop (arg2) && integer_nonzerop (arg3))
 		return true;
-	      if (integer_zerop (arg2))
+	      if (integer_zerop (arg2) || integer_zerop (arg3))
 		return false;
 	      if (op2)
 		{
 		  /* This case is meant for ubsan instrumentation.
-		     The caller can check at runtime if *OP2 is
+		     The caller can check at runtime if *OP2 and *OP3 are
 		     non-zero and OP is null.  */
 		  *op2 = arg2;
+		  *op3 = arg3;
 		  return true;
 		}
-	      return tree_expr_nonzero_p (arg2);
+	      return tree_expr_nonzero_p (arg2) && tree_expr_nonzero_p (arg3);
 	    }
 	}
     }

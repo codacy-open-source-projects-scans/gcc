@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 2011-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 2011-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -42,8 +42,9 @@ package Ada.Containers.Indefinite_Holders is
    pragma Preelaborate (Indefinite_Holders);
    pragma Remote_Types (Indefinite_Holders);
 
-   type Holder is tagged private;
-   pragma Preelaborable_Initialization (Holder);
+   type Holder is tagged private
+   with
+      Preelaborable_Initialization;
 
    Empty_Holder : constant Holder;
 

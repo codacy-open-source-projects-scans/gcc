@@ -1,5 +1,5 @@
 ;; Machine Description for LoongArch for GNU compiler.
-;; Copyright (C) 2021-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2021-2025 Free Software Foundation, Inc.
 ;; Contributed by Loongson Ltd.
 ;; Based on MIPS target for GNU compiler.
 
@@ -187,7 +187,7 @@
 
 ;; Main data type used by the insn
 (define_attr "mode" "unknown,none,QI,HI,SI,DI,TI,SF,DF,TF,FCC,
-  V2DI,V4SI,V8HI,V16QI,V2DF,V4SF,V4DI,V8SI,V16HI,V32QI,V4DF,V8SF"
+  V1TI,V2DI,V4SI,V8HI,V16QI,V2DF,V4SF,V2TI,V4DI,V8SI,V16HI,V32QI,V4DF,V8SF"
   (const_string "unknown"))
 
 ;; True if the main data type is twice the size of a word.
@@ -374,10 +374,6 @@
 ;; from the same template.
 (define_mode_iterator GPR [SI (DI "TARGET_64BIT")])
 
-;; A copy of GPR that can be used when a pattern has two independent
-;; modes.
-(define_mode_iterator GPR2 [SI (DI "TARGET_64BIT")])
-
 ;; This mode iterator allows 16-bit and 32-bit GPR patterns and 32-bit 64-bit
 ;; FPR patterns to be generated from the same template.
 (define_mode_iterator JOIN_MODE [HI
@@ -485,7 +481,16 @@
 ;; This code iterator allows the three bitwise instructions to be generated
 ;; from the same template.
 (define_code_iterator any_bitwise [and ior xor])
+(define_code_iterator any_or [ior xor])
 (define_code_iterator neg_bitwise [and ior])
+(define_code_attr bitwise_operand [(and "and_operand")
+				   (ior "uns_arith_operand")
+				   (xor "uns_arith_operand")])
+(define_code_attr is_and [(and "true") (ior "false") (xor "false")])
+
+;; If we know the operands does not have overlapping bits, use this
+;; instead of just ior to cover more cases.
+(define_code_iterator any_or_plus [any_or plus])
 
 ;; This code iterator allows unsigned and signed division to be generated
 ;; from the same template.
@@ -513,6 +518,7 @@
 
 ;; These code iterators allow the signed and unsigned scc operations to use
 ;; the same template.
+(define_code_iterator any_ge [ge geu])
 (define_code_iterator any_gt [gt gtu])
 (define_code_iterator any_lt [lt ltu])
 (define_code_iterator any_le [le leu])
@@ -527,13 +533,15 @@
 		     (gt "") (gtu "u")
 		     (ge "") (geu "u")
 		     (lt "") (ltu "u")
-		     (le "") (leu "u")])
+		     (le "") (leu "u")
+		     (smax "") (umax "u")])
 
 ;; <U> is like <u> except uppercase.
 (define_code_attr U [(sign_extend "") (zero_extend "U")])
 
 ;; <su> is like <u>, but the signed form expands to "s" rather than "".
-(define_code_attr su [(sign_extend "s") (zero_extend "u")])
+(define_code_attr su [(sign_extend "s") (zero_extend "u")
+                      (smax "s") (umax "u")])
 
 (define_code_attr u_bool [(sign_extend "false") (zero_extend "true")])
 
@@ -672,14 +680,22 @@
 ;;  ....................
 ;;
 
-(define_insn "trap"
-  [(trap_if (const_int 1) (const_int 0))]
+(define_insn "*trap"
+  [(trap_if (const_int 1) (match_operand 0 "const_int_operand"))]
   ""
 {
-  return "break\t0";
+  return (const_uimm15_operand (operands[0], VOIDmode)
+	  ? "break\t%0"
+	  : "amswap.w\t$r0,$r1,$r0");
 }
   [(set_attr "type" "trap")])
 
+(define_expand "trap"
+  [(trap_if (const_int 1) (match_dup 0))]
+  ""
+{
+  operands[0] = GEN_INT (la_break_code);
+})
 
 
 ;;
@@ -1340,8 +1356,8 @@
   machine_mode lsx_mode
     = <MODE>mode == SFmode ? V4SFmode : V2DFmode;
   rtx tmp = gen_reg_rtx (lsx_mode);
-  rtx op1 = lowpart_subreg (lsx_mode, operands[1], <MODE>mode);
-  rtx op2 = lowpart_subreg (lsx_mode, operands[2], <MODE>mode);
+  rtx op1 = force_lowpart_subreg (lsx_mode, operands[1], <MODE>mode);
+  rtx op2 = force_lowpart_subreg (lsx_mode, operands[2], <MODE>mode);
   emit_insn (gen_xorsign3 (lsx_mode, tmp, op1, op2));
   emit_move_insn (operands[0],
           lowpart_subreg (<MODE>mode, tmp, lsx_mode));
@@ -1535,23 +1551,37 @@
 ;;  ....................
 ;;
 
-(define_insn "<optab><mode>3"
-  [(set (match_operand:X 0 "register_operand" "=r,r")
-	(any_bitwise:X (match_operand:X 1 "register_operand" "%r,r")
-		       (match_operand:X 2 "uns_arith_operand" "r,K")))]
+(define_insn "*<optab><mode>3"
+  [(set (match_operand:GPR 0 "register_operand" "=r,r")
+	(any_or:GPR (match_operand:GPR 1 "register_operand" "%r,r")
+		    (match_operand:GPR 2 "uns_arith_operand" "r,K")))]
   ""
   "<insn>%i2\t%0,%1,%2"
   [(set_attr "type" "logical")
    (set_attr "mode" "<MODE>")])
 
-(define_insn "*<optab>si3_internal"
-  [(set (match_operand:SI 0 "register_operand" "=r,r")
-	(any_bitwise:SI (match_operand:SI 1 "register_operand" "%r,r")
-			(match_operand:SI 2 "uns_arith_operand"    " r,K")))]
-  "TARGET_64BIT"
-  "<insn>%i2\t%0,%1,%2"
-  [(set_attr "type" "logical")
-   (set_attr "mode" "SI")])
+(define_insn "*and<mode>3"
+  [(set (match_operand:GPR 0 "register_operand" "=r,r,r,r")
+	(and:GPR (match_operand:GPR 1 "register_operand" "%r,r,r,0")
+		 (match_operand:GPR 2 "and_operand" "r,K,Yx,Yy")))]
+  ""
+  "@
+   and\t%0,%1,%2
+   andi\t%0,%1,%2
+   * operands[2] = GEN_INT (INTVAL (operands[2]) \
+			    & GET_MODE_MASK (<MODE>mode)); \
+     return \"bstrpick.<d>\t%0,%1,%M2\";
+   * operands[2] = GEN_INT (~INTVAL (operands[2]) \
+			    & GET_MODE_MASK (<MODE>mode)); \
+     return \"bstrins.<d>\t%0,%.,%M2\";"
+  [(set_attr "move_type" "logical,logical,pick_ins,pick_ins")
+   (set_attr "mode" "<MODE>")])
+
+(define_expand "<optab><mode>3"
+  [(set (match_operand:X 0 "register_operand")
+	(any_bitwise:X (match_operand:X 1 "register_operand")
+		       (match_operand:X 2 "<bitwise_operand>")))]
+  "")
 
 (define_insn "one_cmpl<mode>2"
   [(set (match_operand:X 0 "register_operand" "=r")
@@ -1569,47 +1599,13 @@
   [(set_attr "type" "logical")
    (set_attr "mode" "SI")])
 
-(define_insn "and<mode>3_extended"
-  [(set (match_operand:GPR 0 "register_operand" "=r")
-	(and:GPR (match_operand:GPR 1 "nonimmediate_operand" "r")
-		 (match_operand:GPR 2 "low_bitmask_operand" "Yx")))]
-  ""
-{
-  int len;
-
-  len = low_bitmask_len (<MODE>mode, INTVAL (operands[2]));
-  operands[2] = GEN_INT (len-1);
-  return "bstrpick.<d>\t%0,%1,%2,0";
-}
-  [(set_attr "move_type" "pick_ins")
-   (set_attr "mode" "<MODE>")])
-
-(define_insn_and_split "*bstrins_<mode>_for_mask"
-  [(set (match_operand:GPR 0 "register_operand" "=r")
-	(and:GPR (match_operand:GPR 1 "register_operand" "r")
-		 (match_operand:GPR 2 "ins_zero_bitmask_operand" "i")))]
-  ""
-  "#"
-  ""
-  [(set (match_dup 0) (match_dup 1))
-   (set (zero_extract:GPR (match_dup 0) (match_dup 2) (match_dup 3))
-	(const_int 0))]
-  {
-    unsigned HOST_WIDE_INT mask = ~UINTVAL (operands[2]);
-    int lo = ffs_hwi (mask) - 1;
-    int len = low_bitmask_len (<MODE>mode, mask >> lo);
-
-    len = MIN (len, GET_MODE_BITSIZE (<MODE>mode) - lo);
-    operands[2] = GEN_INT (len);
-    operands[3] = GEN_INT (lo);
-  })
-
 (define_insn_and_split "*bstrins_<mode>_for_ior_mask"
   [(set (match_operand:GPR 0 "register_operand" "=r")
-	(ior:GPR (and:GPR (match_operand:GPR 1 "register_operand" "r")
-			  (match_operand:GPR 2 "const_int_operand" "i"))
-		 (and:GPR (match_operand:GPR 3 "register_operand" "r")
-			  (match_operand:GPR 4 "const_int_operand" "i"))))]
+	(any_or_plus:GPR
+	  (and:GPR (match_operand:GPR 1 "register_operand" "r")
+		   (match_operand:GPR 2 "const_int_operand" "i"))
+	  (and:GPR (match_operand:GPR 3 "register_operand" "r")
+		   (match_operand:GPR 4 "const_int_operand" "i"))))]
   "loongarch_pre_reload_split ()
    && loongarch_use_bstrins_for_ior_with_mask (<MODE>mode, operands)"
   "#"
@@ -1632,14 +1628,29 @@
     operands[2] = GEN_INT (len);
     operands[4] = GEN_INT (lo);
 
-    if (lo)
-      {
-	rtx tmp = gen_reg_rtx (<MODE>mode);
-	emit_move_insn (tmp, gen_rtx_ASHIFTRT(<MODE>mode, operands[3],
-					      GEN_INT (lo)));
-	operands[3] = tmp;
-      }
+    /* Use a new pseudo register even if lo == 0 or we'll wreck havoc
+       when operands[0] is same as operands[3].  See PR 121906.  */
+    rtx tmp = gen_reg_rtx (<MODE>mode);
+    rtx val = lo ? gen_rtx_ASHIFTRT (<MODE>mode, operands[3], GEN_INT (lo))
+		 : operands[3];
+    emit_move_insn (tmp, val);
+    operands[3] = tmp;
   })
+
+(define_insn "and_load_zero_extend<mode>"
+  [(set (match_operand:X 0 "register_operand" "=r,r,r,r,r,r")
+	(and:X (match_operand:X 1 "memory_operand" "%m,m,m,k,k,k")
+	       (match_operand:X 2 "mask_operand" "Yb,Yh,Yw,Yb,Yh,Yw")))]
+  ""
+  "@
+   ld.bu\t%0,%1
+   ld.hu\t%0,%1
+   ld.wu\t%0,%1
+   ldx.bu\t%0,%1
+   ldx.hu\t%0,%1
+   ldx.wu\t%0,%1"
+  [(set_attr "move_type" "load,load,load,load,load,load")
+   (set_attr "mode" "<MODE>")])
 
 ;; We always avoid the shift operation in bstrins_<mode>_for_ior_mask
 ;; if possible, but the result may be sub-optimal when one of the masks
@@ -1674,6 +1685,24 @@
 			       operands[0]));
     DONE;
   })
+
+(define_insn_and_split "bstrins_bstrpick_for_and_imm<mode>"
+  [(set (match_operand:X 0 "register_operand" "=r")
+	(and:X (match_operand:X 1 "register_operand" "r")
+	       (match_operand:X 2 "const_int_operand" "i")))]
+  "loongarch_use_bstrins_bstrpick_for_and (operands[2], <MODE>mode)"
+  "#"
+  "&& true"
+  [(const_int 0)]
+{
+  unsigned HOST_WIDE_INT op2 = INTVAL (operands[2]);
+  int leading_zero_bit = __builtin_clzll (op2);
+  unsigned HOST_WIDE_INT mask = (~0ULL) << (64 - leading_zero_bit);
+  emit_insn (gen_extzv<mode> (operands[0], operands[1],
+			      GEN_INT (64 - leading_zero_bit), const0_rtx));
+  emit_insn (gen_and<mode>3 (operands[0], operands[0], GEN_INT (op2 | mask)));
+}
+  [(set_attr "length" "8")])
 
 (define_insn "*iorhi3"
   [(set (match_operand:HI 0 "register_operand" "=r,r")
@@ -1745,21 +1774,23 @@
 
 ;; This attribute used for get connection of scalar mode and corresponding
 ;; vector mode.
-(define_mode_attr cntmap [(SI "v4si") (DI "v2di")])
+(define_mode_attr cntmap [(SI "V4SI") (DI "V2DI")])
 
-(define_expand "popcount<mode>2"
-  [(set (match_operand:GPR 0 "register_operand")
-	(popcount:GPR (match_operand:GPR 1 "register_operand")))]
+(define_insn_and_split "popcount<mode>2"
+  [(set (match_operand:GPR 0 "register_operand" "=f")
+	(popcount:GPR (match_operand:GPR 1 "register_operand" "f")))]
   "ISA_HAS_LSX"
+  "#"
+  ;; Do the split very lately to work around init-regs unneeded zero-
+  ;; initialization from init-regs.  See PR61810 and all the referenced
+  ;; issues.
+  "&& reload_completed"
+  [(set (match_operand:<cntmap> 0 "register_operand" "=f")
+	(popcount:<cntmap>
+	  (match_operand:<cntmap> 1 "register_operand" "f")))]
 {
-  rtx in = operands[1];
-  rtx out = operands[0];
-  rtx vreg = <MODE>mode == SImode ? gen_reg_rtx (V4SImode) :
-				    gen_reg_rtx (V2DImode);
-  emit_insn (gen_lsx_vinsgr2vr_<size> (vreg, in, vreg, GEN_INT (1)));
-  emit_insn (gen_popcount<cntmap>2 (vreg, vreg));
-  emit_insn (gen_lsx_vpickve2gr_<size> (out, vreg, GEN_INT (0)));
-  DONE;
+  operands[0] = gen_rtx_REG (<cntmap>mode, REGNO (operands[0]));
+  operands[1] = gen_rtx_REG (<cntmap>mode, REGNO (operands[1]));
 })
 
 ;;
@@ -2207,7 +2238,7 @@
   "!TARGET_64BIT
    && (register_operand (operands[0], DImode)
        || reg_or_0_operand (operands[1], DImode))"
-  { return loongarch_output_move (operands[0], operands[1]); }
+  { return loongarch_output_move (operands); }
   "CONST_INT_P (operands[1]) && REG_P (operands[0]) && GP_REG_P (REGNO
   (operands[0]))"
   [(const_int 0)]
@@ -2226,7 +2257,9 @@
   "TARGET_64BIT
    && (register_operand (operands[0], DImode)
        || reg_or_0_operand (operands[1], DImode))"
-  { return loongarch_output_move (operands[0], operands[1]); }
+  {
+    return loongarch_output_move (operands);
+  }
   "CONST_INT_P (operands[1]) && REG_P (operands[0]) && GP_REG_P (REGNO
   (operands[0]))"
   [(const_int 0)]
@@ -2309,11 +2342,11 @@
 })
 
 (define_insn_and_split "*movsi_internal"
-  [(set (match_operand:SI 0 "nonimmediate_operand" "=r,r,r,w,*f,f,*r,*m")
-	(match_operand:SI 1 "move_operand" "r,Yd,w,rJ,*r*J,m,*f,*f"))]
+  [(set (match_operand:SI 0 "nonimmediate_operand" "=r,r,r,w,f,f,r,*m")
+	(match_operand:SI 1 "move_operand" "r,Yd,w,rJ,rJ,m,f,*f"))]
   "(register_operand (operands[0], SImode)
     || reg_or_0_operand (operands[1], SImode))"
-  { return loongarch_output_move (operands[0], operands[1]); }
+  { return loongarch_output_move (operands); }
   "CONST_INT_P (operands[1]) && REG_P (operands[0]) && GP_REG_P (REGNO
   (operands[0]))"
   [(const_int 0)]
@@ -2347,7 +2380,7 @@
 	(match_operand:HI 1 "move_operand" "r,Yd,I,m,rJ,k,rJ"))]
   "(register_operand (operands[0], HImode)
        || reg_or_0_operand (operands[1], HImode))"
-  { return loongarch_output_move (operands[0], operands[1]); }
+  { return loongarch_output_move (operands); }
   "CONST_INT_P (operands[1]) && REG_P (operands[0]) && GP_REG_P (REGNO
   (operands[0]))"
   [(const_int 0)]
@@ -2381,7 +2414,7 @@
 	(match_operand:QI 1 "move_operand" "r,I,m,rJ,k,rJ"))]
   "(register_operand (operands[0], QImode)
        || reg_or_0_operand (operands[1], QImode))"
-  { return loongarch_output_move (operands[0], operands[1]); }
+  { return loongarch_output_move (operands); }
   [(set_attr "move_type" "move,const,load,store,load,store")
    (set_attr "mode" "QI")])
 
@@ -2402,7 +2435,7 @@
   "TARGET_HARD_FLOAT
    && (register_operand (operands[0], SFmode)
        || reg_or_0_operand (operands[1], SFmode))"
-  { return loongarch_output_move (operands[0], operands[1]); }
+  { return loongarch_output_move (operands); }
   [(set_attr "move_type" "fmove,mgtf,fpload,fpstore,fpload,fpstore,store,store,mgtf,mftg,move,load,store")
    (set_attr "mode" "SF")])
 
@@ -2412,7 +2445,7 @@
   "TARGET_SOFT_FLOAT
    && (register_operand (operands[0], SFmode)
        || reg_or_0_operand (operands[1], SFmode))"
-  { return loongarch_output_move (operands[0], operands[1]); }
+  { return loongarch_output_move (operands); }
   [(set_attr "move_type" "move,load,store")
    (set_attr "mode" "SF")])
 
@@ -2433,7 +2466,7 @@
   "TARGET_DOUBLE_FLOAT
    && (register_operand (operands[0], DFmode)
        || reg_or_0_operand (operands[1], DFmode))"
-  { return loongarch_output_move (operands[0], operands[1]); }
+  { return loongarch_output_move (operands); }
   [(set_attr "move_type" "fmove,mgtf,fpload,fpstore,fpload,fpstore,store,store,mgtf,mftg,move,load,store")
    (set_attr "mode" "DF")])
 
@@ -2444,7 +2477,7 @@
    && TARGET_64BIT
    && (register_operand (operands[0], DFmode)
        || reg_or_0_operand (operands[1], DFmode))"
-  { return loongarch_output_move (operands[0], operands[1]); }
+  { return loongarch_output_move (operands); }
   [(set_attr "move_type" "move,load,store")
    (set_attr "mode" "DF")])
 
@@ -2519,11 +2552,11 @@
 
 ;; Conditional move instructions.
 
-(define_insn "*sel<code><GPR:mode>_using_<GPR2:mode>"
+(define_insn "*sel<code><GPR:mode>_using_<X:mode>"
   [(set (match_operand:GPR 0 "register_operand" "=r,r")
 	(if_then_else:GPR
-	 (equality_op:GPR2 (match_operand:GPR2 1 "register_operand" "r,r")
-			   (const_int 0))
+	 (equality_op:X (match_operand:X 1 "register_operand" "r,r")
+			(const_int 0))
 	 (match_operand:GPR 2 "reg_or_0_operand" "r,J")
 	 (match_operand:GPR 3 "reg_or_0_operand" "J,r")))]
   "register_operand (operands[2], <GPR:MODE>mode)
@@ -2533,6 +2566,38 @@
    <selinv>\t%0,%3,%1"
   [(set_attr "type" "condmove")
    (set_attr "mode" "<GPR:MODE>")])
+
+(define_insn_and_split "both_non_zero"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+	(and:DI (ne:DI (match_operand:DI 1 "register_operand" "r")
+		       (const_int 0))
+		(ne:DI (match_operand:DI 2 "register_operand" "r")
+		       (const_int 0))))]
+  "TARGET_64BIT"
+  "#"
+  "&& true"
+  [(set (match_dup 0)
+	(ne:DI (match_dup 1) (const_int 0)))
+   (set (match_dup 0)
+	(if_then_else:DI (ne:DI (match_dup 2) (const_int 0))
+			 (match_dup 0)
+			 (const_int 0)))])
+
+(define_insn_and_split "both_non_zero_subreg"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+	(and:DI (subreg:DI (ne:SI (match_operand:DI 1 "register_operand" "r")
+				  (const_int 0)) 0)
+		(subreg:DI (ne:SI (match_operand:DI 2 "register_operand" "r")
+				  (const_int 0)) 0)))]
+  "TARGET_64BIT"
+  "#"
+  "&& true"
+  [(set (match_dup 0)
+	(ne:DI (match_dup 1) (const_int 0)))
+   (set (match_dup 0)
+	(if_then_else:DI (ne:DI (match_dup 2) (const_int 0))
+			 (match_dup 0)
+			 (const_int 0)))])
 
 ;; fsel copies the 3rd argument when the 1st is non-zero and the 2nd
 ;; argument if the 1st is zero.  This means operand 2 and 3 are
@@ -2587,7 +2652,10 @@
 	    (subreg:SI (match_operand:DI 1 "register_operand" "0") 0))
 	  (match_operand:DI 2 "const_lu32i_operand" "u")))]
   "TARGET_64BIT"
-  "lu32i.d\t%0,%X2>>32"
+  {
+    operands[2] = GEN_INT (INTVAL (operands[2]) >> 32);
+    return "lu32i.d\t%0,%X2";
+  }
   [(set_attr "type" "arith")
    (set_attr "mode" "DI")])
 
@@ -2598,7 +2666,10 @@
 		  (match_operand 2 "lu52i_mask_operand"))
 	  (match_operand 3 "const_lu52i_operand" "v")))]
   "TARGET_64BIT"
-  "lu52i.d\t%0,%1,%X3>>52"
+  {
+    operands[3] = GEN_INT (INTVAL (operands[3]) >> 52);
+    return "lu52i.d\t%0,%1,%X3";
+  }
   [(set_attr "type" "arith")
    (set_attr "mode" "DI")])
 
@@ -3046,6 +3117,16 @@
   [(set_attr "type" "shift")
    (set_attr "mode" "SI")])
 
+(define_insn "sign_extend_ashift<GPR:mode><SHORT:mode>"
+  [(set (match_operand:GPR 0 "register_operand" "=r")
+	(ashift:GPR
+	   (sign_extend:GPR (match_operand:SHORT 1 "register_operand" "r"))
+	   (match_operand:SI 2 "const_uimm5_operand")))]
+  "(GET_MODE_BITSIZE (<SHORT:MODE>mode) + INTVAL (operands[2])) == 32"
+  "slli.w\t%0,%1,%2"
+  [(set_attr "type" "shift")
+   (set_attr "mode" "<GPR:MODE>")])
+
 (define_insn "*rotr<mode>3"
   [(set (match_operand:GPR 0 "register_operand" "=r,r")
 	(rotatert:GPR (match_operand:GPR 1 "register_operand" "r,r")
@@ -3090,38 +3171,6 @@
       }
   });
 
-;; The following templates were added to generate "bstrpick.d + alsl.d"
-;; instruction pairs.
-;; It is required that the values of const_immalsl_operand and
-;; immediate_operand must have the following correspondence:
-;;
-;; (immediate_operand >> const_immalsl_operand) == 0xffffffff
-
-(define_insn "zero_extend_ashift"
-  [(set (match_operand:DI 0 "register_operand" "=r")
-	(and:DI (ashift:DI (match_operand:DI 1 "register_operand" "r")
-			   (match_operand 2 "const_immalsl_operand" ""))
-		(match_operand 3 "immediate_operand" "")))]
-  "TARGET_64BIT
-   && ((INTVAL (operands[3]) >> INTVAL (operands[2])) == 0xffffffff)"
-  "bstrpick.d\t%0,%1,31,0\n\talsl.d\t%0,%0,$r0,%2"
-  [(set_attr "type" "arith")
-   (set_attr "mode" "DI")
-   (set_attr "insn_count" "2")])
-
-(define_insn "bstrpick_alsl_paired"
-  [(set (match_operand:DI 0 "register_operand" "=&r")
-	(plus:DI (match_operand:DI 1 "register_operand" "r")
-		 (and:DI (ashift:DI (match_operand:DI 2 "register_operand" "r")
-				    (match_operand 3 "const_immalsl_operand" ""))
-			 (match_operand 4 "immediate_operand" ""))))]
-  "TARGET_64BIT
-   && ((INTVAL (operands[4]) >> INTVAL (operands[3])) == 0xffffffff)"
-  "bstrpick.d\t%0,%2,31,0\n\talsl.d\t%0,%0,%1,%3"
-  [(set_attr "type" "arith")
-   (set_attr "mode" "DI")
-   (set_attr "insn_count" "2")])
-
 (define_insn "alsl<mode>3"
   [(set (match_operand:GPR 0 "register_operand" "=r")
 	(plus:GPR (ashift:GPR (match_operand:GPR 1 "register_operand" "r")
@@ -3132,17 +3181,117 @@
   [(set_attr "type" "arith")
    (set_attr "mode" "<MODE>")])
 
-(define_insn "alslsi3_extend"
+(define_insn "*alslsi3_extend"
   [(set (match_operand:DI 0 "register_operand" "=r")
-	(sign_extend:DI
+	(any_extend:DI
 	  (plus:SI
 	    (ashift:SI (match_operand:SI 1 "register_operand" "r")
 		       (match_operand 2 "const_immalsl_operand" ""))
 	    (match_operand:SI 3 "register_operand" "r"))))]
-  ""
-  "alsl.w\t%0,%1,%3,%2"
+  "TARGET_64BIT"
+  "alsl.w<u>\t%0,%1,%3,%2"
   [(set_attr "type" "arith")
    (set_attr "mode" "SI")])
+
+(define_insn "*alslsi3_extend_subreg"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+	(any_extend:DI
+	  (plus:SI
+	    (subreg:SI
+	      (ashift:DI (match_operand:DI 1 "register_operand" "r")
+			 (match_operand 2 "const_immalsl_operand" ""))
+	      0)
+	    (subreg:SI (match_operand:DI 3 "register_operand" "r") 0))))]
+  "TARGET_64BIT"
+  "alsl.w<u>\t%0,%1,%3,%2"
+  [(set_attr "type" "arith")
+   (set_attr "mode" "SI")])
+
+;; The generic code prefers "(reg << shamt) [&|^] (mask << shamt)"
+;; instead of "(reg [&|^] mask) << shamt" but we want the latter if
+;; we don't need to load mask into an register, and either:
+;; - (mask << shamt) needs to be loaded into an register, or
+;; - shamt is a const_immalsl_operand, so the outer shift may be further
+;;   combined with an add.
+(define_insn_and_split "<optab>_shift_reverse<X:mode>"
+  [(set (match_operand:X 0 "register_operand" "=r")
+	(any_bitwise:X
+	  (ashift:X (match_operand:X  1 "register_operand"  "r")
+		    (match_operand:SI 2 "const_int_operand" "i"))
+	  (match_operand:X 3 "const_int_operand" "i")))]
+  "(const_immalsl_operand (operands[2], SImode)
+    || !<bitwise_operand> (operands[3], <MODE>mode))
+   && loongarch_reassoc_shift_bitwise (<is_and>, operands[2], operands[3],
+				       <MODE>mode)"
+  "#"
+  "&& true"
+  [(set (match_dup 0) (any_bitwise:X (match_dup 1) (match_dup 3)))
+   (set (match_dup 0) (ashift:X (match_dup 0) (match_dup 2)))]
+  {
+    operands[3] = loongarch_reassoc_shift_bitwise (<is_and>,
+						   operands[2],
+						   operands[3],
+						   <MODE>mode);
+
+    if (ins_zero_bitmask_operand (operands[3], <MODE>mode))
+      {
+	gcc_checking_assert (<is_and>);
+	emit_move_insn (operands[0], operands[1]);
+	operands[1] = operands[0];
+      }
+  })
+
+;; The late_combine2 pass can handle slli.d + add.d => alsl.d, so we
+;; already have slli.d + any_bitwise + add.d => any_bitwise + slli.d +
+;; add.d => any_bitwise + alsl.d.  But late_combine2 cannot handle slli.d +
+;; add.w => alsl.w, so implement slli.d + and + add.w => and + alsl.w on
+;; our own.
+(define_insn_and_split "<optab>_alsl_reversesi_extended"
+  [(set (match_operand:DI 0 "register_operand" "=&r")
+	(sign_extend:DI
+	  (plus:SI
+	    (subreg:SI
+	      (any_bitwise:DI
+		(ashift:DI
+		  (match_operand:DI 1 "register_operand" "r0")
+		  (match_operand:SI 2 "const_immalsl_operand" ""))
+		(match_operand:DI 3 "const_int_operand" "i"))
+	      0)
+	    (match_operand:SI 4 "register_operand" "r"))))]
+  "TARGET_64BIT
+   && loongarch_reassoc_shift_bitwise (<is_and>, operands[2], operands[3],
+				       SImode)"
+  "#"
+  "&& reload_completed"
+  [; r0 = r1 [&|^] r3 is emitted in PREPARATION-STATEMENTS because we
+   ; need to handle a special case, see below.
+   (set (match_dup 0)
+	(sign_extend:DI
+	  (plus:SI (ashift:SI (subreg:SI (match_dup 0) 0) (match_dup 2))
+		   (match_dup 4))))]
+  {
+    operands[3] = loongarch_reassoc_shift_bitwise (<is_and>,
+						   operands[2],
+						   operands[3],
+						   SImode);
+
+    if (ins_zero_bitmask_operand (operands[3], SImode))
+      {
+	gcc_checking_assert (<is_and>);
+	emit_move_insn (operands[0], operands[1]);
+	operands[1] = operands[0];
+      }
+
+    if (operands[3] != CONSTM1_RTX (SImode))
+      emit_insn (gen_<optab>di3 (operands[0], operands[1], operands[3]));
+    else
+      {
+	/* We can end up here with things like:
+	   x:DI = sign_extend(a:SI + ((b:DI << 2) & 0xfffffffc)#0)  */
+	gcc_checking_assert (<is_and>);
+	emit_move_insn (operands[0], operands[1]);
+      }
+  })
 
 
 
@@ -3379,6 +3528,15 @@
 		 (const_int 0)))]
   ""
   "sltu\t%0,%.,%1"
+  [(set_attr "type" "slt")
+   (set_attr "mode" "<X:MODE>")])
+
+(define_insn "*sge<u>_<X:mode><GPR:mode>"
+  [(set (match_operand:GPR           0 "register_operand" "=r")
+	(any_ge:GPR (match_operand:X 1 "register_operand" " r")
+		    (const_int 1)))]
+  ""
+  "slti<u>\t%0,zero,%1"
   [(set_attr "type" "slt")
    (set_attr "mode" "<X:MODE>")])
 
@@ -4130,17 +4288,18 @@
   [(set_attr "type" "unknown")
    (set_attr "mode" "<MODE>")])
 
-(define_int_iterator FCLASS_MASK [68 136 952])
+(define_int_iterator FCLASS_MASK [68 136 952 3])
 (define_int_attr fclass_optab
   [(68	"isinf")
    (136	"isnormal")
-   (952	"isfinite")])
+   (952	"isfinite")
+   (3	"isnan")])
 
 (define_expand "<FCLASS_MASK:fclass_optab><ANYF:mode>2"
   [(match_operand:SI   0 "register_operand" "=r")
    (match_operand:ANYF 1 "register_operand" " f")
    (const_int FCLASS_MASK)]
-  "TARGET_HARD_FLOAT"
+  "TARGET_HARD_FLOAT && (<FCLASS_MASK> != 3 || flag_signaling_nans)"
   {
     rtx ft0 = gen_reg_rtx (SImode);
     rtx t0 = gen_reg_rtx (word_mode);
@@ -4168,12 +4327,13 @@
     DONE;
   })
 
-(define_insn "bytepick_w_<bytepick_imm>"
+(define_insn "*bytepick_w_<bytepick_imm>"
   [(set (match_operand:SI 0 "register_operand" "=r")
-	(ior:SI (lshiftrt:SI (match_operand:SI 1 "register_operand" "r")
-			     (const_int <bytepick_w_lshiftrt_amount>))
-		(ashift:SI (match_operand:SI 2 "register_operand" "r")
-			   (const_int bytepick_w_ashift_amount))))]
+	(any_or_plus:SI
+	  (lshiftrt:SI (match_operand:SI 1 "register_operand" "r")
+		       (const_int <bytepick_w_lshiftrt_amount>))
+	  (ashift:SI (match_operand:SI 2 "register_operand" "r")
+		     (const_int bytepick_w_ashift_amount))))]
   ""
   "bytepick.w\t%0,%1,%2,<bytepick_imm>"
   [(set_attr "mode" "SI")])
@@ -4211,14 +4371,26 @@
   "bytepick.w\t%0,%2,%1,1"
   [(set_attr "mode" "SI")])
 
-(define_insn "bytepick_d_<bytepick_imm>"
+(define_insn "*bytepick_d_<bytepick_imm>"
   [(set (match_operand:DI 0 "register_operand" "=r")
-	(ior:DI (lshiftrt (match_operand:DI 1 "register_operand" "r")
-			  (const_int <bytepick_d_lshiftrt_amount>))
-		(ashift (match_operand:DI 2 "register_operand" "r")
-			(const_int bytepick_d_ashift_amount))))]
+	(any_or_plus:DI
+	  (lshiftrt (match_operand:DI 1 "register_operand" "r")
+		    (const_int <bytepick_d_lshiftrt_amount>))
+	  (ashift (match_operand:DI 2 "register_operand" "r")
+		  (const_int bytepick_d_ashift_amount))))]
   "TARGET_64BIT"
   "bytepick.d\t%0,%1,%2,<bytepick_imm>"
+  [(set_attr "mode" "DI")])
+
+(define_insn "*bytepick_d_<bytepick_imm>_rev"
+  [(set (match_operand:DI 0 "register_operand" "=r")
+	(any_or_plus:DI
+	  (ashift (match_operand:DI 1 "register_operand" "r")
+		  (const_int bytepick_d_ashift_amount))
+	  (lshiftrt (match_operand:DI 2 "register_operand" "r")
+		    (const_int <bytepick_d_lshiftrt_amount>))))]
+  "TARGET_64BIT"
+  "bytepick.d\t%0,%2,%1,<bytepick_imm>"
   [(set_attr "mode" "DI")])
 
 (define_insn "bitrev_4b"
@@ -4326,9 +4498,9 @@
   {
     /* The load destination does not overlap the source.  */
     gcc_assert (!reg_overlap_mentioned_p (operands[0], operands[1]));
-    output_asm_insn (loongarch_output_move (operands[0], operands[1]),
+    output_asm_insn (loongarch_output_move (operands),
 		     operands);
-    output_asm_insn (loongarch_output_move (operands[2], operands[3]),
+    output_asm_insn (loongarch_output_move (&operands[2]),
 		     &operands[2]);
     return "";
   }
@@ -4497,9 +4669,10 @@
   "&& true"
   [(set (match_dup 3) (match_dup 2))
    (set (match_dup 0)
-	(unspec:SI [(match_dup 3) (subreg:SI (match_dup 1) 0)] CRC))]
+	(unspec:SI [(match_dup 3) (match_dup 1)] CRC))]
   {
     operands[3] = gen_reg_rtx (<MODE>mode);
+    operands[1] = lowpart_subreg (SImode, operands[1], DImode);
   })
 
 ;; With normal or medium code models, if the only use of a pc-relative

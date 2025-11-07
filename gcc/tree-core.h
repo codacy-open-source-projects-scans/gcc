@@ -1,5 +1,5 @@
 /* Core data structures for the 'tree' type.
-   Copyright (C) 1989-2024 Free Software Foundation, Inc.
+   Copyright (C) 1989-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -97,6 +97,13 @@ struct die_struct;
 
 /* Nonzero if this is a function expected to end with an exception.  */
 #define ECF_XTHROW		  (1 << 16)
+
+/* Flags for various callback attribute combinations.  These constants are only
+   meant to be used for the construction of builtin functions.  They were only
+   added because Fortran uses them for attributes of builtins.  */
+
+/* callback(1, 2) */
+#define ECF_CB_1_2		  (1 << 17)
 
 /* Call argument flags.  */
 
@@ -367,6 +374,10 @@ enum omp_clause_code {
 
   /* OpenMP clause: doacross ({source,sink}:vec).  */
   OMP_CLAUSE_DOACROSS,
+
+  /* OpenMP mapper binding: record implicit mappers in scope for aggregate
+     types used within an offload region.  */
+  OMP_CLAUSE__MAPPER_BINDING_,
 
   /* Internal structure to hold OpenACC cache directive's variable-list.
      #pragma acc cache (variable-list).  */
@@ -1706,6 +1717,10 @@ struct GTY(()) tree_ssa_name {
 		"!POINTER_TYPE_P (TREE_TYPE ((tree)&%1)) : 2"))) info;
   /* Immediate uses list for this SSA_NAME.  */
   struct ssa_use_operand_t imm_uses;
+#if defined ENABLE_GIMPLE_CHECKING
+  gimple *GTY((skip(""))) active_iterated_stmt;
+  unsigned fast_iteration_depth;
+#endif
 };
 
 struct GTY(()) phi_arg_d {
@@ -2023,7 +2038,7 @@ struct GTY(()) tree_decl_non_common {
 
 /* Classify a special function declaration type.  */
 
-enum function_decl_type
+enum class function_decl_type : unsigned
 {
   NONE,
   OPERATOR_NEW,

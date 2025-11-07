@@ -1,6 +1,6 @@
 /* Report error messages, build initializers, and perform
    some front-end optimizations for C++ compiler.
-   Copyright (C) 1987-2024 Free Software Foundation, Inc.
+   Copyright (C) 1987-2025 Free Software Foundation, Inc.
    Hacked by Michael Tiemann (tiemann@cygnus.com)
 
 This file is part of GCC.
@@ -119,6 +119,11 @@ cxx_readonly_error (location_t loc, tree arg, enum lvalue_use errstring)
 			  G_("increment of read-only reference %qD"),
 			  G_("decrement of read-only reference %qD"),
 			  TREE_OPERAND (arg, 0));
+  else if (is_stub_object (arg))
+    {
+      gcc_assert (errstring == lv_assign);
+      error_at (loc, "assignment to read-only type %qT", TREE_TYPE (arg));
+    }
   else
     readonly_error (loc, arg, errstring);
 }
@@ -276,25 +281,107 @@ cxx_incomplete_type_inform (const_tree type)
   location_t loc = DECL_SOURCE_LOCATION (TYPE_MAIN_DECL (type));
   tree ptype = strip_top_quals (CONST_CAST_TREE (type));
 
+  /* When defining a template, current_class_type will be the pattern on
+     the template definition, while non-self-reference usages of this
+     template will be an instantiation; we should pull out the pattern to
+     compare against.  And for partial specs we should use the loc of the
+     partial spec rather than the primary template.  */
+  tree ttype = NULL_TREE;
+  tree tinfo = TYPE_TEMPLATE_INFO (ptype);
+  if (tinfo)
+    {
+      tree tmpl = TI_TEMPLATE (tinfo);
+      if (PRIMARY_TEMPLATE_P (tmpl) && TI_PARTIAL_INFO (tinfo))
+	{
+	  tree partial = TI_TEMPLATE (TI_PARTIAL_INFO (tinfo));
+	  loc = DECL_SOURCE_LOCATION (partial);
+	  ttype = TREE_TYPE (partial);
+	}
+      else
+	ttype = TREE_TYPE (tmpl);
+    }
+
   if (current_class_type
       && TYPE_BEING_DEFINED (current_class_type)
-      && same_type_p (ptype, current_class_type))
+      && (same_type_p (ptype, current_class_type)
+	  || (ttype && same_type_p (ttype, current_class_type))))
     inform (loc, "definition of %q#T is not complete until "
 	    "the closing brace", ptype);
-  else if (!TYPE_TEMPLATE_INFO (ptype))
-    inform (loc, "forward declaration of %q#T", ptype);
   else
-    inform (loc, "declaration of %q#T", ptype);
+    {
+      if (!tinfo)
+	inform (loc, "forward declaration of %q#T", ptype);
+      else
+	inform (loc, "declaration of %q#T", ptype);
+
+      /* If there's a similar-looking complete type attached
+	 to a different module, point at that as a suggestion.  */
+      if (modules_p () && TYPE_NAMESPACE_SCOPE_P (ptype))
+	{
+	  tree result = lookup_qualified_name (CP_TYPE_CONTEXT (ptype),
+					       TYPE_IDENTIFIER (ptype),
+					       LOOK_want::TYPE);
+	  if (TREE_CODE (result) == TREE_LIST)
+	    for (; result; result = TREE_CHAIN (result))
+	      {
+		tree cand = TREE_VALUE (result);
+
+		/* Typedefs are not likely intended to correspond.  */
+		if (is_typedef_decl (STRIP_TEMPLATE (cand))
+		    || DECL_ALIAS_TEMPLATE_P (cand))
+		  continue;
+
+		/* Only look at templates if type was a template.  */
+		if ((tinfo != nullptr) != (TREE_CODE (cand) == TEMPLATE_DECL))
+		  continue;
+
+		/* If we're looking for a template specialisation,
+		   only consider matching specialisations.  */
+		if (tinfo)
+		  {
+		    tree t = lookup_template_class (cand, TI_ARGS (tinfo),
+						    NULL_TREE, NULL_TREE,
+						    tf_none);
+		    if (t == error_mark_node
+			|| !CLASS_TYPE_P (t)
+			|| TYPE_BEING_DEFINED (t))
+		      continue;
+
+		    if (CLASSTYPE_TEMPLATE_INSTANTIATION (t))
+		      {
+			/* An uninstantiated template: check if there is a
+			   pattern that could be used.  We don't want to
+			   call instantiate_class_template as that could
+			   cause further errors; this is just a hint.  */
+			tree part = most_specialized_partial_spec (t, tf_none);
+			cand = (part ? TI_TEMPLATE (part)
+				: CLASSTYPE_TI_TEMPLATE (t));
+		      }
+		    else
+		      cand = TYPE_NAME (t);
+		  }
+		
+		if (!COMPLETE_TYPE_P (TREE_TYPE (cand)))
+		  continue;
+
+		inform (DECL_SOURCE_LOCATION (cand),
+			"%q#T has a definition but does not correspond with "
+			"%q#T because it is attached to a different module",
+			TREE_TYPE (cand), ptype);
+	      }
+	}
+    }
 }
 
 /* Print an error message for invalid use of an incomplete type.
    VALUE is the expression that was used (or 0 if that isn't known)
    and TYPE is the type that was invalid.  DIAG_KIND indicates the
-   type of diagnostic (see diagnostic.def).  */
+   type of diagnostic (see diagnostics/kinds.def).  */
 
 bool
 cxx_incomplete_type_diagnostic (location_t loc, const_tree value,
-				const_tree type, diagnostic_t diag_kind)
+				const_tree type,
+				enum diagnostics::kind diag_kind)
 {
   bool is_decl = false, complained = false;
 
@@ -440,7 +527,7 @@ cxx_incomplete_type_diagnostic (location_t loc, const_tree value,
 void
 cxx_incomplete_type_error (location_t loc, const_tree value, const_tree type)
 {
-  cxx_incomplete_type_diagnostic (loc, value, type, DK_ERROR);
+  cxx_incomplete_type_diagnostic (loc, value, type, diagnostics::kind::error);
 }
 
 
@@ -457,9 +544,8 @@ maybe_push_temp_cleanup (tree sub, vec<tree,va_gc> **flags)
   if (tree cleanup
       = cxx_maybe_build_cleanup (sub, tf_warning_or_error))
     {
-      tree tx = get_target_expr (boolean_true_node);
+      tree tx = get_internal_target_expr (boolean_true_node);
       tree flag = TARGET_EXPR_SLOT (tx);
-      CLEANUP_EH_ONLY (tx) = true;
       TARGET_EXPR_CLEANUP (tx) = build3 (COND_EXPR, void_type_node,
 					 flag, cleanup, void_node);
       add_stmt (tx);
@@ -655,6 +741,11 @@ split_nonconstant_init_1 (tree dest, tree init, bool last,
 			  && make_safe_copy_elision (sub, value))
 			goto build_init;
 
+		      if (TREE_CODE (value) == TARGET_EXPR)
+			/* We have to add this constructor, so we will not
+			   elide.  */
+			TARGET_EXPR_ELIDING_P (value) = false;
+
 		      tree name = (DECL_FIELD_IS_BASE (field_index)
 				   ? base_ctor_identifier
 				   : complete_ctor_identifier);
@@ -757,7 +848,7 @@ split_nonconstant_init (tree dest, tree init)
 	init = NULL_TREE;
 
       for (tree f : flags)
-	add_stmt (build_disable_temp_cleanup (f));
+	finish_expr_stmt (build_disable_temp_cleanup (f));
       release_tree_vector (flags);
 
       code = pop_stmt_list (code);
@@ -1568,10 +1659,10 @@ massage_init_elt (tree type, tree init, int nested, int flags,
     new_flags |= LOOKUP_AGGREGATE_PAREN_INIT;
   init = digest_init_r (type, init, nested ? 2 : 1, new_flags, complain);
   /* When we defer constant folding within a statement, we may want to
-     defer this folding as well.  Don't call this on CONSTRUCTORs because
-     their elements have already been folded, and we must avoid folding
-     the result of get_nsdmi.  */
-  if (TREE_CODE (init) != CONSTRUCTOR)
+     defer this folding as well.  Don't call this on CONSTRUCTORs in
+     a template because their elements have already been folded, and
+     we must avoid folding the result of get_nsdmi.  */
+  if (!(processing_template_decl && TREE_CODE (init) == CONSTRUCTOR))
     {
       tree t = fold_non_dependent_init (init, complain);
       if (TREE_CONSTANT (t))
@@ -2383,7 +2474,7 @@ build_m_component_ref (tree datum, tree component, tsubst_flags_t complain)
 				      (cp_type_quals (type)
 				       | cp_type_quals (TREE_TYPE (datum))));
 
-      datum = build_address (datum);
+      datum = cp_build_addr_expr (datum, complain);
 
       /* Convert object to the correct base.  */
       if (binfo)
@@ -2507,7 +2598,7 @@ build_functional_cast_1 (location_t loc, tree exp, tree parms,
 	  else if (cxx_dialect < cxx23)
 	    pedwarn (loc, OPT_Wc__23_extensions,
 		     "%<auto(x)%> only available with "
-		     "%<-std=c++2b%> or %<-std=gnu++2b%>");
+		     "%<-std=c++23%> or %<-std=gnu++23%>");
 	}
       else
 	{
@@ -2623,7 +2714,7 @@ add_exception_specifier (tree list, tree spec, tsubst_flags_t complain)
   bool ok;
   tree core = spec;
   bool is_ptr;
-  diagnostic_t diag_type = DK_UNSPECIFIED; /* none */
+  enum diagnostics::kind diag_type = diagnostics::kind::unspecified; /* none */
 
   if (spec == error_mark_node)
     return list;
@@ -2655,7 +2746,7 @@ add_exception_specifier (tree list, tree spec, tsubst_flags_t complain)
 	 and calls.  So just give a pedwarn at this point; we will give an
 	 error later if we hit one of those two cases.  */
       if (!COMPLETE_TYPE_P (complete_type (core)))
-	diag_type = DK_PEDWARN; /* pedwarn */
+	diag_type = diagnostics::kind::pedwarn; /* pedwarn */
     }
 
   if (ok)
@@ -2669,9 +2760,9 @@ add_exception_specifier (tree list, tree spec, tsubst_flags_t complain)
 	list = tree_cons (NULL_TREE, spec, list);
     }
   else
-    diag_type = DK_ERROR; /* error */
+    diag_type = diagnostics::kind::error; /* error */
 
-  if (diag_type != DK_UNSPECIFIED
+  if (diag_type != diagnostics::kind::unspecified
       && (complain & tf_warning_or_error))
     cxx_incomplete_type_diagnostic (NULL_TREE, core, diag_type);
 

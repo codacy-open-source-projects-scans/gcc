@@ -6,7 +6,7 @@
 --                                                                          --
 --                                  S p e c                                 --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNARL is free software; you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -390,7 +390,7 @@ package System.Tasking is
    System_Domain : Dispatching_Domain_Access;
    --  All processors belong to default system dispatching domain at start up.
    --  We use a pointer which creates the actual variable for the reasons
-   --  explained bellow in Dispatching_Domain_Tasks.
+   --  explained below in Dispatching_Domain_Tasks.
 
    Dispatching_Domains_Frozen : Boolean := False;
    --  True when the main procedure has been called. Hence, no new dispatching

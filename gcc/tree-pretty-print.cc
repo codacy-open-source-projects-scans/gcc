@@ -1,5 +1,5 @@
 /* Pretty formatting of GENERIC trees in C syntax.
-   Copyright (C) 2001-2024 Free Software Foundation, Inc.
+   Copyright (C) 2001-2025 Free Software Foundation, Inc.
    Adapted from c-pretty-print.cc by Diego Novillo <dnovillo@redhat.com>
 
 This file is part of GCC.
@@ -447,6 +447,15 @@ dump_omp_iterators (pretty_printer *pp, tree iter, int spc, dump_flags_t flags)
       dump_generic_node (pp, TREE_VEC_ELT (it, 2), spc, flags, false);
       pp_colon (pp);
       dump_generic_node (pp, TREE_VEC_ELT (it, 3), spc, flags, false);
+    }
+  if (TREE_VEC_LENGTH (iter) > 6)
+    {
+      pp_string (pp, ", loop_label=");
+      dump_generic_node (pp, TREE_VEC_ELT (iter, 6), spc, flags, false);
+      pp_string (pp, ", elems=");
+      dump_generic_node (pp, TREE_VEC_ELT (iter, 7), spc, flags, false);
+      pp_string (pp, ", index=");
+      dump_generic_node (pp, TREE_VEC_ELT (iter, 8), spc, flags, false);
     }
   pp_right_paren (pp);
 }
@@ -902,9 +911,7 @@ dump_omp_clause (pretty_printer *pp, tree clause, int spc, dump_flags_t flags)
       pp_string (pp, "affinity(");
       {
 	tree t = OMP_CLAUSE_DECL (clause);
-	if (TREE_CODE (t) == TREE_LIST
-	    && TREE_PURPOSE (t)
-	    && TREE_CODE (TREE_PURPOSE (t)) == TREE_VEC)
+	if (OMP_ITERATOR_DECL_P (t))
 	  {
 	    dump_omp_iterators (pp, TREE_PURPOSE (t), spc, flags);
 	    pp_colon (pp);
@@ -944,9 +951,7 @@ dump_omp_clause (pretty_printer *pp, tree clause, int spc, dump_flags_t flags)
 	}
       {
 	tree t = OMP_CLAUSE_DECL (clause);
-	if (TREE_CODE (t) == TREE_LIST
-	    && TREE_PURPOSE (t)
-	    && TREE_CODE (TREE_PURPOSE (t)) == TREE_VEC)
+	if (OMP_ITERATOR_DECL_P (t))
 	  {
 	    dump_omp_iterators (pp, TREE_PURPOSE (t), spc, flags);
 	    pp_colon (pp);
@@ -1012,6 +1017,11 @@ dump_omp_clause (pretty_printer *pp, tree clause, int spc, dump_flags_t flags)
       pp_string (pp, "map(");
       if (OMP_CLAUSE_MAP_READONLY (clause))
 	pp_string (pp, "readonly,");
+      if (OMP_CLAUSE_ITERATORS (clause))
+	{
+	  dump_omp_iterators (pp, OMP_CLAUSE_ITERATORS (clause), spc, flags);
+	  pp_colon (pp);
+	}
       switch (OMP_CLAUSE_MAP_KIND (clause))
 	{
 	case GOMP_MAP_ALLOC:
@@ -1122,6 +1132,15 @@ dump_omp_clause (pretty_printer *pp, tree clause, int spc, dump_flags_t flags)
 	case GOMP_MAP_ALWAYS_PRESENT_TOFROM:
 	  pp_string (pp, "always,present,tofrom");
 	  break;
+	case GOMP_MAP_UNSET:
+	  pp_string (pp, "unset");
+	  break;
+	case GOMP_MAP_PUSH_MAPPER_NAME:
+	  pp_string (pp, "push_mapper");
+	  break;
+	case GOMP_MAP_POP_MAPPER_NAME:
+	  pp_string (pp, "pop_mapper");
+	  break;
 	default:
 	  gcc_unreachable ();
 	}
@@ -1172,7 +1191,7 @@ dump_omp_clause (pretty_printer *pp, tree clause, int spc, dump_flags_t flags)
 	}
       if (OMP_CLAUSE_CODE (clause) == OMP_CLAUSE_MAP
 	  && OMP_CLAUSE_MAP_RUNTIME_IMPLICIT_P (clause))
-	pp_string (pp, "[implicit]");
+	pp_string (pp, " [runtime_implicit]");
       pp_right_paren (pp);
       break;
 
@@ -1180,6 +1199,11 @@ dump_omp_clause (pretty_printer *pp, tree clause, int spc, dump_flags_t flags)
       pp_string (pp, "from(");
       if (OMP_CLAUSE_MOTION_PRESENT (clause))
 	pp_string (pp, "present:");
+      if (OMP_CLAUSE_ITERATORS (clause))
+	{
+	  dump_omp_iterators (pp, OMP_CLAUSE_ITERATORS (clause), spc, flags);
+	  pp_colon (pp);
+	}
       dump_generic_node (pp, OMP_CLAUSE_DECL (clause),
 			 spc, flags, false);
       goto print_clause_size;
@@ -1188,6 +1212,11 @@ dump_omp_clause (pretty_printer *pp, tree clause, int spc, dump_flags_t flags)
       pp_string (pp, "to(");
       if (OMP_CLAUSE_MOTION_PRESENT (clause))
 	pp_string (pp, "present:");
+      if (OMP_CLAUSE_ITERATORS (clause))
+	{
+	  dump_omp_iterators (pp, OMP_CLAUSE_ITERATORS (clause), spc, flags);
+	  pp_colon (pp);
+	}
       dump_generic_node (pp, OMP_CLAUSE_DECL (clause),
 			 spc, flags, false);
       goto print_clause_size;
@@ -1199,6 +1228,23 @@ dump_omp_clause (pretty_printer *pp, tree clause, int spc, dump_flags_t flags)
       dump_generic_node (pp, OMP_CLAUSE_DECL (clause),
 			 spc, flags, false);
       goto print_clause_size;
+
+    case OMP_CLAUSE__MAPPER_BINDING_:
+      pp_string (pp, "mapper_binding(");
+      if (OMP_CLAUSE__MAPPER_BINDING__ID (clause))
+	{
+	  dump_generic_node (pp, OMP_CLAUSE__MAPPER_BINDING__ID (clause), spc,
+			     flags, false);
+	  pp_comma (pp);
+	}
+      dump_generic_node (pp,
+			 TREE_TYPE (OMP_CLAUSE__MAPPER_BINDING__DECL (clause)),
+			 spc, flags, false);
+      pp_comma (pp);
+      dump_generic_node (pp, OMP_CLAUSE__MAPPER_BINDING__MAPPER (clause), spc,
+			 flags, false);
+      pp_right_paren (pp);
+      break;
 
     case OMP_CLAUSE_NUM_TEAMS:
       pp_string (pp, "num_teams(");
@@ -3201,6 +3247,8 @@ dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
 	pp_string (pp, " [return slot optimization]");
       if (CALL_EXPR_TAILCALL (node))
 	pp_string (pp, " [tail call]");
+      if (CALL_EXPR_MUST_TAIL_CALL (node))
+	pp_string (pp, " [must tail call]");
       break;
 
     case WITH_CLEANUP_EXPR:
@@ -4180,6 +4228,102 @@ dump_generic_node (pretty_printer *pp, tree node, int spc, dump_flags_t flags,
       is_expr = false;
       break;
 
+    case OMP_METADIRECTIVE:
+      {
+	pp_string (pp, "#pragma omp metadirective");
+	newline_and_indent (pp, spc + 2);
+	pp_left_brace (pp);
+
+	tree variant = OMP_METADIRECTIVE_VARIANTS (node);
+	while (variant != NULL_TREE)
+	  {
+	    tree selector = OMP_METADIRECTIVE_VARIANT_SELECTOR (variant);
+	    tree directive = OMP_METADIRECTIVE_VARIANT_DIRECTIVE (variant);
+	    tree body = OMP_METADIRECTIVE_VARIANT_BODY (variant);
+
+	    newline_and_indent (pp, spc + 4);
+	    if (selector == NULL_TREE)
+	      pp_string (pp, "otherwise:");
+	    else
+	      {
+		pp_string (pp, "when (");
+		dump_omp_context_selector (pp, selector, spc + 4, flags);
+		pp_string (pp, "):");
+	      }
+	    newline_and_indent (pp, spc + 6);
+
+	    dump_generic_node (pp, directive, spc + 6, flags, false);
+	    newline_and_indent (pp, spc + 6);
+	    dump_generic_node (pp, body, spc + 6, flags, false);
+	    variant = TREE_CHAIN (variant);
+	  }
+	newline_and_indent (pp, spc + 2);
+	pp_right_brace (pp);
+      }
+      break;
+
+    case OMP_NEXT_VARIANT:
+      {
+	pp_string (pp, "OMP_NEXT_VARIANT <");
+	dump_generic_node (pp, OMP_NEXT_VARIANT_INDEX (node), spc,
+			   flags, false);
+	pp_string (pp, ", ");
+	tree state = OMP_NEXT_VARIANT_STATE (node);
+	gcc_assert (state && TREE_CODE (state) == TREE_LIST);
+	if (TREE_PURPOSE (state))
+	  {
+	    newline_and_indent (pp, spc + 2);
+	    pp_string (pp, "resolution map = ");
+	    dump_generic_node (pp, TREE_PURPOSE (state), spc, flags, false);
+	  }
+	newline_and_indent (pp, spc + 2);
+	pp_string (pp, "construct context = ");
+	if (TREE_VALUE (state))
+	  dump_generic_node (pp, TREE_VALUE (state), spc, flags, false);
+	else
+	  pp_string (pp, "NULL");
+
+	tree selectors = TREE_CHAIN (state);
+	for (int i = 0; i < TREE_VEC_LENGTH (selectors); i++)
+	  {
+	    newline_and_indent (pp, spc + 2);
+	    pp_decimal_int (pp, i + 1);
+	    pp_string (pp, ": ");
+	    dump_omp_context_selector (pp, TREE_VEC_ELT (selectors, i),
+				       spc + 4, flags);
+	  }
+	pp_string (pp, ">");
+      }
+      break;
+
+    case OMP_TARGET_DEVICE_MATCHES:
+      pp_string (pp, "OMP_TARGET_DEVICE_MATCHES <");
+      dump_generic_node (pp, OMP_TARGET_DEVICE_MATCHES_SELECTOR (node), spc,
+			 flags, false);
+      for (tree p = OMP_TARGET_DEVICE_MATCHES_PROPERTIES (node);
+	   p; p = TREE_CHAIN (p))
+	{
+	  pp_string (pp, ", ");
+	  dump_generic_node (pp, OMP_TP_VALUE (p), spc, flags, false);
+	}
+      pp_string (pp, ")>");
+      break;
+
+    case OMP_DECLARE_MAPPER:
+      pp_string (pp, "#pragma omp declare mapper (");
+      if (OMP_DECLARE_MAPPER_ID (node))
+	{
+	  dump_generic_node (pp, OMP_DECLARE_MAPPER_ID (node), spc, flags,
+			     false);
+	  pp_colon (pp);
+	}
+      dump_generic_node (pp, TREE_TYPE (node), spc, flags, false);
+      pp_space (pp);
+      dump_generic_node (pp, OMP_DECLARE_MAPPER_DECL (node), spc, flags, false);
+      pp_right_paren (pp);
+      dump_omp_clauses (pp, OMP_DECLARE_MAPPER_CLAUSES (node), spc, flags);
+      break;
+
     case TRANSACTION_EXPR:
       if (TRANSACTION_EXPR_OUTER (node))
 	pp_string (pp, "__transaction_atomic [[outer]]");
@@ -4712,10 +4856,10 @@ op_symbol_code (enum tree_code code, dump_flags_t flags)
       return ">>";
 
     case LROTATE_EXPR:
-      return "r<<";
+      return (flags & TDF_GIMPLE) ? "__ROTATE_LEFT" : "r<<";
 
     case RROTATE_EXPR:
-      return "r>>";
+      return (flags & TDF_GIMPLE) ? "__ROTATE_RIGHT" : "r>>";
 
     case WIDEN_LSHIFT_EXPR:
       return "w<<";

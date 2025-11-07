@@ -1,5 +1,5 @@
 /* CPP Library - charsets
-   Copyright (C) 1998-2024 Free Software Foundation, Inc.
+   Copyright (C) 1998-2025 Free Software Foundation, Inc.
 
    Broken out of c-lex.cc Apr 2003, adding valid C99 UCN ranges.
 
@@ -2244,7 +2244,7 @@ convert_oct (cpp_reader *pfile, const uchar *from, const uchar *limit,
       from++;
       extend_char_range (&char_range, loc_reader);
       if (from == limit || *from != '{')
-	cpp_error (pfile, CPP_DL_ERROR, "%<\\o%> not followed by %<}%>");
+	cpp_error (pfile, CPP_DL_ERROR, "%<\\o%> not followed by %<{%>");
       else
 	{
 	  from++;
@@ -2420,7 +2420,7 @@ convert_escape (cpp_reader *pfile, const uchar *from, const uchar *limit,
 	{
 	  encoding_rich_location rich_loc (pfile);
 
-	  /* diagnostic.cc does not support "%03o".  When it does, this
+	  /* pretty-print.cc does not support "%03o".  When it does, this
 	     code can use %03o directly in the diagnostic again.  */
 	  char buf[32];
 	  sprintf(buf, "%03o", (int) c);

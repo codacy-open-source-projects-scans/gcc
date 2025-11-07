@@ -1,5 +1,5 @@
 /* Code for GIMPLE range related routines.
-   Copyright (C) 2019-2024 Free Software Foundation, Inc.
+   Copyright (C) 2019-2025 Free Software Foundation, Inc.
    Contributed by Andrew MacLeod <amacleod@redhat.com>
    and Aldy Hernandez <aldyh@redhat.com>.
 
@@ -200,7 +200,12 @@ gimple_ranger::range_on_exit (vrange &r, basic_block bb, tree name)
   // If this is not the definition block, get the range on the last stmt in
   // the block... if there is one.
   if (def_bb != bb)
-    s = last_nondebug_stmt (bb);
+    {
+      if (bb->flags & BB_RTL)
+	s = NULL;
+      else
+	s = last_nondebug_stmt (bb);
+    }
   // If there is no statement provided, get the range_on_entry for this block.
   if (s)
     range_of_expr (r, name, s);

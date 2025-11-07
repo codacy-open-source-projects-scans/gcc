@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -117,8 +117,7 @@ package body Exp_Ch2 is
    procedure Expand_Renaming (N : Node_Id);
    --  For renamings, just replace the identifier by the corresponding
    --  named expression. Note that this has been evaluated (see routine
-   --  Exp_Ch8.Expand_N_Object_Renaming.Evaluate_Name) so this gives
-   --  the correct renaming semantics.
+   --  Exp_Util.Evaluate_Name) so this gives correct renaming semantics.
 
    --------------------------
    -- Expand_Current_Value --
@@ -706,9 +705,15 @@ package body Exp_Ch2 is
       T : constant Entity_Id := Etype (N);
 
    begin
+      --  Mark the entity as referenced since this reference is going away
+
+      Set_Referenced (E);
+
+      --  Now rewrite the reference as a copy of the renamed object
+
       Rewrite (N, New_Copy_Tree (Renamed_Object (E)));
 
-      --  We mark the copy as unanalyzed, so that it is sure to be reanalyzed
+      --  Mark the copy as unanalyzed to make sure that it is reanalyzed
       --  at the top level. This is needed in the packed case since we
       --  specifically avoided expanding packed array references when the
       --  renaming declaration was analyzed.

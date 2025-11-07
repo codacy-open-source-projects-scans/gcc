@@ -1,4 +1,4 @@
-.. Copyright (C) 2014-2024 Free Software Foundation, Inc.
+.. Copyright (C) 2014-2025 Free Software Foundation, Inc.
    Originally contributed by David Malcolm <dmalcolm@redhat.com>
 
    This is free software: you can redistribute it and/or modify it
@@ -137,7 +137,7 @@ Running under valgrind
 The jit testsuite detects if :envvar:`RUN_UNDER_VALGRIND` is present in the
 environment (with any value).  If it is present, it runs the test client
 code under `valgrind <https://valgrind.org>`_,
-specifcally, the default
+specifically, the default
 `memcheck <https://valgrind.org/docs/manual/mc-manual.html>`_
 tool with
 `--leak-check=full

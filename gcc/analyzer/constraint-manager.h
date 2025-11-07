@@ -1,5 +1,5 @@
 /* Tracking equivalence classes and constraints at a point on an execution path.
-   Copyright (C) 2019-2024 Free Software Foundation, Inc.
+   Copyright (C) 2019-2025 Free Software Foundation, Inc.
    Contributed by David Malcolm <dmalcolm@redhat.com>.
 
 This file is part of GCC.
@@ -25,10 +25,10 @@ namespace ana {
 
 class constraint_manager;
 
-enum bound_kind
+enum class bound_kind
 {
-  BK_LOWER,
-  BK_UPPER
+  lower,
+  upper
 };
 
 /* One of the end-points of a range.  */
@@ -226,8 +226,8 @@ private:
     {
       return k->get_hash ();
     }
-    static inline bool is_empty (key_type k) { return k == NULL; }
-    static inline void mark_empty (key_type &k) { k = NULL; }
+    static inline bool is_empty (key_type k) { return k == nullptr; }
+    static inline void mark_empty (key_type &k) { k = nullptr; }
     static inline bool is_deleted (key_type k)
     {
       return k == reinterpret_cast<key_type> (1);

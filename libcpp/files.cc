@@ -1,5 +1,5 @@
 /* Part of CPP library.  File handling.
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
    Written by Per Bothner, 1994.
    Based on CCCP program by Paul Rubin, June 1986
    Adapted to ANSI C, Richard Stallman, Jan 1987
@@ -1046,6 +1046,7 @@ _cpp_stack_file (cpp_reader *pfile, _cpp_file *file, include_type type,
 		    && type < IT_DIRECTIVE_HWM
 		    && (pfile->line_table->highest_location
 			!= LINE_MAP_MAX_LOCATION - 1));
+
   if (decrement)
     pfile->line_table->highest_location--;
 

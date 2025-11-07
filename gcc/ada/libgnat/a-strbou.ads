@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 S p e c                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- This specification is derived from the Ada Reference Manual for use with --
 -- GNAT. The copyright notice above, and the license provisions that follow --
@@ -75,8 +75,9 @@ is
 
       Max_Length : constant Positive := Max;
 
-      type Bounded_String is private;
-      pragma Preelaborable_Initialization (Bounded_String);
+      type Bounded_String is private
+      with
+        Preelaborable_Initialization;
 
       Null_Bounded_String : constant Bounded_String;
       --  Null_Bounded_String represents the null string. If an object of type
@@ -784,8 +785,8 @@ is
                          then J <= Index'Result - 1
                          else J - 1 in Index'Result
                                        .. Length (Source) - Pattern'Length)
-                     then not (Search.Match
-                       (To_String (Source), Pattern, Mapping, J)))),
+                     then not Search.Match
+                       (To_String (Source), Pattern, Mapping, J))),
 
            --  Otherwise, 0 is returned
 
@@ -837,8 +838,8 @@ is
                          then J <= Index'Result - 1
                          else J - 1 in Index'Result
                                        .. Length (Source) - Pattern'Length)
-                     then not (Search.Match
-                       (To_String (Source), Pattern, Mapping, J)))),
+                     then not Search.Match
+                       (To_String (Source), Pattern, Mapping, J))),
 
            --  Otherwise, 0 is returned
 
@@ -943,8 +944,8 @@ is
                          then J in From .. Index'Result - 1
                          else J - 1 in Index'Result
                                        .. From - Pattern'Length)
-                     then not (Search.Match
-                       (To_String (Source), Pattern, Mapping, J)))),
+                     then not Search.Match
+                       (To_String (Source), Pattern, Mapping, J))),
 
            --  Otherwise, 0 is returned
 
@@ -1007,8 +1008,8 @@ is
                          then J in From .. Index'Result - 1
                          else J - 1 in Index'Result
                                        .. From - Pattern'Length)
-                     then not (Search.Match
-                       (To_String (Source), Pattern, Mapping, J)))),
+                     then not Search.Match
+                       (To_String (Source), Pattern, Mapping, J))),
 
            --  Otherwise, 0 is returned
 

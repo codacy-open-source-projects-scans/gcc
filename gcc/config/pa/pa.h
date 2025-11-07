@@ -1,5 +1,5 @@
 /* Definitions of target machine for GNU compiler, for the HP Spectrum.
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
    Contributed by Michael Tiemann (tiemann@cygnus.com) of Cygnus Support
    and Tim Moore (moore@defmacro.cs.utah.edu) of the Center for
    Software Science at the University of Utah.
@@ -292,7 +292,7 @@ typedef struct GTY(()) machine_function
 #define PREFERRED_STACK_BOUNDARY (TARGET_64BIT ? 128 : 512)
 
 /* Allocation boundary (in *bits*) for the code of a function.  */
-#define FUNCTION_BOUNDARY BITS_PER_WORD
+#define FUNCTION_BOUNDARY 32
 
 /* Alignment of field after `int : 0' in a structure.  */
 #define EMPTY_FIELD_BOUNDARY 32

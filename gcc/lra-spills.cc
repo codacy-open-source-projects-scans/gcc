@@ -1,5 +1,5 @@
 /* Change pseudos by memory.
-   Copyright (C) 2010-2024 Free Software Foundation, Inc.
+   Copyright (C) 2010-2025 Free Software Foundation, Inc.
    Contributed by Vladimir Makarov <vmakarov@redhat.com>.
 
 This file is part of GCC.
@@ -261,6 +261,7 @@ assign_spill_hard_regs (int *pseudo_regnos, int n)
   for (res = i = 0; i < n; i++)
     {
       regno = pseudo_regnos[i];
+      gcc_assert (lra_reg_info[regno].live_ranges);
       rclass = lra_get_allocno_class (regno);
       if (bitmap_bit_p (setjump_crosses, regno)
 	  || (spill_class
@@ -346,13 +347,49 @@ add_pseudo_to_slot (int regno, int slot_num)
       first = pseudo_slots[regno].first = &pseudo_slots[slots[slot_num].regno];
       pseudo_slots[regno].next = first->next;
       first->next = &pseudo_slots[regno];
+      lra_assert (slots[slot_num].live_ranges);
     }
   pseudo_slots[regno].mem = NULL_RTX;
   pseudo_slots[regno].slot_num = slot_num;
+
+  /* Pseudos with empty ranges shouldn't need to be spilled; if we get
+     an empty range added to a slot, something fishy is going on, such
+     as missing live range information, and without that information
+     we may generate wrong code.  We can probably relax this to an
+     lra_assert at some point.  Likewise the analogous one in
+     assign_spill_hard_regs.  */
+  gcc_assert (lra_reg_info[regno].live_ranges);
+
   slots[slot_num].live_ranges
     = lra_merge_live_ranges (slots[slot_num].live_ranges,
 			     lra_copy_live_range_list
 			     (lra_reg_info[regno].live_ranges));
+}
+
+/* Recompute the combined live ranges of pseudos assigned to stack
+   slots.  This brings the live ranges of slots back in sync with
+   those of pseudos, after recomputing live ranges for pseudos.  */
+void
+lra_recompute_slots_live_ranges (void)
+{
+  for (int i = 0; i < slots_num; i++)
+    {
+      if (slots[i].regno < 0)
+	continue;
+      lra_reset_live_range_list (slots[i].live_ranges);
+      for (struct pseudo_slot *next = pseudo_slots[slots[i].regno].first;
+	   next; next = next->next)
+	{
+	  int regno = next - pseudo_slots;
+	  lra_assert (!(lra_intersected_live_ranges_p
+			(lra_reg_info[regno].live_ranges,
+			 slots[i].live_ranges)));
+	  slots[i].live_ranges
+	    = lra_merge_live_ranges (slots[i].live_ranges,
+				     lra_copy_live_range_list
+				     (lra_reg_info[regno].live_ranges));
+	}
+    }
 }
 
 /* Assign stack slot numbers to pseudos in array PSEUDO_REGNOS of
@@ -386,7 +423,17 @@ assign_stack_slot_num_and_sort_pseudos (int *pseudo_regnos, int n)
 		&& ! (lra_intersected_live_ranges_p
 		      (slots[j].live_ranges,
 		       lra_reg_info[regno].live_ranges)))
-	      break;
+	      {
+		/* A slot without allocated memory can be shared.  */
+		if (slots[j].mem == NULL_RTX)
+		  break;
+
+		/* A slot with allocated memory can be shared only with equal
+		   or smaller register with equal or smaller alignment.  */
+		if (slots[j].align >= spill_slot_alignment (mode)
+		    && known_ge (slots[j].size, GET_MODE_SIZE (mode)))
+		  break;
+	      }
 	}
       if (j >= slots_num)
 	{
@@ -546,7 +593,7 @@ spill_pseudos (void)
 		fprintf (lra_dump_file,
 			 "Changing spilled pseudos to memory in insn #%u\n",
 			 INSN_UID (insn));
-	      lra_push_insn (insn);
+	      lra_push_insn_and_update_insn_regno_info (insn);
 	      if (lra_reg_spill_p || targetm.different_addr_displacement_p ())
 		lra_set_used_insn_alternative (insn, LRA_UNKNOWN_ALT);
 	    }
@@ -656,8 +703,7 @@ lra_spill (void)
       for (i = 0; i < slots_num; i++)
 	{
 	  fprintf (lra_dump_file, "  Slot %d regnos (width = ", i);
-	  print_dec (GET_MODE_SIZE (GET_MODE (slots[i].mem)),
-		     lra_dump_file, SIGNED);
+	  print_dec (slots[i].size, lra_dump_file, SIGNED);
 	  fprintf (lra_dump_file, "):");
 	  for (curr_regno = slots[i].regno;;
 	       curr_regno = pseudo_slots[curr_regno].next - pseudo_slots)

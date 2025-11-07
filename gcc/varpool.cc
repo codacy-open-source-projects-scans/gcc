@@ -1,5 +1,5 @@
 /* Callgraph handling code.
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
    Contributed by Jan Hubicka
 
 This file is part of GCC.
@@ -172,11 +172,7 @@ void
 varpool_node::remove (void)
 {
   symtab->call_varpool_removal_hooks (this);
-  if (lto_file_data)
-    {
-      lto_free_function_in_decl_state_for_node (this);
-      lto_file_data = NULL;
-    }
+  lto_free_function_in_decl_state_for_node (this);
 
   /* When streaming we can have multiple nodes associated with decl.  */
   if (symtab->state == LTO_STREAMING)

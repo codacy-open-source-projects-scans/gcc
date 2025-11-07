@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2024 Free Software Foundation, Inc.
+// Copyright (C) 2020-2025 Free Software Foundation, Inc.
 
 // This file is part of GCC.
 
@@ -36,7 +36,7 @@ check_for_eager_invocations (
   std::vector<std::unique_ptr<AST::MacroInvocation>> pending;
 
   for (auto &expr : expressions)
-    if (expr->get_ast_kind () == AST::Kind::MACRO_INVOCATION)
+    if (expr->get_expr_kind () == AST::Expr::Kind::MacroInvocation)
       pending.emplace_back (std::unique_ptr<AST::MacroInvocation> (
 	static_cast<AST::MacroInvocation *> (expr->clone_expr ().release ())));
 
@@ -68,6 +68,7 @@ make_eager_builtin_invocation (
 {
   auto path_str = make_macro_path_str (kind);
 
+  auto token_stream = arguments.to_token_stream ();
   std::unique_ptr<AST::Expr> node = AST::MacroInvocation::Builtin (
     kind,
     AST::MacroInvocData (AST::SimplePath (
@@ -76,7 +77,7 @@ make_eager_builtin_invocation (
     {}, locus, std::move (pending_invocations));
 
   return AST::Fragment ({AST::SingleASTNode (std::move (node))},
-			arguments.to_token_stream ());
+			std::move (token_stream));
 }
 
 /* Match the end token of a macro given the start delimiter of the macro */
@@ -110,9 +111,9 @@ std::unique_ptr<AST::LiteralExpr>
 try_extract_string_literal_from_fragment (const location_t &parent_locus,
 					  std::unique_ptr<AST::Expr> &node)
 {
-  auto maybe_lit = static_cast<AST::LiteralExpr *> (node.get ());
   if (!node || !node->is_literal ()
-      || maybe_lit->get_lit_type () != AST::Literal::STRING)
+      || static_cast<AST::LiteralExpr &> (*node).get_lit_type ()
+	   != AST::Literal::STRING)
     {
       rust_error_at (parent_locus, "argument must be a string literal");
       if (node)
@@ -174,7 +175,8 @@ try_expand_many_expr (Parser<MacroInvocLexer> &parser,
 std::unique_ptr<AST::Expr>
 parse_single_string_literal (BuiltinMacro kind,
 			     AST::DelimTokenTree &invoc_token_tree,
-			     location_t invoc_locus, MacroExpander *expander)
+			     location_t invoc_locus, MacroExpander *expander,
+			     bool is_semicoloned)
 {
   MacroInvocLexer lex (invoc_token_tree.to_token_stream ());
   Parser<MacroInvocLexer> parser (lex);
@@ -221,7 +223,7 @@ parse_single_string_literal (BuiltinMacro kind,
 	    AST::MacroInvocData (AST::SimplePath ({AST::SimplePathSegment (
 				   path_str, invoc_locus)}),
 				 std::move (invoc_token_tree)),
-	    {}, invoc_locus, std::move (pending_invocations));
+	    {}, invoc_locus, std::move (pending_invocations), is_semicoloned);
 	}
       else
 	{

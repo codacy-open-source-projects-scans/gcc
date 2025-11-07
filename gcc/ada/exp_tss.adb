@@ -6,7 +6,7 @@
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---          Copyright (C) 1992-2024, Free Software Foundation, Inc.         --
+--          Copyright (C) 1992-2025, Free Software Foundation, Inc.         --
 --                                                                          --
 -- GNAT is free software;  you can  redistribute it  and/or modify it under --
 -- terms of the  GNU General Public License as published  by the Free Soft- --
@@ -504,13 +504,9 @@ package body Exp_Tss is
       Subp : Entity_Id;
 
    begin
-      if No (FN) then
-         return Empty;
-
-      elsif No (TSS_Elist (FN)) then
-         return Empty;
-
-      else
+      if Present (FN)
+        and then Present (TSS_Elist (FN))
+      then
          Elmt := First_Elmt (TSS_Elist (FN));
          while Present (Elmt) loop
             if Is_TSS (Node (Elmt), Nam) then

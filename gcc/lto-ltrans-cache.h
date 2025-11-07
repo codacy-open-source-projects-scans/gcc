@@ -1,5 +1,5 @@
 /* File caching.
-   Copyright (C) 2023-2024 Free Software Foundation, Inc.
+   Copyright (C) 2023-2025 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -108,7 +108,7 @@ private:
      New input/output files are chosen to not collide with other items.
 
      Must be called with creation_lock held to prevent data race.  */
-  item* create_item (checksum_t checksum);
+  item* create_item (const checksum_t& checksum);
 
   /* Prunes oldest unused cache items over limit.
      Must be called with deletion_lock held to prevent data race.  */
@@ -122,8 +122,7 @@ private:
   std::map<checksum_t, item*> map_checksum;
   std::map<std::string, item*> map_input;
 
-  /* Cached filenames are in format "prefix%d[.ltrans]suffix".  */
-  const char* prefix;
+  /* Cached filenames are in format "cache_prefix%d[.ltrans]suffix".  */
   const char* suffix;
 
   /* If cache items count is larger, prune deletes old items.  */
