@@ -1505,6 +1505,17 @@ check_load_store_for_partial_vectors (loop_vec_info loop_vinfo, tree vectype,
 			  : ls->strided_offset_vectype);
       tree memory_type = TREE_TYPE (DR_REF (STMT_VINFO_DR_INFO (repr)->dr));
       int scale = SLP_TREE_GS_SCALE (slp_node);
+
+      /* The following "supported" checks just verify what we established in
+	 get_load_store_type and don't try different offset types.
+	 Therefore, off_vectype must be a supported offset type.  In case
+	 we chose a different one use this instead.  */
+      if (ls->supported_offset_vectype)
+	off_vectype = ls->supported_offset_vectype;
+      /* Same for scale.  */
+      if (ls->supported_scale)
+	scale = ls->supported_scale;
+
       if (internal_gather_scatter_fn_supported_p (len_ifn, vectype,
 						  memory_type,
 						  off_vectype, scale,
@@ -1697,10 +1708,13 @@ vect_truncate_gather_scatter_offset (stmt_vec_info stmt_info, tree vectype,
       /* See whether the target supports the operation with an offset
 	 no narrower than OFFSET_TYPE.  */
       tree memory_type = TREE_TYPE (DR_REF (dr));
+      tree tmp_offset_vectype;
+      int tmp_scale;
       if (!vect_gather_scatter_fn_p (loop_vinfo, DR_IS_READ (dr), masked_p,
-				     vectype, memory_type, offset_type, scale,
+				     vectype, memory_type, offset_type,
+				     scale, &tmp_scale,
 				     &gs_info->ifn, &gs_info->offset_vectype,
-				     elsvals)
+				     &tmp_offset_vectype, elsvals)
 	  || gs_info->ifn == IFN_LAST)
 	continue;
 
@@ -1779,10 +1793,12 @@ vect_use_grouped_gather (dr_vec_info *dr_info, tree vectype,
      type must exist) so it is possible that even though a gather/scatter is
      not available we still have a strided load/store.  */
   bool ok = false;
+  tree tmp_vectype;
+  int tmp_scale;
   if (vect_gather_scatter_fn_p
       (loop_vinfo, DR_IS_READ (dr), masked_p, *pun_vectype,
-       TREE_TYPE (*pun_vectype), *pun_vectype, 1, &ifn,
-       &offset_vectype, elsvals))
+       TREE_TYPE (*pun_vectype), *pun_vectype, 1, &tmp_scale, &ifn,
+       &offset_vectype, &tmp_vectype, elsvals))
     ok = true;
   else if (internal_strided_fn_supported_p (strided_ifn, *pun_vectype,
 					    elsvals))
@@ -1839,15 +1855,6 @@ vect_use_strided_gather_scatters_p (stmt_vec_info stmt_info, tree vectype,
       if (!vect_truncate_gather_scatter_offset (stmt_info, vectype, loop_vinfo,
 						masked_p, gs_info, elsvals))
 	return false;
-    }
-  else
-    {
-      tree old_offset_type = TREE_TYPE (gs_info->offset);
-      tree new_offset_type = TREE_TYPE (gs_info->offset_vectype);
-
-      gcc_assert (TYPE_PRECISION (new_offset_type)
-		  >= TYPE_PRECISION (old_offset_type));
-      gs_info->offset = fold_convert (new_offset_type, gs_info->offset);
     }
 
   if (!single_element_p
@@ -2049,6 +2056,27 @@ vector_vector_composition_type (tree vtype, poly_uint64 nelts, tree *ptype,
   return NULL_TREE;
 }
 
+/* Check if the load permutation of NODE only refers to a consecutive
+   subset of the group indices where GROUP_SIZE is the size of the
+   dataref's group.  We also assert that the length of the permutation
+   divides the group size and is a power of two.
+   Such load permutations can be elided in strided access schemes as
+   we can "jump over" the gap they leave.  */
+
+bool
+has_consecutive_load_permutation (slp_tree node, unsigned group_size)
+{
+  load_permutation_t perm = SLP_TREE_LOAD_PERMUTATION (node);
+  if (!perm.exists ()
+      || perm.length () <= 1
+      || !pow2p_hwi (perm.length ())
+      || group_size % perm.length ())
+    return false;
+
+  return vect_load_perm_consecutive_p (node);
+}
+
+
 /* Analyze load or store SLP_NODE of type VLS_TYPE.  Return true
    if there is a memory access type that the vectorized form can use,
    storing it in *MEMORY_ACCESS_TYPE if so.  If we decide to use gathers
@@ -2080,6 +2108,8 @@ get_load_store_type (vec_info  *vinfo, stmt_vec_info stmt_info,
   tree *ls_type = &ls->ls_type;
   bool *slp_perm = &ls->slp_perm;
   unsigned *n_perms = &ls->n_perms;
+  tree *supported_offset_vectype = &ls->supported_offset_vectype;
+  int *supported_scale = &ls->supported_scale;
   loop_vec_info loop_vinfo = dyn_cast <loop_vec_info> (vinfo);
   poly_uint64 nunits = TYPE_VECTOR_SUBPARTS (vectype);
   class loop *loop = loop_vinfo ? LOOP_VINFO_LOOP (loop_vinfo) : NULL;
@@ -2094,6 +2124,7 @@ get_load_store_type (vec_info  *vinfo, stmt_vec_info stmt_info,
   *ls_type = NULL_TREE;
   *slp_perm = false;
   *n_perms = -1U;
+  ls->subchain_p = false;
 
   bool perm_ok = true;
   poly_int64 vf = loop_vinfo ? LOOP_VINFO_VECT_FACTOR (loop_vinfo) : 1;
@@ -2140,10 +2171,22 @@ get_load_store_type (vec_info  *vinfo, stmt_vec_info stmt_info,
     first_dr_info = STMT_VINFO_DR_INFO (SLP_TREE_SCALAR_STMTS (slp_node)[0]);
 
   if (STMT_VINFO_STRIDED_P (first_stmt_info))
-    /* Try to use consecutive accesses of as many elements as possible,
-       separated by the stride, until we have a complete vector.
-       Fall back to scalar accesses if that isn't possible.  */
-    *memory_access_type = VMAT_STRIDED_SLP;
+    {
+      /* Try to use consecutive accesses of as many elements as possible,
+	 separated by the stride, until we have a complete vector.
+	 Fall back to scalar accesses if that isn't possible.  */
+      *memory_access_type = VMAT_STRIDED_SLP;
+
+      /* If the load permutation is consecutive we can reduce the group to
+	 the elements the permutation accesses.  Then we release the
+	 permutation.  */
+      if (has_consecutive_load_permutation (slp_node, group_size))
+	{
+	  ls->subchain_p = true;
+	  group_size = SLP_TREE_LANES (slp_node);
+	  SLP_TREE_LOAD_PERMUTATION (slp_node).release ();
+	}
+    }
   else if (STMT_VINFO_GATHER_SCATTER_P (stmt_info))
     {
       slp_tree offset_node = SLP_TREE_CHILDREN (slp_node)[0];
@@ -2152,12 +2195,29 @@ get_load_store_type (vec_info  *vinfo, stmt_vec_info stmt_info,
       tree memory_type = TREE_TYPE (DR_REF (first_dr_info->dr));
       tree tem;
       if (vect_gather_scatter_fn_p (loop_vinfo, vls_type == VLS_LOAD,
-				    masked_p, vectype,
-				    memory_type,
-				    offset_vectype, scale,
+				    masked_p, vectype, memory_type,
+				    offset_vectype, scale, supported_scale,
 				    &ls->gs.ifn, &tem,
-				    elsvals))
-	*memory_access_type = VMAT_GATHER_SCATTER_IFN;
+				    supported_offset_vectype, elsvals))
+	{
+	  if (dump_enabled_p ())
+	    {
+	      dump_printf_loc (MSG_NOTE, vect_location,
+			       "gather/scatter with required "
+			       "offset type "
+			       "%T and offset scale %d.\n",
+			       offset_vectype, scale);
+	      if (*supported_offset_vectype)
+		dump_printf_loc (MSG_NOTE, vect_location,
+				 " target supports offset type %T.\n",
+				 *supported_offset_vectype);
+	      if (*supported_scale)
+		dump_printf_loc (MSG_NOTE, vect_location,
+				 " target supports offset scale %d.\n",
+				 *supported_scale);
+	    }
+	  *memory_access_type = VMAT_GATHER_SCATTER_IFN;
+	}
       else if (vls_type == VLS_LOAD
 	       ? (targetm.vectorize.builtin_gather
 		  && (ls->gs.decl
@@ -2410,8 +2470,7 @@ get_load_store_type (vec_info  *vinfo, stmt_vec_info stmt_info,
   vect_memory_access_type grouped_gather_fallback = VMAT_UNINITIALIZED;
   if (loop_vinfo
       && (*memory_access_type == VMAT_ELEMENTWISE
-	  || *memory_access_type == VMAT_STRIDED_SLP)
-      && !STMT_VINFO_GATHER_SCATTER_P (stmt_info))
+	  || *memory_access_type == VMAT_STRIDED_SLP))
     {
       gather_scatter_info gs_info;
       if (SLP_TREE_LANES (slp_node) == 1
@@ -2421,6 +2480,19 @@ get_load_store_type (vec_info  *vinfo, stmt_vec_info stmt_info,
 						 masked_p, &gs_info, elsvals,
 						 group_size, single_element_p))
 	{
+	  /* vect_use_strided_gather_scatters_p does not save the actually
+	     supported scale and offset type so do that here.
+	     We need it later in check_load_store_for_partial_vectors
+	     where we only check if the given internal function is supported
+	     (to choose whether to use the IFN, LEGACY, or EMULATED flavor
+	     of gather/scatter) and don't re-do the full analysis.  */
+	  tree tmp;
+	  gcc_assert (vect_gather_scatter_fn_p
+		      (loop_vinfo, vls_type == VLS_LOAD, masked_p, vectype,
+		       gs_info.memory_type, TREE_TYPE (gs_info.offset),
+		       gs_info.scale, supported_scale, &gs_info.ifn,
+		       &tmp, supported_offset_vectype, elsvals));
+
 	  SLP_TREE_GS_SCALE (slp_node) = gs_info.scale;
 	  SLP_TREE_GS_BASE (slp_node) = error_mark_node;
 	  ls->gs.ifn = gs_info.ifn;
@@ -8809,6 +8881,15 @@ vectorizable_store (vec_info *vinfo,
 	    {
 	      if (costing_p)
 		{
+		  if (ls.supported_offset_vectype)
+		    inside_cost
+		      += record_stmt_cost (cost_vec, 1, vector_stmt,
+					   slp_node, 0, vect_body);
+		  if (ls.supported_scale)
+		    inside_cost
+		      += record_stmt_cost (cost_vec, 1, vector_stmt,
+					   slp_node, 0, vect_body);
+
 		  unsigned int cnunits = vect_nunits_for_cost (vectype);
 		  inside_cost
 		    += record_stmt_cost (cost_vec, cnunits, scalar_store,
@@ -8820,6 +8901,30 @@ vectorizable_store (vec_info *vinfo,
 		vec_offset = vec_offsets[j];
 
 	      tree scale = size_int (SLP_TREE_GS_SCALE (slp_node));
+	      bool strided = !VECTOR_TYPE_P (TREE_TYPE (vec_offset));
+
+	      /* Perform the offset conversion and scaling if necessary.  */
+	      if (!strided
+		  && (ls.supported_offset_vectype || ls.supported_scale))
+		{
+		  gimple_seq stmts = NULL;
+		  if (ls.supported_offset_vectype)
+		    vec_offset = gimple_convert
+		      (&stmts, ls.supported_offset_vectype, vec_offset);
+		  if (ls.supported_scale)
+		    {
+		      tree mult_cst = build_int_cst
+			(TREE_TYPE (TREE_TYPE (vec_offset)),
+			 SLP_TREE_GS_SCALE (slp_node) / ls.supported_scale);
+		      tree mult = build_vector_from_val
+			(TREE_TYPE (vec_offset), mult_cst);
+		      vec_offset = gimple_build
+			(&stmts, MULT_EXPR, TREE_TYPE (vec_offset),
+			 vec_offset, mult);
+		      scale = size_int (ls.supported_scale);
+		    }
+		  gsi_insert_seq_before (gsi, stmts, GSI_SAME_STMT);
+		}
 
 	      if (ls.gs.ifn == IFN_MASK_LEN_SCATTER_STORE)
 		{
@@ -9873,7 +9978,14 @@ vectorizable_load (vec_info *vinfo,
 
       if (grouped_load)
 	{
-	  first_stmt_info = DR_GROUP_FIRST_ELEMENT (stmt_info);
+	  /* If we elided a consecutive load permutation, don't
+	     use the original first statement (which could be elided)
+	     but the one the load permutation starts with.
+	     This ensures the stride_base below is correct.  */
+	  if (!ls.subchain_p)
+	    first_stmt_info = DR_GROUP_FIRST_ELEMENT (stmt_info);
+	  else
+	    first_stmt_info = SLP_TREE_SCALAR_STMTS (slp_node)[0];
 	  first_dr_info = STMT_VINFO_DR_INFO (first_stmt_info);
 	  ref_type = get_group_alias_ptr_type (first_stmt_info);
 	}
@@ -9887,7 +9999,14 @@ vectorizable_load (vec_info *vinfo,
       if (grouped_load)
 	{
 	  if (memory_access_type == VMAT_STRIDED_SLP)
-	    group_size = DR_GROUP_SIZE (first_stmt_info);
+	    {
+	      /* If we elided a consecutive load permutation, adjust
+		 the group size here.  */
+	      if (!ls.subchain_p)
+		group_size = DR_GROUP_SIZE (first_stmt_info);
+	      else
+		group_size = SLP_TREE_LANES (slp_node);
+	    }
 	  else /* VMAT_ELEMENTWISE */
 	    group_size = SLP_TREE_LANES (slp_node);
 	}
@@ -10635,6 +10754,15 @@ vectorizable_load (vec_info *vinfo,
 	    {
 	      if (costing_p)
 		{
+		  if (ls.supported_offset_vectype)
+		    inside_cost
+		      += record_stmt_cost (cost_vec, 1, vector_stmt,
+					   slp_node, 0, vect_body);
+		  if (ls.supported_scale)
+		    inside_cost
+		      += record_stmt_cost (cost_vec, 1, vector_stmt,
+					   slp_node, 0, vect_body);
+
 		  unsigned int cnunits = vect_nunits_for_cost (vectype);
 		  inside_cost
 		    = record_stmt_cost (cost_vec, cnunits, scalar_load,
@@ -10645,6 +10773,30 @@ vectorizable_load (vec_info *vinfo,
 		vec_offset = vec_offsets[i];
 	      tree zero = build_zero_cst (vectype);
 	      tree scale = size_int (SLP_TREE_GS_SCALE (slp_node));
+	      bool strided = !VECTOR_TYPE_P (TREE_TYPE (vec_offset));
+
+	      /* Perform the offset conversion and scaling if necessary.  */
+	      if (!strided
+		  && (ls.supported_offset_vectype || ls.supported_scale))
+		{
+		  gimple_seq stmts = NULL;
+		  if (ls.supported_offset_vectype)
+		    vec_offset = gimple_convert
+		      (&stmts, ls.supported_offset_vectype, vec_offset);
+		  if (ls.supported_scale)
+		    {
+		      tree mult_cst = build_int_cst
+			(TREE_TYPE (TREE_TYPE (vec_offset)),
+			 SLP_TREE_GS_SCALE (slp_node) / ls.supported_scale);
+		      tree mult = build_vector_from_val
+			(TREE_TYPE (vec_offset), mult_cst);
+		      vec_offset = gimple_build
+			(&stmts, MULT_EXPR, TREE_TYPE (vec_offset),
+			 vec_offset, mult);
+		      scale = size_int (ls.supported_scale);
+		    }
+		  gsi_insert_seq_before (gsi, stmts, GSI_SAME_STMT);
+		}
 
 	      if (ls.gs.ifn == IFN_MASK_LEN_GATHER_LOAD)
 		{

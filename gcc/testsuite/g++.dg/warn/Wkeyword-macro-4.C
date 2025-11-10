@@ -95,18 +95,18 @@
 #undef override 			// { dg-error "undefining keyword 'override'" "" { target c++26 } }
 #undef post
 #undef pre
-#undef replaceable_if_eligible 	// { dg-error "undefining keyword 'replaceable_if_eligible'" "" { target c++26 } }
-#undef trivially_relocatable_if_eligible 	// { dg-error "undefining keyword 'trivially_relocatable_if_eligible'" "" { target c++26 } }
+#undef replaceable_if_eligible
+#undef trivially_relocatable_if_eligible
 
 // [dcl.attr]
 #undef assume				// { dg-error "undefining keyword 'assume'" "" { target c++26 } }
 #undef carries_dependency
 #undef deprecated			// { dg-error "undefining keyword 'deprecated'" "" { target c++26 } }
 #undef fallthrough			// { dg-error "undefining keyword 'fallthrough'" "" { target c++26 } }
-#undef indeterminate
-#undef likely				// { dg-error "undefining keyword 'likely'" "" { target c++26 } }
+#undef indeterminate			// { dg-error "undefining keyword 'indeterminate'" "" { target c++26 } }
+#undef likely
 #undef maybe_unused			// { dg-error "undefining keyword 'maybe_unused'" "" { target c++26 } }
 #undef nodiscard			// { dg-error "undefining keyword 'nodiscard'" "" { target c++26 } }
 #undef noreturn				// { dg-error "undefining keyword 'noreturn'" "" { target c++26 } }
 #undef no_unique_address		// { dg-error "undefining keyword 'no_unique_address'" "" { target c++26 } }
-#undef unlikely				// { dg-error "undefining keyword 'unlikely'" "" { target c++26 } }
+#undef unlikely

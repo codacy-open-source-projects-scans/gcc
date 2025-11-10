@@ -95,18 +95,18 @@
 #undef override 			// { dg-warning "undefining keyword 'override'" "" { target c++26 } }
 #undef post
 #undef pre
-#undef replaceable_if_eligible 	// { dg-warning "undefining keyword 'replaceable_if_eligible'" "" { target c++26 } }
-#undef trivially_relocatable_if_eligible 	// { dg-warning "undefining keyword 'trivially_relocatable_if_eligible'" "" { target c++26 } }
+#undef replaceable_if_eligible
+#undef trivially_relocatable_if_eligible
 
 // [dcl.attr]
 #undef assume				// { dg-warning "undefining keyword 'assume'" "" { target c++26 } }
 #undef carries_dependency
 #undef deprecated			// { dg-warning "undefining keyword 'deprecated'" "" { target c++26 } }
 #undef fallthrough			// { dg-warning "undefining keyword 'fallthrough'" "" { target c++26 } }
-#undef indeterminate
-#undef likely				// { dg-warning "undefining keyword 'likely'" "" { target c++26 } }
+#undef indeterminate			// { dg-warning "undefining keyword 'indeterminate'" "" { target c++26 } }
+#undef likely
 #undef maybe_unused			// { dg-warning "undefining keyword 'maybe_unused'" "" { target c++26 } }
 #undef nodiscard			// { dg-warning "undefining keyword 'nodiscard'" "" { target c++26 } }
 #undef noreturn				// { dg-warning "undefining keyword 'noreturn'" "" { target c++26 } }
 #undef no_unique_address		// { dg-warning "undefining keyword 'no_unique_address'" "" { target c++26 } }
-#undef unlikely				// { dg-warning "undefining keyword 'unlikely'" "" { target c++26 } }
+#undef unlikely

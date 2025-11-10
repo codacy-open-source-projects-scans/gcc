@@ -95,15 +95,15 @@
 #define override 1			// { dg-warning "keyword 'override' defined as macro" "" { target c++11 } }
 #define post 1
 #define pre 1
-#define replaceable_if_eligible 1	// { dg-warning "keyword 'replaceable_if_eligible' defined as macro" "" { target c++26 } }
-#define trivially_relocatable_if_eligible 1	// { dg-warning "keyword 'trivially_relocatable_if_eligible' defined as macro" "" { target c++26 } }
+#define replaceable_if_eligible
+#define trivially_relocatable_if_eligible
 
 // [dcl.attr]
 #define assume 1			// { dg-warning "keyword 'assume' defined as macro" "" { target c++23 } }
 #define carries_dependency 1		// { dg-warning "keyword 'carries_dependency' defined as macro" "" { target { c++11 && c++23_down } } }
 #define deprecated 1			// { dg-warning "keyword 'deprecated' defined as macro" "" { target c++14 } }
 #define fallthrough 1			// { dg-warning "keyword 'fallthrough' defined as macro" "" { target c++17 } }
-#define indeterminate 1
+#define indeterminate 1			// { dg-warning "keyword 'indeterminate' defined as macro" "" { target c++26 } }
 #define likely 1			// { dg-warning "keyword 'likely' defined as macro" "" { target c++20 } }
 #define maybe_unused 1			// { dg-warning "keyword 'maybe_unused' defined as macro" "" { target c++17 } }
 #define nodiscard 1			// { dg-warning "keyword 'nodiscard' defined as macro" "" { target c++17 } }

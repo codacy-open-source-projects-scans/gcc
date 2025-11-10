@@ -288,11 +288,23 @@ struct vect_load_store_data : vect_data {
       tree decl;	// VMAT_GATHER_SCATTER_DECL
   } gs;
   tree strided_offset_vectype; // VMAT_GATHER_SCATTER_IFN, originally strided
+  /* Load/store type with larger element mode used for punning the vectype.  */
   tree ls_type; // VMAT_GATHER_SCATTER_IFN
+  /* This is set to a supported offset vector type if we don't support the
+     originally requested offset type, otherwise NULL.
+     If nonzero there will be an additional offset conversion before
+     the gather/scatter.  */
+  tree supported_offset_vectype; // VMAT_GATHER_SCATTER_IFN
+  /* Similar for scale.  Only nonzero if we don't support the requested
+     scale.  Then we need to multiply the offset vector before the
+     gather/scatter.  */
+  int supported_scale; // VMAT_GATHER_SCATTER_IFN
   auto_vec<int> elsvals;
   /* True if the load requires a load permutation.  */
   bool slp_perm;    // SLP_TREE_LOAD_PERMUTATION
   unsigned n_perms; // SLP_TREE_LOAD_PERMUTATION
+  /* Whether the load permutation is consecutive and simple.  */
+  bool subchain_p; // VMAT_STRIDED_SLP and VMAT_GATHER_SCATTER
 };
 
 /* A computation tree of an SLP instance.  Each node corresponds to a group of
@@ -2588,8 +2600,8 @@ extern bool vect_slp_analyze_instance_alignment (vec_info *, slp_instance);
 extern opt_result vect_analyze_data_ref_accesses (vec_info *, vec<int> *);
 extern opt_result vect_prune_runtime_alias_test_list (loop_vec_info);
 extern bool vect_gather_scatter_fn_p (vec_info *, bool, bool, tree, tree,
-				      tree, int, internal_fn *, tree *,
-				      vec<int> * = nullptr);
+				      tree, int, int *, internal_fn *, tree *,
+				      tree *, vec<int> * = nullptr);
 extern bool vect_check_gather_scatter (stmt_vec_info, tree,
 				       loop_vec_info, gather_scatter_info *,
 				       vec<int> * = nullptr);
@@ -2754,6 +2766,7 @@ extern int vect_slp_child_index_for_operand (const gimple *, int op, bool);
 extern tree prepare_vec_mask (loop_vec_info, tree, tree, tree,
 			      gimple_stmt_iterator *);
 extern tree vect_get_mask_load_else (int, tree);
+extern bool vect_load_perm_consecutive_p (slp_tree, unsigned = 0);
 
 /* In tree-vect-patterns.cc.  */
 extern void
