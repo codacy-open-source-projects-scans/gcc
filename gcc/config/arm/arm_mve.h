@@ -50,7 +50,6 @@
 #define vgetq_lane(__a, __idx) __arm_vgetq_lane(__a, __idx)
 
 
-#define vpnot(__a) __arm_vpnot(__a)
 #define vuninitializedq_u8(void) __arm_vuninitializedq_u8(void)
 #define vuninitializedq_u16(void) __arm_vuninitializedq_u16(void)
 #define vuninitializedq_u32(void) __arm_vuninitializedq_u32(void)
@@ -81,22 +80,6 @@
 #define vgetq_lane_u16(__a,  __idx) __arm_vgetq_lane_u16(__a,  __idx)
 #define vgetq_lane_u32(__a,  __idx) __arm_vgetq_lane_u32(__a,  __idx)
 #define vgetq_lane_u64(__a,  __idx) __arm_vgetq_lane_u64(__a,  __idx)
-#define sqrshr(__p0, __p1) __arm_sqrshr(__p0, __p1)
-#define sqrshrl(__p0, __p1) __arm_sqrshrl(__p0, __p1)
-#define sqrshrl_sat48(__p0, __p1) __arm_sqrshrl_sat48(__p0, __p1)
-#define sqshl(__p0, __p1) __arm_sqshl(__p0, __p1)
-#define sqshll(__p0, __p1) __arm_sqshll(__p0, __p1)
-#define srshr(__p0, __p1) __arm_srshr(__p0, __p1)
-#define srshrl(__p0, __p1) __arm_srshrl(__p0, __p1)
-#define uqrshl(__p0, __p1) __arm_uqrshl(__p0, __p1)
-#define uqrshll(__p0, __p1) __arm_uqrshll(__p0, __p1)
-#define uqrshll_sat48(__p0, __p1) __arm_uqrshll_sat48(__p0, __p1)
-#define uqshl(__p0, __p1) __arm_uqshl(__p0, __p1)
-#define uqshll(__p0, __p1) __arm_uqshll(__p0, __p1)
-#define urshr(__p0, __p1) __arm_urshr(__p0, __p1)
-#define urshrl(__p0, __p1) __arm_urshrl(__p0, __p1)
-#define lsll(__p0, __p1) __arm_lsll(__p0, __p1)
-#define asrl(__p0, __p1) __arm_asrl(__p0, __p1)
 #endif
 
 /* For big-endian, GCC's vector indices are reversed within each 64 bits
@@ -110,13 +93,6 @@
 #define __ARM_CHECK_LANEQ(__vec, __idx)		 \
   __builtin_arm_lane_check (__ARM_NUM_LANES(__vec),     \
 			    __ARM_LANEQ(__vec, __idx))
-
-__extension__ extern __inline mve_pred16_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_vpnot (mve_pred16_t __a)
-{
-  return __builtin_mve_vpnotv16bi (__a);
-}
 
 __extension__ extern __inline int16x8_t
 __attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
@@ -254,117 +230,6 @@ __arm_vgetq_lane_u64 (uint64x2_t __a, const int __idx)
   return __a[__ARM_LANEQ(__a,__idx)];
 }
 
-__extension__ extern __inline  uint64_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_lsll (uint64_t value, int32_t shift)
-{
-  return (value << shift);
-}
-
-__extension__ extern __inline int64_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_asrl (int64_t value, int32_t shift)
-{
-  return (value >> shift);
-}
-
-__extension__ extern __inline uint64_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_uqrshll (uint64_t value, int32_t shift)
-{
-  return __builtin_mve_uqrshll_sat64_di (value, shift);
-}
-
-__extension__ extern __inline uint64_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_uqrshll_sat48 (uint64_t value, int32_t shift)
-{
-  return __builtin_mve_uqrshll_sat48_di (value, shift);
-}
-
-__extension__ extern __inline int64_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_sqrshrl (int64_t value, int32_t shift)
-{
-  return __builtin_mve_sqrshrl_sat64_di (value, shift);
-}
-
-__extension__ extern __inline int64_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_sqrshrl_sat48 (int64_t value, int32_t shift)
-{
-  return __builtin_mve_sqrshrl_sat48_di (value, shift);
-}
-
-__extension__ extern __inline uint64_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_uqshll (uint64_t value, const int shift)
-{
-  return __builtin_mve_uqshll_di (value, shift);
-}
-
-__extension__ extern __inline uint64_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_urshrl (uint64_t value, const int shift)
-{
-  return __builtin_mve_urshrl_di (value, shift);
-}
-
-__extension__ extern __inline int64_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_srshrl (int64_t value, const int shift)
-{
-  return __builtin_mve_srshrl_di (value, shift);
-}
-
-__extension__ extern __inline int64_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_sqshll (int64_t value, const int shift)
-{
-  return __builtin_mve_sqshll_di (value, shift);
-}
-
-__extension__ extern __inline uint32_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_uqrshl (uint32_t value, int32_t shift)
-{
-  return __builtin_mve_uqrshl_si (value, shift);
-}
-
-__extension__ extern __inline int32_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_sqrshr (int32_t value, int32_t shift)
-{
-  return __builtin_mve_sqrshr_si (value, shift);
-}
-
-__extension__ extern __inline uint32_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_uqshl (uint32_t value, const int shift)
-{
-  return  __builtin_mve_uqshl_si (value, shift);
-}
-
-__extension__ extern __inline uint32_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_urshr (uint32_t value, const int shift)
-{
-  return __builtin_mve_urshr_si (value, shift);
-}
-
-__extension__ extern __inline int32_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_sqshl (int32_t value, const int shift)
-{
-  return __builtin_mve_sqshl_si (value, shift);
-}
-
-__extension__ extern __inline int32_t
-__attribute__ ((__always_inline__, __gnu_inline__, __artificial__))
-__arm_srshr (int32_t value, const int shift)
-{
-  return __builtin_mve_srshr_si (value, shift);
-}
 
 #if (__ARM_FEATURE_MVE & 2) /* MVE Floating point.  */
 

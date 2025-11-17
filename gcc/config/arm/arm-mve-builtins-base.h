@@ -23,6 +23,22 @@
 namespace arm_mve {
 namespace functions {
 
+extern const function_base *const asrl;
+extern const function_base *const lsll;
+extern const function_base *const sqrshr;
+extern const function_base *const sqrshrl;
+extern const function_base *const sqrshrl_sat48;
+extern const function_base *const sqshl;
+extern const function_base *const sqshll;
+extern const function_base *const srshr;
+extern const function_base *const srshrl;
+extern const function_base *const uqrshl;
+extern const function_base *const uqrshll;
+extern const function_base *const uqrshll_sat48;
+extern const function_base *const uqshl;
+extern const function_base *const uqshll;
+extern const function_base *const urshr;
+extern const function_base *const urshrl;
 extern const function_base *const vabavq;
 extern const function_base *const vabdq;
 extern const function_base *const vabsq;
@@ -144,6 +160,7 @@ extern const function_base *const vmvnq;
 extern const function_base *const vnegq;
 extern const function_base *const vornq;
 extern const function_base *const vorrq;
+extern const function_base *const vpnot;
 extern const function_base *const vpselq;
 extern const function_base *const vqabsq;
 extern const function_base *const vqaddq;

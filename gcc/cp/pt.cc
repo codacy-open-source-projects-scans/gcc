@@ -11660,9 +11660,7 @@ tsubst_friend_function (tree decl, tree args)
 {
   tree new_friend;
 
-  if (TREE_CODE (decl) == FUNCTION_DECL
-      && DECL_TEMPLATE_INSTANTIATION (decl)
-      && TREE_CODE (DECL_TI_TEMPLATE (decl)) != TEMPLATE_DECL)
+  if (decl_specialization_friend_p (decl))
     /* This was a friend declared with an explicit template
        argument list, e.g.:
 
@@ -11905,9 +11903,10 @@ tsubst_friend_function (tree decl, tree args)
 	 without necessarily having opened the enclosing namespace, so
 	 make sure the namespace is in the purview now too.  */
       if (modules_p ()
-	  && DECL_MODULE_PURVIEW_P (STRIP_TEMPLATE (new_friend))
-	  && TREE_CODE (DECL_CONTEXT (new_friend)) == NAMESPACE_DECL)
-	DECL_MODULE_PURVIEW_P (DECL_CONTEXT (new_friend)) = true;
+	  && DECL_MODULE_PURVIEW_P (STRIP_TEMPLATE (new_friend)))
+	for (tree ctx = DECL_CONTEXT (new_friend);
+	     TREE_CODE (ctx) == NAMESPACE_DECL; ctx = DECL_CONTEXT (ctx))
+	  DECL_MODULE_PURVIEW_P (ctx) = true;
     }
   else
     {
@@ -26379,11 +26378,6 @@ void
 mark_decl_instantiated (tree result, int extern_p)
 {
   SET_DECL_EXPLICIT_INSTANTIATION (result);
-
-  /* If this entity has already been written out, it's too late to
-     make any modifications.  */
-  if (TREE_ASM_WRITTEN (result))
-    return;
 
   /* consteval functions are never emitted.  */
   if (TREE_CODE (result) == FUNCTION_DECL

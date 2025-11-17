@@ -8359,9 +8359,9 @@ resolve_omp_udr_clause (gfc_omp_namelist *n, gfc_namespace *ns,
 }
 
 /* Assume that a constant expression in the range 1 (omp_default_mem_alloc)
-   to 8 (omp_thread_mem_alloc) range, or 200 (ompx_gnu_pinned_mem_alloc) is
-   fine.  The original symbol name is already lost during matching via
-   gfc_match_expr.  */
+   to GOMP_OMP_PREDEF_ALLOC_MAX, or GOMP_OMPX_PREDEF_ALLOC_MIN to
+   GOMP_OMPX_PREDEF_ALLOC_MAX is fine.  The original symbol name is already
+   lost during matching via gfc_match_expr.  */
 static bool
 is_predefined_allocator (gfc_expr *expr)
 {
@@ -12290,12 +12290,14 @@ gfc_resolve_omp_context_selector (gfc_omp_set_selector *oss,
 		continue;
 	      }
 	    /* Device number must be conforming, which includes
-	       omp_initial_device (-1) and omp_invalid_device (-4).  */
+	       omp_initial_device (-1), omp_invalid_device (-4),
+	       and omp_default_device (-5).  */
 	    if (property_kind == OMP_TRAIT_PROPERTY_DEV_NUM_EXPR
 		&& otp->expr->expr_type == EXPR_CONSTANT
 		&& mpz_sgn (otp->expr->value.integer) < 0
 		&& mpz_cmp_si (otp->expr->value.integer, -1) != 0
-		&& mpz_cmp_si (otp->expr->value.integer, -4) != 0)
+		&& mpz_cmp_si (otp->expr->value.integer, -4) != 0
+		&& mpz_cmp_si (otp->expr->value.integer, -5) != 0)
 	      gfc_error ("property must be a conforming device number at %L",
 			 &otp->expr->where);
 	    break;

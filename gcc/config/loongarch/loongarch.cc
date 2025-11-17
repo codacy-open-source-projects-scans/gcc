@@ -21,6 +21,7 @@ along with GCC; see the file COPYING3.  If not see
 
 #define IN_TARGET_CODE 1
 
+#define INCLUDE_STRING
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
@@ -1391,6 +1392,42 @@ bool
 loongarch_can_use_return_insn (void)
 {
   return reload_completed && cfun->machine->frame.total_size == 0;
+}
+
+/* If we want to support lock-free 16B atomic, we must support at least
+   lock-free atomic load, store, and CAS (other operations can be emulated
+   with CAS even if not supported directly).  Otherwise, for example if
+   store is lock-free but CAS is not, the store may happen when the CAS
+   operation is holding the lock, breaking the atomicity of CAS.
+
+   We need LSX for load/store and SCQ for CAS, so require both for
+   lock-free 16B atomic.
+
+   If we link a TU (1) compiled with -mlsx -mscq and the TU (2) not, for
+   the same reason we need to ensure the libatomic call invoked by TU (2)
+   always use the lock-free sequence.  Thus libatomic must contain the
+   ifuncs built with -mlsx -mscq.  Since the ifunc resolver interface is
+   glibc-specific and the hwcap bits are Linux-specific, the resolver
+   implementation in libatomic assumes GNU/Linux and
+   HAVE_IFUNC_FOR_LIBATOMIC_16B is only enabled for it.  To support
+   another OS, add the correct ifunc resolver implementation into
+   libatomic/config/loongarch/host-config.h and then define
+   HAVE_IFUNC_FOR_LIBATOMIC_16B for it.
+
+   FIXME: when ifunc is not supported but libatomic is entirely built with
+   -mlsx -mscq, we don't really need ifunc.  But we don't have a way to
+   get CFLAGS_FOR_TARGET here...  */
+bool
+loongarch_16b_atomic_lock_free_p (void)
+{
+#ifdef HAVE_IFUNC_FOR_LIBATOMIC_16B
+  bool ok_p = HAVE_IFUNC_FOR_LIBATOMIC_16B;
+#else
+  bool ok_p = false;
+#endif
+
+  return (ok_p && targetm.has_ifunc_p ()
+	  && TARGET_64BIT && ISA_HAS_LSX && ISA_HAS_SCQ);
 }
 
 /* Expand function epilogue using the following insn patterns:
@@ -10055,7 +10092,7 @@ emit_reduc_half (rtx dest, rtx src, int i)
       if (i == 256)
 	tem = gen_lasx_xvpermi_d_v4df (dest, src, GEN_INT (0xe));
       else
-	tem = gen_lasx_xvpermi_d_v4df (dest, src, const1_rtx);
+	tem = gen_lasx_xvbsrl_d_f (dest, src, GEN_INT (0x8));
       break;
     case E_V32QImode:
     case E_V16HImode:
@@ -11382,6 +11419,10 @@ loongarch_compute_pressure_classes (reg_class *classes)
 static bool
 loongarch_can_inline_p (tree caller, tree callee)
 {
+  /* Do not inline when callee is versioned but caller is not.  */
+  if (DECL_FUNCTION_VERSIONED (callee) && ! DECL_FUNCTION_VERSIONED (caller))
+    return false;
+
   tree callee_tree = DECL_FUNCTION_SPECIFIC_TARGET (callee);
   tree caller_tree = DECL_FUNCTION_SPECIFIC_TARGET (caller);
 
@@ -11434,6 +11475,627 @@ loongarch_can_inline_p (tree caller, tree callee)
     return false;
 
   return true;
+}
+
+/* Parse the tree in ARGS that contains the target_version attribute
+   information and update the global target options space.  If LOC is nonnull,
+   report diagnostics against *LOC, otherwise remain silent.  */
+
+bool
+loongarch_process_target_version_attr (tree args, tree fndecl)
+{
+  location_t loc = DECL_SOURCE_LOCATION (fndecl);
+
+  if (TREE_CODE (args) == TREE_LIST)
+    {
+      if (TREE_CHAIN (args))
+	{
+	  if (loc)
+	    error_at (loc, "attribute %<target_version%> "
+		      "has multiple values");
+	  return false;
+	}
+      args = TREE_VALUE (args);
+    }
+
+  if (!args || TREE_CODE (args) != STRING_CST)
+    {
+      if (loc)
+	error_at (loc, "attribute %<target_version%> argument not a string");
+      return false;
+    }
+
+  string_slice str = TREE_STRING_POINTER (args);
+
+  if (str == "default")
+    return true;
+
+  if (loongarch_parse_fmv_features (fndecl, str, NULL, NULL) == false)
+    return false;
+
+  /* Get the attribute string and take out only the option part.
+     eg:
+       "arch=la64v1.0;priority=1"
+     The attr_string is "arch=la64v1.0".
+   */
+  string_slice attr_string = string_slice::tokenize (&str, ";");
+  attr_string = attr_string.strip ();
+
+  args = build_string (attr_string.size (), attr_string.begin ());
+
+  return loongarch_process_target_attr (args, fndecl);
+}
+
+
+/* Implement TARGET_OPTION_VALID_VERSION_ATTRIBUTE_P.  This is used to
+   process attribute ((target_version ("..."))).  */
+
+static bool
+loongarch_option_valid_version_attribute_p (tree fndecl, tree, tree args, int)
+{
+  struct cl_target_option cur_target;
+  bool ret;
+  tree new_target;
+  tree existing_target = DECL_FUNCTION_SPECIFIC_TARGET (fndecl);
+
+  /* Save the current target options to restore at the end.  */
+  cl_target_option_save (&cur_target, &global_options, &global_options_set);
+
+  /* If fndecl already has some target attributes applied to it, unpack
+     them so that we add this attribute on top of them, rather than
+     overwriting them.  */
+  if (existing_target)
+    {
+      struct cl_target_option *existing_options
+	= TREE_TARGET_OPTION (existing_target);
+
+      if (existing_options)
+	cl_target_option_restore (&global_options, &global_options_set,
+				  existing_options);
+    }
+  else
+    cl_target_option_restore (&global_options, &global_options_set,
+			      TREE_TARGET_OPTION (target_option_current_node));
+
+  ret = loongarch_process_target_version_attr (args, fndecl);
+
+  /* Set up any additional state.  */
+  if (ret)
+    {
+      loongarch_option_override_internal (&la_target,
+					  &global_options,
+					  &global_options_set);
+      new_target = build_target_option_node (&global_options,
+					     &global_options_set);
+    }
+  else
+    new_target = NULL;
+
+  if (fndecl && ret)
+    DECL_FUNCTION_SPECIFIC_TARGET (fndecl) = new_target;
+
+  cl_target_option_restore (&global_options, &global_options_set, &cur_target);
+
+  return ret;
+}
+
+/* Make a dispatcher declaration for the multi-versioned function DECL.
+   Calls to DECL function will be replaced with calls to the dispatcher
+   by the front-end.  Returns the decl of the dispatcher function.  */
+
+tree
+loongarch_get_function_versions_dispatcher (void *decl)
+{
+  tree fn = (tree) decl;
+  struct cgraph_node *node = NULL;
+  struct cgraph_node *default_node = NULL;
+  struct cgraph_function_version_info *node_v = NULL;
+
+  tree dispatch_decl = NULL;
+
+  struct cgraph_function_version_info *default_version_info = NULL;
+
+  gcc_assert (fn != NULL && DECL_FUNCTION_VERSIONED (fn));
+
+  node = cgraph_node::get (fn);
+  gcc_assert (node != NULL);
+
+  node_v = node->function_version ();
+  gcc_assert (node_v != NULL);
+
+  if (node_v->dispatcher_resolver != NULL)
+    return node_v->dispatcher_resolver;
+
+  /* The default node is always the beginning of the chain.  */
+  default_version_info = node_v;
+  while (default_version_info->prev)
+    default_version_info = default_version_info->prev;
+  default_node = default_version_info->this_node;
+
+  /* If there is no default node, just return NULL.  */
+  if (!is_function_default_version (default_node->decl))
+    return NULL;
+
+  if (targetm.has_ifunc_p ())
+    {
+      struct cgraph_function_version_info *it_v = NULL;
+      struct cgraph_node *dispatcher_node = NULL;
+      struct cgraph_function_version_info *dispatcher_version_info = NULL;
+
+      /* Right now, the dispatching is done via ifunc.  */
+      dispatch_decl = make_dispatcher_decl (default_node->decl);
+      TREE_NOTHROW (dispatch_decl) = TREE_NOTHROW (fn);
+
+      dispatcher_node = cgraph_node::get_create (dispatch_decl);
+      gcc_assert (dispatcher_node != NULL);
+      dispatcher_node->dispatcher_function = 1;
+      dispatcher_version_info
+	= dispatcher_node->insert_new_function_version ();
+      dispatcher_version_info->next = default_version_info;
+      dispatcher_node->definition = 1;
+
+      /* Set the dispatcher for all the versions.  */
+      it_v = default_version_info;
+      while (it_v != NULL)
+	{
+	  it_v->dispatcher_resolver = dispatch_decl;
+	  it_v = it_v->next;
+	}
+    }
+  else
+    {
+      error_at (DECL_SOURCE_LOCATION (default_node->decl),
+		"multiversioning needs %<ifunc%> which is not supported "
+		"on this target");
+    }
+
+  return dispatch_decl;
+}
+
+/* Implement TARGET_MANGLE_DECL_ASSEMBLER_NAME, to add function multiversioning
+   suffixes.  */
+
+tree
+loongarch_mangle_decl_assembler_name (tree decl, tree id)
+{
+  /* For function version, add the target suffix to the assembler name.  */
+  if (TREE_CODE (decl) == FUNCTION_DECL
+      && DECL_FUNCTION_VERSIONED (decl))
+    {
+      std::string name = IDENTIFIER_POINTER (id) + std::string (".");
+      tree target_attr = lookup_attribute ("target_version",
+					   DECL_ATTRIBUTES (decl));
+
+      if (target_attr == NULL_TREE)
+	{
+	  name += "default";
+	  return get_identifier (name.c_str ());
+	}
+
+      const char *version_string
+	= TREE_STRING_POINTER (TREE_VALUE (TREE_VALUE (target_attr)));
+
+      /* Replace non-alphanumeric characters with underscores as the suffix.  */
+      for (const char *c = version_string; *c; c++)
+	name += ISALNUM (*c) == 0 ? '_' : *c;
+
+      if (DECL_ASSEMBLER_NAME_SET_P (decl))
+	SET_DECL_RTL (decl, NULL);
+
+      id = get_identifier (name.c_str ());
+    }
+  return id;
+}
+
+/* Return an identifier for the base assembler name of a versioned function.
+   This is computed by taking the default version's assembler name, and
+   stripping off the ".default" suffix if it's already been appended.  */
+
+static tree
+get_suffixed_assembler_name (tree default_decl, const char *suffix)
+{
+  std::string name = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (default_decl));
+
+  auto size = name.size ();
+  if (size >= 8 && name.compare (size - 8, 8, ".default") == 0)
+    name.resize (size - 8);
+  name += suffix;
+  return get_identifier (name.c_str ());
+}
+
+/* Get the mask and priority of features.  */
+void
+get_feature_mask_for_version (tree decl,
+			      loongarch_fmv_feature_mask *feature_mask,
+			      auto_vec<unsigned int> *feature_priority)
+{
+  tree version_attr = lookup_attribute ("target_version",
+					DECL_ATTRIBUTES (decl));
+
+  /* When a function is added with "__attribute__((target_version(**)))" to
+     define multiple versions, it is allowed to define this function without
+     adding the "__attribute__((target_version("default")))" attribute.
+     In this case, the function without the attribute will be compiled as the
+     default version.
+     If version_attr is empty, it is the default version of the function.
+     Set the feature_mask of this function to 0 and the priority to
+     LA_PRIO_NONE.  */
+  if (version_attr == NULL)
+    {
+      if (feature_mask)
+	feature_mask = 0ULL;
+
+      if (feature_priority)
+	feature_priority->safe_push (0);
+      return;
+    }
+
+  string_slice version_string
+    = TREE_STRING_POINTER (TREE_VALUE (TREE_VALUE (version_attr)));
+  loongarch_parse_fmv_features (decl, version_string, feature_mask,
+				feature_priority);
+}
+
+/* This adds a condition to the basic_block NEW_BB in function FUNCTION_DECL
+   to return a pointer to VERSION_DECL if all feature bits specified in
+   FEATURE_MASK are not set in MASK_VAR.  This function will be called during
+   version dispatch to decide which function version to execute.  It returns
+   the basic block at the end, to which more conditions can be added.  */
+static basic_block
+add_condition_to_bb (tree function_decl, tree version_decl,
+		     loongarch_fmv_feature_mask feature_mask,
+		     tree mask_var, basic_block new_bb)
+{
+  gimple *return_stmt;
+  tree convert_expr, result_var;
+  gimple *convert_stmt;
+  gimple *if_else_stmt;
+
+  basic_block bb1, bb2, bb3;
+  edge e12, e23;
+
+  gimple_seq gseq;
+
+  push_cfun (DECL_STRUCT_FUNCTION (function_decl));
+
+  gcc_assert (new_bb != NULL);
+  gseq = bb_seq (new_bb);
+
+  convert_expr = build1 (CONVERT_EXPR, ptr_type_node,
+			 build_fold_addr_expr (version_decl));
+  result_var = create_tmp_var (ptr_type_node);
+  convert_stmt = gimple_build_assign (result_var, convert_expr);
+  return_stmt = gimple_build_return (result_var);
+
+  if (feature_mask == 0ULL)
+    {
+      /* Default version.  */
+      gimple_seq_add_stmt (&gseq, convert_stmt);
+      gimple_seq_add_stmt (&gseq, return_stmt);
+      set_bb_seq (new_bb, gseq);
+      gimple_set_bb (convert_stmt, new_bb);
+      gimple_set_bb (return_stmt, new_bb);
+      pop_cfun ();
+      return new_bb;
+    }
+
+  tree and_expr_var = create_tmp_var (unsigned_type_node);
+  tree and_expr = build2 (BIT_AND_EXPR,
+			  long_long_unsigned_type_node,
+			  mask_var,
+			  build_int_cst (unsigned_type_node,
+					 feature_mask));
+  gimple *and_stmt = gimple_build_assign (and_expr_var, and_expr);
+  gimple_set_block (and_stmt, DECL_INITIAL (function_decl));
+  gimple_set_bb (and_stmt, new_bb);
+  gimple_seq_add_stmt (&gseq, and_stmt);
+
+  tree zero_llu = build_int_cst (unsigned_type_node, 0);
+  if_else_stmt = gimple_build_cond (EQ_EXPR, and_expr_var, zero_llu,
+				    NULL_TREE, NULL_TREE);
+  gimple_set_block (if_else_stmt, DECL_INITIAL (function_decl));
+  gimple_set_bb (if_else_stmt, new_bb);
+  gimple_seq_add_stmt (&gseq, if_else_stmt);
+
+  gimple_seq_add_stmt (&gseq, convert_stmt);
+  gimple_seq_add_stmt (&gseq, return_stmt);
+  set_bb_seq (new_bb, gseq);
+
+  bb1 = new_bb;
+  e12 = split_block (bb1, if_else_stmt);
+  bb2 = e12->dest;
+  e12->flags &= ~EDGE_FALLTHRU;
+  e12->flags |= EDGE_TRUE_VALUE;
+
+  e23 = split_block (bb2, return_stmt);
+
+  gimple_set_bb (convert_stmt, bb2);
+  gimple_set_bb (return_stmt, bb2);
+
+  bb3 = e23->dest;
+  make_edge (bb1, bb3, EDGE_FALSE_VALUE);
+
+  remove_edge (e23);
+  make_edge (bb2, EXIT_BLOCK_PTR_FOR_FN (cfun), 0);
+
+  pop_cfun ();
+
+  return bb3;
+}
+
+/* This function generates the dispatch function for
+   multi-versioned functions.  DISPATCH_DECL is the function which will
+   contain the dispatch logic.  FNDECLS are the function choices for
+   dispatch, and is a tree chain.  EMPTY_BB is the basic block pointer
+   in DISPATCH_DECL in which the dispatch code is generated.  */
+
+static int
+dispatch_function_versions (tree dispatch_decl,
+			    void *fndecls_p,
+			    basic_block *empty_bb)
+{
+  gimple *ifunc_cpu_init_stmt;
+  gimple_seq gseq;
+  vec<tree> *fndecls;
+
+  gcc_assert (dispatch_decl != NULL
+	      && fndecls_p != NULL
+	      && empty_bb != NULL);
+
+  push_cfun (DECL_STRUCT_FUNCTION (dispatch_decl));
+
+  gseq = bb_seq (*empty_bb);
+  /* Function version dispatch is via IFUNC.  IFUNC resolvers fire before
+     constructors, so explicity call __init_loongarch_feature_bits here.  */
+  tree init_fn_type = build_function_type_list (void_type_node,
+						void_type_node,
+						NULL);
+  tree init_fn_id = get_identifier ("__init_loongarch_features_resolver");
+  tree init_fn_decl = build_decl (UNKNOWN_LOCATION, FUNCTION_DECL,
+				  init_fn_id, init_fn_type);
+  DECL_EXTERNAL (init_fn_decl) = 1;
+  TREE_PUBLIC (init_fn_decl) = 1;
+  DECL_VISIBILITY (init_fn_decl) = VISIBILITY_HIDDEN;
+  DECL_VISIBILITY_SPECIFIED (init_fn_decl) = 1;
+  ifunc_cpu_init_stmt = gimple_build_call (init_fn_decl, 0);
+  gimple_seq_add_stmt (&gseq, ifunc_cpu_init_stmt);
+  gimple_set_bb (ifunc_cpu_init_stmt, *empty_bb);
+
+  /* Build the struct type for __loongarch_feature_bits.  */
+  tree global_type = lang_hooks.types.make_type (RECORD_TYPE);
+  tree field1 = build_decl (UNKNOWN_LOCATION, FIELD_DECL,
+			    get_identifier ("features"),
+			    unsigned_type_node);
+  DECL_FIELD_CONTEXT (field1) = global_type;
+  TYPE_FIELDS (global_type) = field1;
+  layout_type (global_type);
+
+  tree global_var = build_decl (UNKNOWN_LOCATION, VAR_DECL,
+				get_identifier ("__loongarch_feature_bits"),
+				global_type);
+  DECL_EXTERNAL (global_var) = 1;
+  TREE_PUBLIC (global_var) = 1;
+  DECL_VISIBILITY (global_var) = VISIBILITY_HIDDEN;
+  DECL_VISIBILITY_SPECIFIED (global_var) = 1;
+  tree mask_var = create_tmp_var (unsigned_type_node);
+
+  tree component_expr = build3 (COMPONENT_REF, unsigned_type_node,
+				global_var, field1, NULL_TREE);
+  gimple *component_stmt = gimple_build_assign (mask_var, component_expr);
+  gimple_set_block (component_stmt, DECL_INITIAL (dispatch_decl));
+  gimple_set_bb (component_stmt, *empty_bb);
+  gimple_seq_add_stmt (&gseq, component_stmt);
+
+  tree not_expr = build1 (BIT_NOT_EXPR, unsigned_type_node, mask_var);
+  gimple *not_stmt = gimple_build_assign (mask_var, not_expr);
+  gimple_set_block (not_stmt, DECL_INITIAL (dispatch_decl));
+  gimple_set_bb (not_stmt, *empty_bb);
+  gimple_seq_add_stmt (&gseq, not_stmt);
+
+  set_bb_seq (*empty_bb, gseq);
+
+  pop_cfun ();
+
+  /* fndecls_p is actually a vector.  */
+  fndecls = static_cast<vec<tree> *> (fndecls_p);
+
+  /* At least one more version other than the default.  */
+  unsigned int num_versions = fndecls->length ();
+  gcc_assert (num_versions >= 2);
+
+  int i;
+  tree version_decl;
+  FOR_EACH_VEC_ELT_REVERSE (*fndecls, i, version_decl)
+    {
+      loongarch_fmv_feature_mask feature_mask = 0;
+      /* Get attribute string, parse it and find the right features.  */
+      get_feature_mask_for_version (version_decl, &feature_mask,
+				    NULL);
+      *empty_bb = add_condition_to_bb (dispatch_decl,
+				       version_decl,
+				       feature_mask,
+				       mask_var,
+				       *empty_bb);
+    }
+
+  return 0;
+}
+
+/* Make the resolver function decl to dispatch the versions of
+   a multi-versioned function,  DEFAULT_DECL.  IFUNC_ALIAS_DECL is
+   ifunc alias that will point to the created resolver.  Create an
+   empty basic block in the resolver and store the pointer in
+   EMPTY_BB.  Return the decl of the resolver function.  */
+
+static tree
+make_resolver_func (const tree default_decl,
+		    const tree ifunc_alias_decl,
+		    basic_block *empty_bb)
+{
+  tree decl, type, t;
+
+  /* Create resolver function name based on default_decl.  We need to remove an
+     existing ".default" suffix if this has already been appended.  */
+  tree decl_name = get_suffixed_assembler_name (default_decl, ".resolver");
+  const char *resolver_name = IDENTIFIER_POINTER (decl_name);
+
+  /* The resolver function should return a (void *). */
+  type = build_function_type_list (ptr_type_node, NULL_TREE);
+
+  decl = build_fn_decl (resolver_name, type);
+  SET_DECL_ASSEMBLER_NAME (decl, decl_name);
+
+  DECL_NAME (decl) = decl_name;
+  TREE_USED (decl) = 1;
+  DECL_ARTIFICIAL (decl) = 1;
+  DECL_IGNORED_P (decl) = 1;
+  TREE_PUBLIC (decl) = 0;
+  DECL_UNINLINABLE (decl) = 1;
+
+  /* Resolver is not external, body is generated.  */
+  DECL_EXTERNAL (decl) = 0;
+  DECL_EXTERNAL (ifunc_alias_decl) = 0;
+
+  DECL_CONTEXT (decl) = NULL_TREE;
+  DECL_INITIAL (decl) = make_node (BLOCK);
+  DECL_STATIC_CONSTRUCTOR (decl) = 0;
+
+  if (DECL_COMDAT_GROUP (default_decl)
+      || TREE_PUBLIC (default_decl))
+    {
+      /* In this case, each translation unit with a call to this
+	 versioned function will put out a resolver.  Ensure it
+	 is comdat to keep just one copy.  */
+      DECL_COMDAT (decl) = 1;
+      make_decl_one_only (decl, DECL_ASSEMBLER_NAME (decl));
+    }
+  else
+    TREE_PUBLIC (ifunc_alias_decl) = 0;
+
+  /* Build result decl and add to function_decl.  */
+  t = build_decl (UNKNOWN_LOCATION, RESULT_DECL, NULL_TREE, ptr_type_node);
+  DECL_CONTEXT (t) = decl;
+  DECL_ARTIFICIAL (t) = 1;
+  DECL_IGNORED_P (t) = 1;
+  DECL_RESULT (decl) = t;
+
+  gimplify_function_tree (decl);
+  push_cfun (DECL_STRUCT_FUNCTION (decl));
+  *empty_bb = init_lowered_empty_function (decl, false,
+					   profile_count::uninitialized ());
+
+  cgraph_node::add_new_function (decl, true);
+  symtab->call_cgraph_insertion_hooks (cgraph_node::get_create (decl));
+
+  pop_cfun ();
+
+  gcc_assert (ifunc_alias_decl != NULL);
+  /* Mark ifunc_alias_decl as "ifunc" with resolver as resolver_name.  */
+  DECL_ATTRIBUTES (ifunc_alias_decl)
+    = make_attribute ("ifunc", resolver_name,
+		      DECL_ATTRIBUTES (ifunc_alias_decl));
+
+  /* Create the alias for dispatch to resolver here.  */
+  cgraph_node::create_same_body_alias (ifunc_alias_decl, decl);
+  return decl;
+}
+
+/* Implement TARGET_GENERATE_VERSION_DISPATCHER_BODY.  */
+
+tree
+loongarch_generate_version_dispatcher_body (void *node_p)
+{
+  tree resolver_decl;
+  basic_block empty_bb;
+  tree default_ver_decl;
+  struct cgraph_node *versn;
+  struct cgraph_node *node;
+
+  struct cgraph_function_version_info *node_version_info = NULL;
+  struct cgraph_function_version_info *versn_info = NULL;
+
+  node = (cgraph_node *)node_p;
+
+  node_version_info = node->function_version ();
+  gcc_assert (node->dispatcher_function
+	      && node_version_info != NULL);
+
+  if (node_version_info->dispatcher_resolver)
+    return node_version_info->dispatcher_resolver;
+
+  /* The first version in the chain corresponds to the default version.  */
+  default_ver_decl = node_version_info->next->this_node->decl;
+
+  /* node is going to be an alias, so remove the finalized bit.  */
+  node->definition = false;
+
+  resolver_decl = make_resolver_func (default_ver_decl,
+				      node->decl, &empty_bb);
+
+  node_version_info->dispatcher_resolver = resolver_decl;
+
+  push_cfun (DECL_STRUCT_FUNCTION (resolver_decl));
+
+  auto_vec<tree, 2> fn_ver_vec;
+
+  for (versn_info = node_version_info->next; versn_info;
+       versn_info = versn_info->next)
+    {
+      versn = versn_info->this_node;
+      /* Check for virtual functions here again, as by this time it should
+	 have been determined if this function needs a vtable index or
+	 not.  This happens for methods in derived classes that override
+	 virtual methods in base classes but are not explicitly marked as
+	 virtual.  */
+      if (DECL_VINDEX (versn->decl))
+	sorry ("virtual function multiversioning not supported");
+
+      fn_ver_vec.safe_push (versn->decl);
+    }
+
+  dispatch_function_versions (resolver_decl, &fn_ver_vec, &empty_bb);
+  cgraph_edge::rebuild_edges ();
+  pop_cfun ();
+
+  /* Fix up symbol names.  First we need to obtain the base name, which may
+     have already been mangled.  */
+  tree base_name = get_suffixed_assembler_name (default_ver_decl, "");
+
+  /* We need to redo the version mangling on the non-default versions for the
+     target_clones case.  Redoing the mangling for the target_version case is
+     redundant but does no harm.  We need to skip the default version, because
+     expand_clones will append ".default" later; fortunately that suffix is the
+     one we want anyway.  */
+  for (versn_info = node_version_info->next->next; versn_info;
+       versn_info = versn_info->next)
+    {
+      tree version_decl = versn_info->this_node->decl;
+      tree name = loongarch_mangle_decl_assembler_name (version_decl,
+							base_name);
+      symtab->change_decl_assembler_name (version_decl, name);
+    }
+
+  /* We also need to use the base name for the ifunc declaration.  */
+  symtab->change_decl_assembler_name (node->decl, base_name);
+
+  return resolver_decl;
+}
+
+/* This function returns true if FN1 and FN2 are versions of the same function,
+   that is, the target_version attributes of the function decls are different.
+   This assumes that FN1 and FN2 have the same signature.  */
+
+bool
+loongarch_option_same_function_versions (string_slice str1, string_slice str2)
+{
+  loongarch_fmv_feature_mask feature_mask1;
+  loongarch_fmv_feature_mask feature_mask2;
+  loongarch_parse_fmv_features (NULL, str1,
+				&feature_mask1, NULL);
+  loongarch_parse_fmv_features (NULL, str2,
+				&feature_mask2, NULL);
+
+  return feature_mask1 == feature_mask2;
 }
 
 /* Initialize the GCC target structure.  */
@@ -11722,6 +12384,30 @@ loongarch_can_inline_p (tree caller, tree callee)
 
 #undef TARGET_CAN_INLINE_P
 #define TARGET_CAN_INLINE_P loongarch_can_inline_p
+
+#undef TARGET_OPTION_VALID_VERSION_ATTRIBUTE_P
+#define TARGET_OPTION_VALID_VERSION_ATTRIBUTE_P \
+  loongarch_option_valid_version_attribute_p
+
+#undef TARGET_GET_FUNCTION_VERSIONS_DISPATCHER
+#define TARGET_GET_FUNCTION_VERSIONS_DISPATCHER \
+  loongarch_get_function_versions_dispatcher
+
+#undef TARGET_MANGLE_DECL_ASSEMBLER_NAME
+#define TARGET_MANGLE_DECL_ASSEMBLER_NAME \
+  loongarch_mangle_decl_assembler_name
+
+#undef TARGET_GENERATE_VERSION_DISPATCHER_BODY
+#define TARGET_GENERATE_VERSION_DISPATCHER_BODY \
+  loongarch_generate_version_dispatcher_body
+
+#undef TARGET_COMPARE_VERSION_PRIORITY
+#define TARGET_COMPARE_VERSION_PRIORITY \
+  loongarch_compare_version_priority
+
+#undef TARGET_OPTION_SAME_FUNCTION_VERSIONS
+#define TARGET_OPTION_SAME_FUNCTION_VERSIONS \
+  loongarch_option_same_function_versions
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 

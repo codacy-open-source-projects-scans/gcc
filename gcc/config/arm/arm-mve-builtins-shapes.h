@@ -66,6 +66,14 @@ namespace arm_mve
     extern const function_shape *const load_ext_gather_offset;
     extern const function_shape *const load_gather_base;
     extern const function_shape *const mvn;
+    extern const function_shape *const scalar_s32_shift;
+    extern const function_shape *const scalar_s32_shift_imm;
+    extern const function_shape *const scalar_u32_shift;
+    extern const function_shape *const scalar_u32_shift_imm;
+    extern const function_shape *const scalar_s64_shift;
+    extern const function_shape *const scalar_s64_shift_imm;
+    extern const function_shape *const scalar_u64_shift;
+    extern const function_shape *const scalar_u64_shift_imm;
     extern const function_shape *const store;
     extern const function_shape *const store_scatter_base;
     extern const function_shape *const store_scatter_offset;
@@ -90,6 +98,7 @@ namespace arm_mve
     extern const function_shape *const vcvtx;
     extern const function_shape *const viddup;
     extern const function_shape *const vidwdup;
+    extern const function_shape *const vpnot;
     extern const function_shape *const vpsel;
     extern const function_shape *const vshlc;
 

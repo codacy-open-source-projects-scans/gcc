@@ -1682,6 +1682,158 @@ struct mvn_def : public overloaded_base<0>
 };
 SHAPE (mvn)
 
+/* int32_t foo(int32_t, int32_t)
+
+   Example: sqrshr.
+   int32_t [__arm_]sqrshr(int32_t value, int32_t shift)  */
+struct scalar_s32_shift_def : public nonoverloaded_base
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    build_all (b, "ss32,ss32,ss32", group, MODE_none, preserve_user_namespace);
+  }
+};
+SHAPE (scalar_s32_shift)
+
+/* int32_t foo(int32_t, const int)
+
+   Check that 'shift' is in the [1,32] range.
+
+   Example: sqshl.
+   int32_t [__arm_]sqshl(int32_t value, const int shift)  */
+struct scalar_s32_shift_imm_def : public nonoverloaded_base
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    build_all (b, "ss32,ss32,su64", group, MODE_none, preserve_user_namespace);
+  }
+
+  bool
+  check (function_checker &c) const override
+  {
+    return c.require_immediate_range (1, 1, 32);
+  }
+};
+SHAPE (scalar_s32_shift_imm)
+
+/* uint32_t foo(uint32_t, int32_t)
+
+   Example: uqrshl.
+   uint32_t [__arm_]uqrshl(uint32_t value, int32_t shift)  */
+struct scalar_u32_shift_def : public nonoverloaded_base
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    build_all (b, "su32,su32,ss32", group, MODE_none, preserve_user_namespace);
+  }
+};
+SHAPE (scalar_u32_shift)
+
+/* uint32_t foo(uint32_t, const int)
+
+   Check that 'shift' is in the [1,32] range.
+
+   Example: uqshl.
+   uint32_t [__arm_]uqshl(uint32_t value, const int shift)  */
+struct scalar_u32_shift_imm_def : public nonoverloaded_base
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    build_all (b, "su32,su32,su64", group, MODE_none, preserve_user_namespace);
+  }
+
+  bool
+  check (function_checker &c) const override
+  {
+    return c.require_immediate_range (1, 1, 32);
+  }
+};
+SHAPE (scalar_u32_shift_imm)
+
+/* int64_t foo(int64_t, int32_t)
+
+   Example: asrl
+   int64_t [__arm_]arsl(int64_t value, int32_t shift)  */
+struct scalar_s64_shift_def : public nonoverloaded_base
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    build_all (b, "ss64,ss64,ss32", group, MODE_none, preserve_user_namespace);
+  }
+};
+SHAPE (scalar_s64_shift)
+
+/* int64_t foo(int64_t, const int)
+
+   Check that 'shift' is in the [1,32] range.
+
+   Example: sqshll.
+   int64_t [__arm_]sqshll(int64_t value, const int shift)  */
+struct scalar_s64_shift_imm_def : public nonoverloaded_base
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    build_all (b, "ss64,ss64,su64", group, MODE_none, preserve_user_namespace);
+  }
+
+  bool
+  check (function_checker &c) const override
+  {
+    return c.require_immediate_range (1, 1, 32);
+  }
+};
+SHAPE (scalar_s64_shift_imm)
+
+/* uint64_t foo(uint64_t, int32_t)
+
+   Example: lsll.
+   uint64_t [__arm_]lsll(uint64_t value, int32_t shift)  */
+struct scalar_u64_shift_def : public nonoverloaded_base
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    build_all (b, "su64,su64,ss32", group, MODE_none, preserve_user_namespace);
+  }
+};
+SHAPE (scalar_u64_shift)
+
+/* uint64_t foo(uint64_t, const int)
+
+   Check that 'shift' is in the [1,32] range.
+
+   Example: uqshll.
+   uint64_t [__arm_]uqshll(uint64_t value, const int shift)  */
+struct scalar_u64_shift_imm_def : public nonoverloaded_base
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    build_all (b, "su64,su64,su64", group, MODE_none, preserve_user_namespace);
+  }
+
+  bool
+  check (function_checker &c) const override
+  {
+    return c.require_immediate_range (1, 1, 32);
+  }
+};
+SHAPE (scalar_u64_shift_imm)
+
 /* void vfoo[_t0](<X>_t *, <T0>[xN]_t)
 
    where <X> might be tied to <t0> (for non-truncating stores) or might
@@ -2709,6 +2861,21 @@ struct vidwdup_def : public overloaded_base<0>
   }
 };
 SHAPE (vidwdup)
+
+/* mve_pred16_t foo_t0(mve_pred16_t)
+
+   Example: vpnot.
+   mve_pred16_t [__arm_]vpnot(mve_pred16_t a)  */
+struct vpnot_def : public nonoverloaded_base
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    build_all (b, "p,p", group, MODE_none, preserve_user_namespace);
+  }
+};
+SHAPE (vpnot)
 
 /* <T0>_t vfoo[_t0](<T0>_t, <T0>_t, mve_pred16_t)
 

@@ -7395,6 +7395,18 @@ package body Exp_Util is
                end if;
                pragma Assert (Present (Current));
 
+            --  For declarations of internal types we can't trace their origin
+            --  like we do for itypes, so give up. They might be coming from
+            --  condition of the current IF statement and will be prepended
+            --  before that statement itself.
+
+            elsif Nkind (Current) = N_Subtype_Declaration
+              and then Is_Internal (Defining_Identifier (Current))
+            then
+               pragma Assert (Is_Rewrite_Insertion (Current));
+               Current := Empty;
+               return;
+
             --  Same for itypes that have no declaration
 
             elsif Nkind (Current) = N_Defining_Identifier
@@ -7641,13 +7653,11 @@ package body Exp_Util is
 
             begin
                --  An ELSIF part whose condition is false could have been
-               --  already rewritten into NULL statement and we are already
-               --  past the statements inside that ELSIF part.
+               --  already rewritten and we are already past the statements
+               --  inside that ELSIF part.
 
                if Nkind (If_Stmt) /= N_If_Statement then
-                  pragma Assert
-                    (Nkind (CV) = N_Elsif_Part
-                     and then Is_Rewrite_Substitution (If_Stmt));
+                  pragma Assert (Nkind (CV) = N_Elsif_Part);
                   return;
                end if;
 

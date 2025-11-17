@@ -1,3 +1,1094 @@
+2025-11-16  Andrew MacLeod  <amacleod@redhat.com>
+
+	PR tree-optimization/121345
+	* gimple-range-phi.cc (phi_group::phi_group): Add modifier name.
+	(phi_group::is_modifier_p): Set modifier stmt operand name.
+	(phi_group::calculate_using_modifier): Bound the iteration range
+	by known global range.
+	(phi_analyzer::process_phi): Allow single PHIS if they meet certain
+	criteria.
+	* gimple-range-phi.h (m_modifier_name): New member.
+	(is_modifier_p): Adjust prototype.
+
+2025-11-16  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-fold.cc (fold_using_range::range_of_phi): Remove
+	the PHI analysis query.
+	* gimple-range-phi.cc (phi_analysis_object): Delete.
+	(phi_analysis_initialize): Delete.
+	(phi_analysis_finalize): Delete.
+	(phi_analysis_available_p): Delete.
+	(phi_analysis): Invoke a phi analyzer.
+	(phi_analyzer::phi_analyzer): Preprocess all phi nodes and set
+	global values for them in a query.
+	(phi_analyzer::process_phi): Use query, and export any inital
+	values found to the query.
+	* gimple-range-phi.h (m_global): Delete.
+	(phi_analysis_initialize): Delete.
+	(phi_analysis_finalize): Delete.
+	(phi_analysis_available_p): Delete.
+	(phi_analysis): Change prototype.
+	* tree-vrp.cc (execute_ranger_vrp): Call phi_analysis.
+
+2025-11-16  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range-cache.cc (ranger_cache::update_consumers): New.
+	* gimple-range-cache.h (update_consumers): New prototype.
+	* gimple-range-fold.cc (fur_depend::fur_depend): Add cache ptr.
+	(fur_depend::register_relation): call update_consumers.
+	* gimple-range-fold.h (fur_depend): Add a cache pointer.
+	* gimple-range.cc (gimple_ranger::fold_range_internal): Add cache ptr.
+
+2025-11-16  Andrew MacLeod  <amacleod@redhat.com>
+
+	* gimple-range.cc (gimple_ranger::update_range_info): New.
+	* gimple-range.h (update_range_info): New prototype.
+	* tree-ssanames.cc (set_range_info): Update the range info for
+	the current range query.
+	* value-query.h (update_range_info): New prototype.
+	* value-query.cc (update_range_info): New default stub.
+
+2025-11-16  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfgcleanup.cc (tree_forwarder_block_p): Restore check on
+	LOOPS_HAVE_PREHEADERS.
+
+2025-11-16  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* config/sol2.h (MD_EXEC_PREFIX): Remove.
+
+2025-11-16  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-loop.cc (_loop_vec_info::_loop_vec_info):
+	Initialize can_use_partial_vectors_p to true.
+	(vect_determine_partial_vectors_and_peeling): Add masked_p
+	parameter and honor it.
+	(vect_analyze_loop_2): Pass through masked_p.
+	(vect_analyze_loop_1): Pass down masked_p.
+	(vect_analyze_loop): Simplify check on possible masking of
+	the epilog when there's no .WHILE_ULT.
+
+2025-11-16  Richard Biener  <rguenther@suse.de>
+
+	* tree-vect-loop.cc (vect_determine_partial_vectors_and_peeling):
+	Remove resetting of LOOP_VINFO_USING_SELECT_VL_P.
+	(vect_analyze_loop_2): Decide on partial vectors before
+	deciding on decrementing IV or .SELECT_VL usage.
+
+2025-11-16  Richard Biener  <rguenther@suse.de>
+
+	* tree-vectorizer.h (vect_determine_partial_vectors_and_peeling):
+	Remove.
+	(vect_need_peeling_or_partial_vectors_p): Declare.
+	* tree-vect-loop.cc (vect_determine_partial_vectors_and_peeling):
+	Make static.
+	(vect_need_peeling_or_partial_vectors_p): Export.
+	* tree-vect-loop-manip.cc (vect_do_peeling): Do not call
+	vect_determine_partial_vectors_and_peeling but instead
+	re-compute LOOP_VINFO_PEELING_FOR_NITER using
+	vect_need_peeling_or_partial_vectors_p.
+
+2025-11-16  Richard Biener  <rguenther@suse.de>
+
+	* tree-vectorizer.h (_loop_vec_info::epil_using_partial_vectors_p):
+	Remove.
+	(LOOP_VINFO_EPIL_USING_PARTIAL_VECTORS_P): Likewise.
+	* tree-vect-loop.cc (_loop_vec_info::_loop_vec_info):
+	Do not initialize epil_using_partial_vectors_p.
+	(vect_determine_partial_vectors_and_peeling): Do not set it.
+
+2025-11-16  Lewis Hyatt  <lhyatt@gmail.com>
+
+	* diagnostics/context.cc (num_digits): Change argument type from
+	`int' to `uint64_t'.
+	(test_num_digits): Add test for 64-bit argument.
+	* diagnostic.h (num_digits): Adjust prototype.
+	* input.cc (write_digit): Accept argument in range 0-9 instead of
+	an arbitrary int.
+	(write_digit_row): Adjust to change in write_digit().
+
+2025-11-15  Jason Xu  <bravejason@outlook.com>
+
+	* config.gcc (aarch64-*-mingw*): Set use_gcc_stdint to wrap.
+
+2025-11-15  Jeff Law  <jlaw@ventanamicro.com>
+
+	* config/riscv/riscv.cc (risc_legitimize_move): Use convert_modes
+	rather than gen_extend_insn for most cases.
+	* config/riscv/riscv.md (addv<mode>4): Likewise.
+	(uaddv<mode>4, subv<mode>4, usubv<mode>4): Likewise.
+	(mulv<mode>4, umulv<mode>4): Likewise.
+	* config/riscv/sync.md (atomic_compare_and_swap<mode>): Likewise.
+
+2025-11-15  Karl Meakin  <karl.meakin@arm.com>
+
+	* config/aarch64/aarch64.md (mov<GPF:mode><GPI:mode>cc): Delete.
+
+2025-11-15  Karl Meakin  <karl.meakin@arm.com>
+
+	* config/aarch64/aarch64.md(mov<ALLI_GPF:mode>cc): Use new predicate.
+	(mov<GPF:mode><GPI:mode>cc): Likewise.
+	(<neg_not_op><mode>cc): Likewise.
+	* config/aarch64/predicates.md (aarch64_comparison_operator_cc):
+	New predicate.
+
+2025-11-15  Karl Meakin  <karl.meakin@arm.com>
+
+	* config/aarch64/aarch64.md (mov<ALLI_GPF:mode>): Delete
+	redundant check.
+	(mov<GPF:mode><GPI:mode>cc): Likewise.
+	(<neg_not_op><mode>cc): Likewise.
+
+2025-11-15  Karl Meakin  <karl.meakin@arm.com>
+
+	* config/aarch64/aarch64.md (mov<ALLI>cc): Merge with ...
+	(mov<ALLI>cc): ... this.
+	* config/aarch64/iterators.md(ALLI_GPF): New mode iterator.
+
+2025-11-15  Karl Meakin  <karl.meakin@arm.com>
+
+	* config/aarch64/aarch64.md(mov<GPF>cc): Accept MODE_CC
+	conditions directly; reject QI/HImode conditions.
+
+2025-11-14  Kuan-Lin Chen  <rufus@andestech.com>
+
+	* config/riscv/riscv.cc (andes_25_tune_info): Add prefer-agnostic.
+
+2025-11-14  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-base.cc (enum which_scalar_shift):
+	Add ss_SQRSHR, ss_SQSHL, ss_SRSHR, ss_UQRSHL, ss_UQSHL, and
+	ss_URSHR.
+	(mve_function_scalar_shift): Add support for ss_SQRSHR, ss_SQSHL,
+	ss_SRSHR, ss_UQRSHL, ss_UQSHL, and ss_URSHR.
+	(sqrshr, sqshl, srshr, uqrshl, uqshl, urshr): New.
+	* config/arm/arm-mve-builtins-base.def (sqrshr, sqshl, srshr)
+	(uqrshl, uqshl, urshr): New.
+	* config/arm/arm-mve-builtins-base.h (sqrshr, sqshl, srshr)
+	(uqrshl, uqshl, urshr): New.
+	* config/arm/arm-mve-builtins-shapes.cc (scalar_s32_shift): New.
+	(scalar_s32_shift_imm): New.
+	(scalar_u32_shift): New.
+	(scalar_u32_shift_imm): New.
+	* config/arm/arm-mve-builtins-shapes.h (scalar_s32_shift): New.
+	(scalar_s32_shift_imm): New.
+	(scalar_u32_shift): New.
+	(scalar_u32_shift_imm): New.
+	* config/arm/arm_mve.h (sqrshr): Delete.
+	(sqshl): Delete.
+	(srshr): Delete.
+	(uqrshl): Delete.
+	(uqshl): Delete.
+	(urshr): Delete.
+	(__arm_uqrshl): Delete.
+	(__arm_sqrshr): Delete.
+	(__arm_uqshl): Delete.
+	(__arm_urshr): Delete.
+	(__arm_sqshl): Delete.
+	(__arm_srshr): Delete.
+	* config/arm/mve.md (mve_sqshl_si, mve_srshr_si): Fix operand 1
+	mode.
+
+2025-11-14  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-base.cc (enum which_scalar_shift):
+	Add ss_SQSHLL, ss_SRSHRL, ss_UQSHLL, ss_URSHRL.
+	(mve_function_scalar_shift): Add support for ss_SQSHLL, ss_SRSHRL,
+	ss_UQSHLL, ss_URSHRL.
+	* config/arm/arm-mve-builtins-base.def (sqshll, srshrl, uqshll)
+	(urshrl): New.
+	* config/arm/arm-mve-builtins-base.h (sqshll, srshrl, uqshll)
+	(urshrl): New.
+	* config/arm/arm-mve-builtins-shapes.cc (scalar_s64_shift_imm)
+	(scalar_u64_shift_imm): New.
+	* config/arm/arm-mve-builtins-shapes.h (scalar_s64_shift_imm)
+	(scalar_u64_shift_imm): New.
+	* config/arm/arm_mve.h (sqshll): Delete.
+	(srshrl): Delete.
+	(uqshll): Delete.
+	(urshrl): Delete.
+	(__arm_uqshll): Delete.
+	(__arm_urshrl): Delete.
+	(__arm_srshrl): Delete.
+	(__arm_sqshll): Delete.
+
+2025-11-14  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-base.cc (enum which_scalar_shift):
+	Add ss_SQRSHRL, ss_SQRSHRL_SAT48.
+	(mve_function_scalar_shift): Add support for ss_SQRSHRL,
+	ss_SQRSHRL_SAT48.
+	(sqrshrl, sqrshrl_sat48): New.
+	* config/arm/arm-mve-builtins-base.def (sqrshrl, sqrshrl_sat48): New.
+	* config/arm/arm-mve-builtins-base.h (sqrshrl, sqrshrl_sat48): New.
+	* config/arm/arm_mve.h (sqrshrl): Delete.
+	(sqrshrl_sat48): Delete.
+	(__arm_sqrshrl): Delete.
+	(__arm_sqrshrl_sat48): Delete.
+	* config/arm/mve.md (mve_sqrshrl_sat<supf>_di): Add '@' prefix.
+
+2025-11-14  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-base.cc (enum which_scalar_shift):
+	Add ss_UQRSHLL, ss_UQRSHLL_SAT48.
+	(mve_function_scalar_shift): Add support for ss_UQRSHLL,
+	ss_UQRSHLL_SAT48.
+	* config/arm/arm-mve-builtins-base.def (uqrshll, uqrshll_sat48):
+	New.
+	* config/arm/arm-mve-builtins-base.h (uqrshll, uqrshll_sat48):
+	New.
+	* config/arm/arm_mve.h (uqrshll): Delete.
+	(uqrshll_sat48): Delete.
+	(__arm_uqrshll): Delete.
+	(__arm_uqrshll_sat48): Delete.
+	* config/arm/mve.md (mve_uqrshll_sat<supf>_di): Add '@' prefix.
+
+2025-11-14  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	* config/arm/arm-mve-builtins-base.cc (class mve_function_vpnot): New.
+	(vpnot): New.
+	* config/arm/arm-mve-builtins-base.def (vpnot): New.
+	* config/arm/arm-mve-builtins-base.h (vpnot): New.
+	* config/arm/arm-mve-builtins-shapes.cc (struct vpnot): New.
+	* config/arm/arm-mve-builtins-shapes.h (vpnot): New.
+	* config/arm/arm_mve.h (vpnot): Delete.
+	(__arm_vpnot): Delete.
+
+2025-11-14  Filip Kastl  <fkastl@suse.cz>
+
+	* doc/invoke.texi: Remove mention of switch-lower-slow-alg-max-cases.
+	* params.opt: Remove switch-lower-slow-alg-max-cases.
+
+2025-11-14  Uros Bizjak  <ubizjak@gmail.com>
+
+	* config/i386/i386.md (*sub<mode>_3):
+	Remove 'i' from operand 0 constraint.
+
+2025-11-14  Richard Biener  <rguenther@suse.de>
+
+	PR ipa/122663
+	* ipa-param-manipulation.cc (purge_all_uses): Collect
+	stmts to remove and process that list in reverse.
+
+2025-11-14  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/122573
+	* tree-vect-slp.cc (vect_build_slp_tree_1): Support
+	groups of invariant loads.
+	(vect_build_slp_tree_2): Likewise.
+	(vect_transform_slp_perm_load_1): Likewise.
+	* tree-vect-stmts.cc (vectorizable_load): Handle non-splat
+	SLP for invaraint loads.
+
+2025-11-14  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/122680
+	* tree-vect-stmts.cc (vectorizable_conversion): Avoid range
+	queries during transform.
+
+2025-11-14  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	PR target/121458
+	PR target/121457
+	* configure.ac: Fix typos.
+	<*-*-solaris2*>: Require GNU ld 2.30.
+	(comdat_group) <*-*-solaris2.1[1-9]*>: Always set to yes.
+	(ld_ix86_gld_32_opt): Only use -melf_i386_sol2 for Solaris target.
+	(ld_ix86_gld_64_opt): Likewise with -melf_x86_64_sol.
+	(gcc_cv_ld_eh_frame_hdr) <*-*-solaris2*>: Likewise.
+	(gcc_cv_ld_pie) <*-*-solaris2*>: Remove special cases.
+	(gcc_cv_ld_compress_debug) <*-*-solaris2*>: Remove guard.
+	(gcc_cv_ld_as_needed): Simplify guard.
+	(gcc_cv_ld_sol2_emulation): Remove.
+	(gcc_cv_solaris_crts): Remove.
+	* configure: Regenerate.
+	* config.in: Regenerate.
+	* config/sol2.h (STARTFILE_CRTBEGIN_SPEC): Remove !HAVE_LD_PIE
+	support.
+	(ENDFILE_CRTEND_SPEC): Likewise.
+	(LD_PIE_SPEC): Likewise.
+	[USE_GLD] (LINK_EH_SPEC): Set unconditionally.
+	* config/i386/sol2.h [USE_GLD]: Remove !HAVE_LD_SOL2_EMULATION
+	support.
+	* config/sparc/sol2.h: Likewise.
+	* doc/install.texi (Specific, *-*-solaris2*): Update bundled gcc
+	versions.
+	Raise required binutils version.
+	Remove binutils 2.44 caveat.
+
+2025-11-14  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	PR target/122216
+	* config/arm/arm-mve-builtins-base.cc (enum which_scalar_shift): New.
+	(mve_function_scalar_shift): New.
+	(asrl, lsll): New.
+	* config/arm/arm-mve-builtins-base.def (asrl, lsll): New.
+	* config/arm/arm-mve-builtins-base.h (asrl, lsll): New.
+	* config/arm/arm_mve.h (asrl): Delete.
+	(lsll): Delete.
+	(__arm_asrl): Delete.
+	(__arm_lsll): Delete.
+
+2025-11-14  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	PR target/122216
+	* config/arm/arm-mve-builtins-shapes.cc (scalar_s64_shift): New.
+	(scalar_u64_shift): New.
+	* config/arm/arm-mve-builtins-shapes.h: Likewise.
+
+2025-11-14  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	PR target/122216
+	* config/arm/arm.md (ashldi3, ashrdi3): Force shift amount into
+	QImode.
+	* config/arm/constraints.md: Fix comment, Pg is valid in Thumb-2
+	state only.
+	* config/arm/mve.md (mve_asrl): Handle various shift amount ranges.
+	(mve_asrl_imm, mve_asrl_internal): New patterns.
+	(mve_lsll): Handle various shift amount ranges.
+	(mve_lsll_imm, mve_lsll_internal): New patterns.
+
+2025-11-14  Christophe Lyon  <christophe.lyon@linaro.org>
+
+	PR target/122216
+	* config/arm/thumb2.md (thumb2_asrl, thumb2_lsll, thumb2_lsrl):
+	Move to ...
+	* config/arm/mve.md (mve_asrl, mve_lsll, mve_lsrl): ... here. Use
+	match_operand instead of match_dup.
+	* config/arm/arm.md (ashldi3, ashrdi3, lshrdi3): Remove useless
+	copy. Update for new prototype.
+
+2025-11-14  Xi Ruoyao  <xry111@xry111.site>
+
+	* configure: Regenerate.
+
+2025-11-14  zhaozhou  <zhaozhou@loongson.cn>
+
+	* config/loongarch/lasx.md (lasx_xvbsrl_d_f): New template.
+	* config/loongarch/loongarch.cc (emit_reduc_half): Replace insn.
+
+2025-11-14  zhaozhou  <zhaozhou@loongson.cn>
+
+	* config/loongarch/predicates.md: Update ops.
+
+2025-11-14  zhaozhou  <zhaozhou@loongson.cn>
+
+	* config.gcc: Add target_gtfiles.
+	* config/loongarch/loongarch-builtins.cc: Add header file.
+
+2025-11-13  Alexandre Oliva  <oliva@adacore.com>
+	    Olivier Hainque  <hainque@adacore.com>
+
+	* config/vxworks/base/b_NULL.h: New.
+	* config.gcc (extra_headers) <*-*-vxworks*>: Add it.
+	* Makefile.in (stmp-int-hdrs): Support /././ markers in USER_H
+	to mark the beginning of the install name.  Document.
+	* doc/sourcebuild.texi (Headers): Document /././ marker.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfgcleanup.cc (tree_forwarder_block_p): Remove must argument.
+	(remove_forwarder_block): Add can_split
+	argument. Handle the splitting case (iff phis in bb).
+	(cleanup_tree_cfg_bb): Update argument to tree_forwarder_block_p.
+	(remove_forwarder_block_with_phi): Remove.
+	(pass_merge_phi::execute): Update argument to tree_forwarder_block_p
+	and call remove_forwarder_block instead of remove_forwarder_block_with_phi.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	PR tree-optimization/122493
+	* tree-cfgcleanup.cc (tree_forwarder_block_p): Change bool argument
+	to a must have phi and allow phis if it is false.
+	(remove_forwarder_block): Add support for merging of forwarder blocks
+	with phis.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfg.cc (copy_phi_arg_into_existing_phi): Use the original location
+	if the mapped location is unknown.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfg.cc (copy_phi_arg_into_existing_phi): New use_map argument.
+	* tree-cfg.h (copy_phi_arg_into_existing_phi): Update declaration.
+	* tree-cfgcleanup.cc (remove_forwarder_block_with_phi): Use
+	copy_phi_arg_into_existing_phi instead of inlining it.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfgcleanup.cc (remove_forwarder_block): Move
+	variable declaration ei into for loop.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfgcleanup.cc (remove_forwarder_block_with_phi): Use
+	edge iterator instead of while loop.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfgcleanup.cc (remove_forwarder_block): Remove check
+	on the available dominator information.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfgcleanup.cc (tree_forwarder_block_p): Reject bb which has a single
+	predecessor which has a single successor.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfgcleanup.cc (pass_merge_phi::execute): Move
+	check for abnormal or no phis to remove_forwarder_block_with_phi
+	and the check on dominated to tree_forwarder_block_p.
+	(remove_forwarder_block_with_phi): here.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfgcleanup.cc (remove_forwarder_block_with_phi): Remove check on non-local label.
+	(remove_forwarder_block): Remove check on non-label/eh landing pad.
+	(tree_forwarder_block_p): Add check on lable for an eh landing pad.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfgcleanup.cc (remove_forwarder_block): Remove check for infinite loop.
+	(remove_forwarder_block_with_phi): Likewise. Also remove check for loop header.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* tree-cfgcleanup.cc (pass_merge_phi::execute): Remove worklist.
+
+2025-11-13  Jeff Law  <jlaw@ventanamicro.com>
+
+	* ext-dce.cc (ext_dce_try_optimize_rshift): New function to optimize a
+	shift pair implementing a zero/sign extension.
+	(ext_dce_try_optimize_extension): Renamed from
+	ext_dce_try_optimize_insn.
+	(ext_dce_process_uses): Handle shift pairs implementing extensions.
+
+2025-11-13  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	PR tree-optimization/122637
+	* tree-scalar-evolution.cc (final_value_replacement_loop): Fix order
+	of gimplification and constant prop.
+
+2025-11-13  Jeff Law  <jlaw@ventanamicro.com>
+
+	PR rtl-optimization/122627
+	* lra-constraints.cc (update_equiv): Remove patch from last week
+	related to pr122321.
+	(lra_constraints): Expand the equivalence array after eliminations
+	are complete.
+
+2025-11-13  Xi Ruoyao  <xry111@xry111.site>
+
+	* configure.ac (HAVE_AS_16B_ATOMIC): Define if the assembler
+	supports LSX and sc.q.
+	* configure: Regenerate.
+	* config.in: Regenerate.
+	* config/loongarch/loongarch-opts.h (HAVE_AS_16B_ATOMIC):
+	Defined to 0 if undefined yet.
+	* config/loongarch/linux.h (HAVE_IFUNC_FOR_LIBATOMIC_16B):
+	Define as HAVE_AS_16B_ATOMIC && OPTION_GLIBC.
+	* config/loongarch/loongarch-protos.h
+	(loongarch_16b_atomic_lock_free_p): New prototype.
+	* config/loongarch/loongarch.cc
+	(loongarch_16b_atomic_lock_free_p): Implement.
+	* config/loongarch/sync.md (atomic_storeti_lsx): Require
+	loongarch_16b_atomic_lock_free_p.
+	(atomic_storeti): Likewise.
+	(atomic_exchangeti_scq): Likewise.
+	(atomic_exchangeti): Likewise.
+	(atomic_compare_and_swapti): Likewise.
+	(atomic_fetch_<amop_ti_fetch>ti_scq): Likewise.
+	(atomic_fetch_<amop_ti_fetch>ti): Likewise.
+	(ALL_SC): Likewise for TImode.
+	(atomic_storeti_scq): Remove.
+
+2025-11-13  Richard Biener  <rguenther@suse.de>
+
+	* config/i386/i386-features.cc (pass_x86_cse::x86_cse): Delete
+	loads.
+
+2025-11-13  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	PR other/122638
+	* doc/install.texi (Configuration, --enable-x86-64-mfentry): Fix
+	typo.
+
+2025-11-13  liuhongt  <hongtao.liu@intel.com>
+
+	* config/i386/i386.md (*ior<mode>_ccz_1): New define_insn.
+
+2025-11-13  Alice Carlotti  <alice.carlotti@arm.com>
+
+	* config/aarch64/driver-aarch64.cc
+	(host_detect_local_cpu): Extend feature string syntax.
+
+2025-11-13  Richard Biener  <rguenther@suse.de>
+
+	* tree-ssa-dce.cc (simple_dce_from_worklist): For calls
+	with side-effects remove their LHS.
+
+2025-11-13  Andre Vieira  <andre.simoesdiasvieira@arm.com>
+
+	* config/aarch64/aarch64-simd.md (*eor3q<mode>4): New insn to be used by
+	combine after reload to optimize any grouping of eor's that are using FP
+	registers for scalar modes.
+
+2025-11-13  Kuan-Lin Chen  <rufus@andestech.com>
+
+	* config/riscv/riscv-target-attr.cc (riscv_process_target_str): Clean
+	the final byte of str_to_check.
+
+2025-11-12  David Malcolm  <dmalcolm@redhat.com>
+
+	PR diagnostics/115970
+	* diagnostics/sarif-sink.cc (maybe_open_sarif_sink_for_socket):
+	Add "%m" to error messages, so that we print the string form of
+	errno.
+
+2025-11-12  David Malcolm  <dmalcolm@redhat.com>
+
+	* diagnostics/sarif-sink.cc (class unique_fd): New.
+	(sarif_socket_sink::sarif_socket_sink): Convert "fd" arg and m_fd
+	from int to unique_fd.
+	(~sarif_socket_sink): Drop.
+	(sarif_socket_sink::dump_kind): Update for m_fd becoming a
+	unique_fd.
+	(sarif_socket_sink::m_fd): Convert from "int" to "unique_fd".
+	(maybe_open_sarif_sink_for_socket): Likewise for "sfd".
+
+2025-11-12  Philipp Tomsich  <philipp.tomsich@vrull.eu>
+
+	* config/aarch64/aarch64-cores.def (AARCH64_CORE): Add ampere1c.
+	* config/aarch64/aarch64-tune.md: Regenerate.
+	* doc/invoke.texi: Document the above.
+
+2025-11-12  Stefan Schulze Frielinghaus  <stefansf@gcc.gnu.org>
+
+	* config/i386/i386.opt.urls: Regenerate.
+	* config/s390/s390.opt.urls: Ditto.
+	* doc/invoke.texi: Add documentation for
+	-mstack-protector-guard= and -mstack-protector-guard-record.
+
+2025-11-12  Arsen Arsenović  <arsen@aarsen.me>
+
+	* doc/invoke.texi (Diagnostic Message Formatting Options): Add
+	index entries for SARIF and HTML output formats.
+
+2025-11-12  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/122653
+	* tree-scalar-evolution.cc (interpret_rhs_expr): Handle
+	POINTER_DIFF_EXPR.
+
+2025-11-12  Christophe Lyon  <christophe.lyon@linaro.org>
+	    Richard Earnshaw  <rearnsha@arm.com>
+
+	PR target/122175
+	* config/arm/iterators.md (asm_const_size): New mode attr.
+	* config/arm/mve.md (@mve_<mve_insn>q_n_<supf><mode>): Use it.
+
+2025-11-12  Andre Vieira  <andre.simoesdiasvieira@arm.com>
+
+	PR target/122539
+	* config/arm/arm.cc (comp_not_to_clear_mask_str_un): Skip partial
+	register clearing logic for FP_REGS.
+	(compute_not_to_clear_mask): Likewise.
+
+2025-11-12  Andre Vieira  <andre.simoesdiasvieira@arm.com>
+
+	PR target/122539
+	* config/arm/arm.cc (comp_not_to_clear_mask_str_un): Update
+	not_to_clear_reg_mask for union members.
+
+2025-11-12  Stefan Schulze Frielinghaus  <stefansf@gcc.gnu.org>
+
+	* config/s390/s390-opts.h (enum stack_protector_guard): Define
+	SP_TLS and SP_GLOBAL.
+	* config/s390/s390.h (TARGET_SP_GLOBAL_GUARD): Define predicate.
+	(TARGET_SP_TLS_GUARD): Define predicate.
+	* config/s390/s390.md (stack_protect_global_guard_addr<mode>):
+	New insn.
+	(stack_protect_set): Also deal with a global guard.
+	(stack_protect_test): Also deal with a global guard.
+	* config/s390/s390.opt (-mstack-protector-guard={global,tls}):
+	New option.
+	(-mstack-protector-guard-record) New option.
+
+2025-11-12  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/122647
+	* tree-vect-stmts.cc (vectorizable_conversion): Fix guard on
+	bool to non-bool conversion.
+	* tree-vect-patterns.cc (vect_recog_bool_pattern): Also handle
+	FLOAT_EXPR from bool.
+
+2025-11-12  Kuan-Lin Chen  <rufus@andestech.com>
+
+	* config/riscv/andes-25-series.md: New file.
+	* config/riscv/riscv-cores.def (RISCV_TUNE): Add andes-25-series.
+	(RISCV_CORE): Add Andes 25-series cpu list.
+	* config/riscv/riscv-opts.h
+	(enum riscv_microarchitecture_type): Add andes_25_series_.
+	* config/riscv/riscv.cc: Add andes_25_tune_info.
+	* config/riscv/riscv.md: Add andes_25.
+	* doc/riscv-mcpu.texi: Regenerated for Andes cpu list.
+	* doc/riscv-mtune.texi: Regenerated for andes-25-series.
+
+2025-11-11  Andrew Stubbs  <ams@baylibre.com>
+
+	* config/gcn/mkoffload.cc (process_asm): Replace "configure_stack_size"
+	constructor with a new regular function, "mkoffload_setup".
+	(process_obj): Call mkoffload_setup from the "init" constructor.
+
+2025-11-11  David Malcolm  <dmalcolm@redhat.com>
+
+	PR diagnostics/115970
+	* diagnostics/sarif-sink.cc: Include <sys/un.h> and <sys/socket.h>.
+	(sarif_builder::end_group): Update comment.
+	(sarif_sink::on_end_group): Drop "final".
+	(class sarif_socket_sink): New subclass.
+	(maybe_open_sarif_sink_for_socket): New function.
+	* diagnostics/sarif-sink.h: (maybe_open_sarif_sink_for_socket):
+	New decl.
+	* doc/invoke.texi (EXPERIMENTAL_SARIF_SOCKET): Document new
+	environment variable.
+	* toplev.cc: Define INCLUDE_VECTOR. Add include of
+	"diagnostics/sarif-sink.h".
+	(toplev::main): Call
+	diagnostics::maybe_open_sarif_sink_for_socket.
+
+2025-11-11  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/122587
+	* tree-vectorizer.cc (pass_vectorize::execute): Enable
+	ranger around analysis and code generation.
+
+2025-11-11  Richard Biener  <rguenther@suse.de>
+
+	* tree-ssa-loop-niter.cc (simplify_using_initial_conditions):
+	Use the active ranger to simplify boolean expressions.
+
+2025-11-11  Jeff Law  <jlaw@ventanamicro.com>
+
+	* config/riscv/crypto.md (packf splitters): Variant with
+	operands reversed.  Add variants with the ashift/sign extend
+	exchanged as well.
+
+2025-11-11  Jeff Law  <jlaw@ventanamicro.com>
+
+	* config/riscv/riscv.cc (riscv_extend_to_xmode_reg): Simplify
+	by using convert_modes + force_reg.
+
+2025-11-11  Richard Biener  <rguenther@suse.de>
+
+	* gimple-range.cc (gimple_ranger::range_on_edge): Pass
+	the edge as 'edge' to get_tree_range.
+	(dom_ranger::range_on_edge): Likewise.
+
+2025-11-11  Andrew MacLeod  <amacleod@redhat.com>
+
+	* value-query.cc (range_query::invoke_range_of_expr): New
+	edge argument.  If set invoke range_on_edge.
+	(range_query::get_tree_range): Likewise and adjust.
+	* value-query.h (range_query::invoke_range_of_expr): New
+	edge argument.
+	(range_query::get_tree_range): Likewise.
+
+2025-11-11  Dhruv Chawla  <dhruvc@nvidia.com>
+
+	* match.pd: New patterns.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* doc/extend.texi: Add description for LoongArch function
+	attributes.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/loongarch.cc (loongarch_can_inline_p):
+	Do not inline when callee is versioned but caller is not.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/loongarch.cc
+	(loongarch_option_same_function_versions): Compare the target
+	attributes in two functions to determine which function’s
+	features get higher priority.
+	(TARGET_OPTION_SAME_FUNCTION_VERSIONS): Define.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/loongarch-protos.h
+	(loongarch_parse_fmv_features): Modify the type of parameter.
+	(loongarch_compare_version_priority): Function declaration.
+	* config/loongarch/loongarch-target-attr.cc
+	(enum features_prio): Define LA_PRIO_MAX to indicate the
+	highest priority of supported attributes.
+	(loongarch_parse_fmv_features): Added handling of setting
+	priority in attribute string.
+	(loongarch_compare_version_priority): Likewise.
+	* config/loongarch/loongarch.cc
+	(loongarch_process_target_version_attr): Likewise.
+	(get_feature_mask_for_version): Likewise.
+	(loongarch_compare_version_priority): Delete.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/loongarch.cc
+	(loongarch_compare_version_priority): Returns true if DECL1
+	and DECL2 are versions of the same function.
+	(TARGET_COMPARE_VERSION_PRIORITY): Define.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/genopts/gen-evolution.awk:
+	* config/loongarch/loongarch-evol-attr.def: Regenerate.
+	* config/loongarch/loongarch-protos.h
+	(loongarch_parse_fmv_features): Function declaration.
+	(get_feature_mask_for_version): Likewise.
+	* config/loongarch/loongarch-target-attr.cc
+	(enum features_prio): Defining the priority of features.
+	(struct loongarch_attribute_info): Add members about
+	features.
+	(LARCH_ATTR_MASK): Likewise.
+	(LARCH_ATTR_ENUM): Likewise.
+	(LARCH_ATTR_BOOL): Likewise.
+	(loongarch_parse_fmv_features): Parse a function
+	multiversioning feature string STR.
+	* config/loongarch/loongarch.cc
+	(get_suffixed_assembler_name): Return an identifier for the
+	base assembler name of a versioned function.
+	(get_feature_mask_for_version): Get the mask and priority of
+	features.
+	(add_condition_to_bb): Insert judgment statements for different
+	features functions.
+	(dispatch_function_versions): Generates the dispatch function for
+	multi-versioned functions.
+	(make_resolver_func): Make the resolver function decl to dispatch
+	the versions of a multi-versioned function.
+	(loongarch_generate_version_dispatcher_body): Generate the
+	dispatcher logic to invoke the right function version at run-time
+	for a given set of function versions.
+	(TARGET_GENERATE_VERSION_DISPATCHER_BODY): Define.
+	* common/config/loongarch/cpu-features.h: New file.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/loongarch.cc (INCLUDE_STRING): Include.
+	(loongarch_mangle_decl_assembler_name): New function.
+	(TARGET_MANGLE_DECL_ASSEMBLER_NAME): Define.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/loongarch.cc
+	(loongarch_get_function_versions_dispatcher): New function.
+	(TARGET_GET_FUNCTION_VERSIONS_DISPATCHER): Define.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/loongarch.cc
+	(loongarch_process_target_version_attr): New function.
+	(loongarch_option_valid_version_attribute_p): New function.
+	(TARGET_OPTION_VALID_VERSION_ATTRIBUTE_P): Define.
+	* config/loongarch/loongarch.h
+	(TARGET_HAS_FMV_TARGET_ATTRIBUTE): Define it to 0.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/genopts/gen-evolution.awk: Output the
+	info needed for handling evolution features when parsing
+	the target pragma and attribute.
+	* config/loongarch/genopts/genstr.sh: Add support for
+	generating *.def files.
+	* config/loongarch/loongarch-target-attr.cc
+	(struct loongarch_attribute_info): Add structure member
+	record option mask.
+	(LARCH_ATTR_MASK): New macro.
+	(LARCH_ATTR_ENUM): Likewise.
+	(LARCH_ATTR_BOOL): Likewise.
+	(loongarch_handle_option): Support for new options.
+	(loongarch_process_one_target_attr): Added support for
+	the la64v1.1 extended instruction set.
+	* config/loongarch/t-loongarch: Generate loongarch-evol-attr.def.
+	* doc/extend.texi: Add new attribute description information.
+	* config/loongarch/loongarch-evol-attr.def: Generate.
+
+2025-11-11  Lulu Cheng  <chenglulu@loongson.cn>
+
+	* config/loongarch/loongarch-target-attr.cc
+	(loongarch_process_one_target_attr): Fix ICE.
+
+2025-11-11  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	PR tree-optimization/122629
+	* tree-if-conv.cc (factor_out_operators): Reject
+	BIT_FIELD_REF and BIT_INSERT_EXPR if operand other
+	than 0 is different.
+
+2025-11-11  Jakub Jelinek  <jakub@redhat.com>
+
+	PR lto/122620
+	* gimplify-me.cc (gimple_regimplify_operands): Don't try to regimplify
+	TREE_CLOBBER on rhs of gimple_clobber_p if it has gimple_reg_type.
+
+2025-11-11  Hu, Lin1  <lin1.hu@intel.com>
+
+	PR target/122446
+	* config/i386/amxavx512intrin.h (_tile_cvtrowps2bf16hi_internal):
+	Input register name by inline asm %c[...], and remove %% before tmm
+	from intel side.
+	(_tile_cvtrowps2bf16li_internal): Ditto.
+	* config/i386/amxbf16intrin.h (_tile_dpbf16ps_internal): Ditto
+	* config/i386/amxcomplexintrin.h (_tile_cmmimfp16ps_internal): Ditto
+	(_tile_cmmrlfp16ps_internal): Ditto
+	(_tile_cmmimfp16ps): Ditto
+	(_tile_cmmrlfp16ps): Ditto
+	* config/i386/amxfp16intrin.h (_tile_dpfp16ps_internal): Ditto
+	(_tile_dpfp16ps): Ditto
+	* config/i386/amxfp8intrin.h (_tile_dpbf8ps_internal): Ditto
+	(_tile_dpbhf8ps_internal): Ditto
+	(_tile_dphbf8ps_internal): Ditto
+	(_tile_dphf8ps_internal): Ditto
+	(_tile_dpbf8ps): Ditto
+	(_tile_dpbhf8ps): Ditto
+	(_tile_dphbf8ps): Ditto
+	(_tile_dphf8ps): Ditto
+	* config/i386/amxint8intrin.h (_tile_int8_dp_internal): Ditto
+	* config/i386/amxmovrsintrin.h (_tile_loaddrs_internal): Ditto
+	(_tile_loaddrst1_internal): Ditto
+	(_tile_loaddrs): Ditto
+	(_tile_loaddrst1): Ditto
+	* config/i386/amxtf32intrin.h (_tile_mmultf32ps_internal): Ditto
+	* config/i386/amxtileintrin.h (_tile_loadd): Ditto
+	(_tile_loadd_internal): Ditto
+	(_tile_stream_loadd): Ditto
+	(_tile_stream_loadd_internal): Ditto
+	(_tile_stored): Ditto
+	(_tile_stored_internal): Ditto
+	(_tile_zero): Ditto
+	(_tile_zero_internal): Ditto
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* common.opt.urls: Regenerated.
+	* config/dragonfly.opt.urls: Regenerated.
+	* config/freebsd.opt.urls: Regenerated.
+	* config/gcn/gcn.opt.urls: Regenerated.
+	* config/gnu-user.opt.urls: Regenerated.
+
+2025-11-10  Sam James  <sam@gentoo.org>
+
+	* acinclude.m4: Quote "$gcc_cv_nm" and friends.
+	* configure.ac: Ditto.
+	* configure: Regenerate.
+
+2025-11-10  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	PR middle-end/122605
+	* builtins.cc (expand_ifn_atomic_bit_test_and): Split out the call to
+	build_call_nary into two different statements.
+	(expand_ifn_atomic_op_fetch_cmp_0): Likewise.
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* common.opt: Clean up comments/documentation for -fident.
+	* doc/invoke.texi: Move -Qy/-Qn documentation from System V options
+	and combine with -fident/-fno-ident entry.
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* common.opt: Add comments/documentation for -N, -Q, -S, -T,
+	-Tbss, -Tdata, -Ttext, -Z, -n, -Q, -s, -t, -z.
+	* doc/invoke.texi: Add documentation for -Tbss, -Tdata, -Ttext,
+	-N, -n, -t, -Z.
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	PR rtl-optimization/120064
+	* doc/invoke.texi: Document -fconcepts-diagnostics-depth,
+	-Wdeprecated-copy-dtor, -Wformat-diag, -Wcannot-profile,
+	-fvar-tracking-uninit, -gno-pubnames, -finline-atomics,
+	-fext-dce, -fipa-icf-functions, -fipa-icf-variables,
+	-fprofile, -fdump-internal-locations, and -Wopenacc-dims.
+	Minor copy-editing and rearrangement of items in the option
+	summary lists.
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* doc/cppdiropts.texi: Document --include-directory,
+	--include-directory-after, --include-barrier, --include-prefix,
+	--include-with-prefix, --include-with-prefix-after,
+	--include-with-prefix-before, --no-standard-includes.
+	--embed-directory.
+	* doc/cppopts.texi: Document --define-macro, --undefine-macro,
+	--include, --imacros, --dependencies, --user-dependencies,
+	--print-missing-file-dependencies, --write-dependencies,
+	--write-user-dependencies, --comments, --comments-in-macros,
+	--no-line-commands, --traditional, --traditional-cpp,
+	--trigraphs, --trace-includes, --dump.
+	* doc/invoke.texi: Add missing long options to Option Summary.
+	Document --language, --compile, --assemble, --preprocess,
+	--output, --dumpbase, --dumpbase-ext, --dumpdir,
+	--verbose, --pass-exit-codes, --pipe, --specs, --ansi,
+	--no-warnings, --pedantic, --pedantic-errors, --all-warnings,
+	--extra-warnings, --debug, --optimize, --profile, -coverage,
+	--no-integrated-cpp, --for-assembler, --no-standard-libraries,
+	--entries, --pie, --static-pie, --static, --shared, --symbolic,
+	--for-linker, --force-link, --library-directory, --prefix,
+	--no-canonical-prefixes, --dump, --save-temps, --print-file-name,
+	--print-multi-directory, --print-multi-lib,
+	--print-multi-os-directory, --print-multiarch,
+	--print-prog-name, --print-libgcc-file-name, --print-search-dirs,
+	--print-sysroot, --print-sysroot-headers-suffix.
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* doc/cppopts.texi (-A): Restrict option documentation to the CPP
+	manual.  Also document the --assert form.
+	* doc/invoke.texi (Option Summary): Don't list the -A option.
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* doc/invoke.texi (Option Summary): Add missing entries,
+	also correct alphabetization and formatting of the C++ options.
+	(C++ Language Options): Fix some formatting issues.
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* common.opt (fhelp, fhelp=, ftarget-help, fversion): Mark as
+	"Undocumented".
+	(fbounds-check): Update comments.
+	(flag-graphite, fsel-sched-reschedule-pipelined): Mark as
+	"Undocumented".
+	(fstack-limit): Add comment.
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* common.opt (fhelp): Add RejectNegative.
+	(fhelp=): Likewise.
+	(ftarget-help): Likewise.
+	(fversion): Likewise.
+	(Wno-frame-larger-than): Likewise.
+	(Wno-larger-than): Likewise.
+	(Wno-stack-usage): Likewise.
+	(fdiagnostics-minimum-margin-width=): Likewise.
+	(flto-incremental=): Likewise.
+	(foffload=): Likewise.
+	(foffload-options=): Likewise.
+	(foffload-abi-host-opts=): Likewise.
+	(fpatchable-function-entry=): Likewise.
+	(gno-pubnames): Likewise.
+	(gpubnames): Likewise.
+	(ggnu-pubnames): Likewise.
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* common.opt (ftree-lrs): Mark as "Ignore".
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* doc/cppopts.texi (fcanonical-system-headers): Add @opindex.
+	* doc/invoke.texi (fdump-ada-spec-slim): Add @opindex.
+	(fcontract-semantic): Likewise.
+	(fdiagnostics-plain-output): Likewise.
+	(Wc11-c2x-compat): Likewise.
+	(Wvla-parameter): Likewise.
+	(fanalyzer-verbose-edges): Likewise.
+	(fanalyzer-verbose-state-changes): Likewise.
+	(fanalyzer-verbosity): Likewise.
+	(flimit-function-alignment): Likewise.
+
+2025-11-10  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	PR other/122243
+	* doc/invoke.texi (fdump-analyzer-exploded-nodes): Correct
+	spelling of option in @opindex.
+	(fdump-analyzer-exploded-nodes-2): Likewise.
+	(fdump-analyzer-exploded-nodes-3): Likewise.
+	(fdump-analyzer-feasibility): Likewise.
+	(fdump-analyzer-infinite-loop): Likewise.
+	(fstack-reuse): Likewise.
+
+2025-11-10  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	* config/pru/pru.h (REG_CLASS_CONTENTS): Use unsigned integer
+	constants.
+
+2025-11-10  Dimitar Dimitrov  <dimitar@dinux.eu>
+
+	PR target/122415
+	* config/pru/pru-protos.h (pru_fixup_jump_address_operand):
+	Declare.
+	* config/pru/pru.cc (pru_fixup_jump_address_operand): New
+	function.
+	(pru_addr_space_legitimize_address): New function.
+	(TARGET_ADDR_SPACE_LEGITIMIZE_ADDRESS): Declare.
+	* config/pru/pru.md (call): Fixup the address operand.
+	(call_value): Ditto.
+	(sibcall): Ditto.
+	(sibcall_value): Ditto.
+
+2025-11-10  Tejas Belagod  <tejas.belagod@arm.com>
+
+	* config/aarch64/aarch64-sve-builtins.cc (register_builtin_types): Make
+	SVE vector boolean type equivalent to GNU vectors.
+	* config/aarch64/aarch64-sve.md (extend<vpred><mode>2,
+	zero_extend<vpred><mode>2, trunc<mode><vpred>2, vec_cmp<mode><mode>):
+	New patterns to support additional operations on predicate modes.
+	* config/aarch64/aarch64.cc (aarch64_valid_vector_boolean_op): New.
+	(aarch64_invalid_unary_op): Consider vector bool types.
+	(aarch64_invalid_binary_op): Likewise.
+	(aarch64_convert_to_type): Define target hook and handle standard to
+	non-standard bool conversion.
+
+2025-11-10  Richard Earnshaw  <rearnsha@arm.com>
+
+	PR target/118460
+	* config/arm/arm.md (movhfcc): Use expandable_comparison_operator.
+	(movsfcc, movdfcc): Likewise.
+
+2025-11-10  Robin Dapp  <rdapp@ventanamicro.com>
+
+	PR middle-end/121985
+	* tree-vect-loop-manip.cc (vect_gen_vector_loop_niters): Only
+	set niter_vector's range if step == 1.
+
+2025-11-10  Robin Dapp  <rdapp@ventanamicro.com>
+
+	* optabs-query.cc (qimode_for_vec_perm): Check if QImode's
+	precision divides the inner mode's precision.
+
+2025-11-10  Robin Dapp  <rdapp@ventanamicro.com>
+
+	* tree-vect-data-refs.cc (vect_gather_scatter_fn_p): Bail if
+	offset_vectype is NULL.
+
+2025-11-10  Robin Dapp  <rdapp@ventanamicro.com>
+
+	* tree-vect-slp.cc (vect_load_perm_consecutive_p): New function.
+	(vect_lower_load_permutations): Use.
+	(vect_optimize_slp_pass::remove_redundant_permutations): Use.
+	* tree-vect-stmts.cc (has_consecutive_load_permutation): New
+	function that uses vect_load_perm_consecutive_p.
+	(get_load_store_type): Use.
+	(vectorizable_load): Reduce group size.
+	* tree-vectorizer.h (struct vect_load_store_data): Add
+	subchain_p.
+	(vect_load_perm_consecutive_p): Declare.
+
 2025-11-08  Avinash Jayakar  <avinashd@linux.ibm.com>
 
 	PR tree-optimization/122126

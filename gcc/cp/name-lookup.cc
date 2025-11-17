@@ -1338,6 +1338,7 @@ name_lookup::adl_namespace_fns (tree scope, bitmap imports,
 		      bind = STAT_VISIBLE (bind);
 		  }
 
+		bind = ovl_skip_hidden (bind);
 		if (on_inst_path || visible)
 		  add_fns (bind);
 		else
@@ -5403,7 +5404,11 @@ do_nonmember_using_decl (name_lookup &lookup, bool fn_scope_p,
 		     namespace.  We will still want to insert it if
 		     it is revealing a not-revealed thing.  */
 		  found = true;
-		  if (!revealing_p)
+		  if (old.hidden_p ())
+		    /* The function was merged with a hidden built-in;
+		       insert it again as not hidden.  */
+		    found = false;
+		  else if (!revealing_p)
 		    ;
 		  else if (old.using_p ())
 		    {

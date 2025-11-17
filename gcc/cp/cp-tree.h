@@ -7658,6 +7658,18 @@ extern tree implicitly_declare_fn               (special_function_kind, tree,
 						 bool, tree, tree);
 extern tree type_order_value			(tree, tree);
 
+/* True iff DECL represents a declaration of a friend template
+   specialization, e.g. friend void f<>().  */
+
+inline bool
+decl_specialization_friend_p (tree decl)
+{
+  return (TREE_CODE (decl) == FUNCTION_DECL
+	  && DECL_UNIQUE_FRIEND_P (decl)
+	  && DECL_IMPLICIT_INSTANTIATION (decl)
+	  && TREE_CODE (DECL_TI_TEMPLATE (decl)) != TEMPLATE_DECL);
+}
+
 /* In module.cc  */
 class module_state; /* Forward declare.  */
 inline bool modules_p () { return flag_modules != 0; }
@@ -7734,6 +7746,7 @@ extern void set_defining_module (tree);
 extern void set_defining_module_for_partial_spec (tree);
 extern void maybe_key_decl (tree ctx, tree decl);
 extern void propagate_defining_module (tree decl, tree orig);
+extern void transfer_defining_module (tree olddecl, tree newdecl);
 extern void remove_defining_module (tree decl);
 
 extern void mangle_module (int m, bool include_partition);

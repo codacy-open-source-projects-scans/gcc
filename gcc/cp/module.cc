@@ -3871,7 +3871,7 @@ class GTY((chain_next ("%h.parent"), for_user)) module_state {
 
  private:
   void write_config (elf_out *to, struct module_state_config &, unsigned crc);
-  bool read_config (struct module_state_config &);
+  bool read_config (struct module_state_config &, bool = true);
   static void write_counts (elf_out *to, unsigned [MSC_HWM], unsigned *crc_ptr);
   bool read_counts (unsigned *);
 
@@ -3898,6 +3898,7 @@ class GTY((chain_next ("%h.parent"), for_user)) module_state {
   unsigned write_cluster (elf_out *to, depset *depsets[], unsigned size,
 			  depset::hash &, unsigned *counts, unsigned *crc_ptr);
   bool read_cluster (unsigned snum);
+  bool open_slurp (cpp_reader *);
 
  private:
   unsigned write_inits (elf_out *to, depset::hash &, unsigned *crc_ptr);
@@ -3959,6 +3960,7 @@ class GTY((chain_next ("%h.parent"), for_user)) module_state {
  public:
   void set_filename (const Cody::Packet &);
   bool do_import (cpp_reader *, bool outermost);
+  bool check_importable (cpp_reader *);
 };
 
 /* Hash module state by name.  This cannot be a member of
@@ -11492,7 +11494,8 @@ trees_out::get_merge_kind (tree decl, depset *dep)
 	      }
 
 	    if (TREE_CODE (decl) == TEMPLATE_DECL
-		&& DECL_UNINSTANTIATED_TEMPLATE_FRIEND_P (decl))
+		? DECL_UNINSTANTIATED_TEMPLATE_FRIEND_P (decl)
+		: decl_specialization_friend_p (decl))
 	      {
 		mk = MK_local_friend;
 		break;
@@ -11568,7 +11571,8 @@ trees_out::decl_container (tree decl)
 
   tree container = NULL_TREE;
   if (TREE_CODE (decl) == TEMPLATE_DECL
-      && DECL_UNINSTANTIATED_TEMPLATE_FRIEND_P (decl))
+      ? DECL_UNINSTANTIATED_TEMPLATE_FRIEND_P (decl)
+      : decl_specialization_friend_p (decl))
     container = DECL_CHAIN (decl);
   else
     container = CP_DECL_CONTEXT (decl);
@@ -11751,7 +11755,8 @@ trees_out::key_mergeable (int tag, merge_kind mk, tree decl, tree inner,
 
 	case MK_local_friend:
 	  {
-	    /* Find by index on the class's DECL_LIST  */
+	    /* Find by index on the class's DECL_LIST.  We set TREE_CHAIN to
+	       point to the class in push_template_decl or grokfndecl.  */
 	    unsigned ix = 0;
 	    for (tree decls = CLASSTYPE_DECL_LIST (TREE_CHAIN (decl));
 		 decls; decls = TREE_CHAIN (decls))
@@ -12909,6 +12914,13 @@ trees_out::write_function_def (tree decl)
 		    && (get_importer_interface (decl)
 			!= importer_interface::external));
 
+      /* Make sure DECL_REALLY_EXTERN and DECL_INTERFACE_KNOWN are consistent
+	 on non-templates or we'll crash later in import_export_decl.  */
+      gcc_checking_assert (flags || DECL_INTERFACE_KNOWN (decl)
+			   || (DECL_LANG_SPECIFIC (decl)
+			       && DECL_TEMPLATE_INFO (decl)
+			       && uses_template_parms (DECL_TI_ARGS (decl))));
+
       if (f)
 	{
 	  flags |= 2;
@@ -13062,8 +13074,10 @@ trees_in::read_var_def (tree decl, tree maybe_template)
 	  if (DECL_EXPLICIT_INSTANTIATION (decl)
 	      && !DECL_EXTERNAL (decl))
 	    setup_explicit_instantiation_definition_linkage (decl);
-	  /* Class static data members are handled in read_class_def.  */
-	  if (!DECL_CLASS_SCOPE_P (decl)
+	  /* Class non-template static members are handled in read_class_def.
+	     But still handle specialisations of member templates.  */
+	  if ((!DECL_CLASS_SCOPE_P (decl)
+	       || primary_template_specialization_p (decl))
 	      && (DECL_IMPLICIT_INSTANTIATION (decl)
 		  || (DECL_EXPLICIT_INSTANTIATION (decl)
 		      && !DECL_EXTERNAL (decl))))
@@ -14231,8 +14245,8 @@ instantiating_tu_local_entity (tree decl)
     return false;
 
   tree origin = get_originating_module_decl (decl);
-  if (!DECL_LANG_SPECIFIC (origin)
-      || !DECL_MODULE_IMPORT_P (origin))
+  if (!DECL_LANG_SPECIFIC (STRIP_TEMPLATE (origin))
+      || !DECL_MODULE_IMPORT_P (STRIP_TEMPLATE (origin)))
     return false;
 
   /* Referencing TU-local entities from a header is generally OK.
@@ -16298,6 +16312,9 @@ mangle_module (int mod, bool include_partition)
     /* Set when importing the primary module interface.  */
     imp = imp->parent;
 
+  /* Ensure this is actually a module unit.  */
+  gcc_checking_assert (imp);
+
   imp->mangle (include_partition);
 }
 
@@ -17346,11 +17363,7 @@ module_state::read_cluster (unsigned snum)
 	}
 
     }
-  /* Look, function.cc's interface to cfun does too much for us, we
-     just need to restore the old value.  I do not want to go
-     redesigning that API right now.  */
-#undef cfun
-  cfun = old_cfun;
+  set_cfun (old_cfun);
   current_function_decl = old_cfd;
   comparing_dependent_aliases--;
 
@@ -20080,7 +20093,7 @@ post_load_processing ()
 	DECL_EXTERNAL (decl) = false;
     }
 
-  cfun = old_cfun;
+  set_cfun (old_cfun);
   current_function_decl = old_cfd;
 }
 
@@ -20278,7 +20291,7 @@ module_state::note_cmi_name ()
 }
 
 bool
-module_state::read_config (module_state_config &config)
+module_state::read_config (module_state_config &config, bool complain)
 {
   bytes_in cfg;
 
@@ -20307,7 +20320,9 @@ module_state::read_config (module_state_config &config)
 		       /* The 'I know what I'm doing' switch.  */
 		       && !flag_module_version_ignore);
       bool inform_p = true;
-      if (reject_p)
+      if (!complain)
+	inform_p = false;
+      else if (reject_p)
 	{
 	  cfg.set_overrun ();
 	  error_at (loc, "compiled module is %sversion %s",
@@ -20367,7 +20382,9 @@ module_state::read_config (module_state_config &config)
     unsigned e_crc = crc;
     crc = cfg.get_crc ();
     dump () && dump ("Reading CRC=%x", crc);
-    if (!is_direct () && crc != e_crc)
+    /* When not complaining we haven't set directness yet, so ignore the
+       mismatch. */
+    if (complain && !is_direct () && crc != e_crc)
       {
 	error_at (loc, "module %qs CRC mismatch", get_flatname ());
 	cfg.set_overrun ();
@@ -20395,8 +20412,9 @@ module_state::read_config (module_state_config &config)
     const char *their_dialect = cfg.str ();
     if (strcmp (their_dialect, config.dialect_str))
       {
-	error_at (loc, "language dialect differs %qs, expected %qs",
-		  their_dialect, config.dialect_str);
+	if (complain)
+	  error_at (loc, "language dialect differs %qs, expected %qs",
+		    their_dialect, config.dialect_str);
 	cfg.set_overrun ();
 	goto done;
       }
@@ -20809,9 +20827,6 @@ module_state::read_initial (cpp_reader *reader)
 {
   module_state_config config;
   bool ok = true;
-
-  if (ok && !from ()->begin (loc))
-    ok = false;
 
   if (ok && !read_config (config))
     ok = false;
@@ -21788,6 +21803,42 @@ propagate_defining_module (tree decl, tree orig)
     }
 }
 
+/* NEWDECL matched with OLDDECL, transfer defining module information
+   onto OLDDECL.  We've already validated attachment matches.  */
+
+void
+transfer_defining_module (tree olddecl, tree newdecl)
+{
+  if (!modules_p ())
+    return;
+
+  tree old_inner = STRIP_TEMPLATE (olddecl);
+  tree new_inner = STRIP_TEMPLATE (newdecl);
+
+  if (DECL_LANG_SPECIFIC (new_inner))
+    {
+      gcc_checking_assert (DECL_LANG_SPECIFIC (old_inner));
+      if (DECL_MODULE_PURVIEW_P (new_inner))
+	DECL_MODULE_PURVIEW_P (old_inner) = true;
+      if (!DECL_MODULE_IMPORT_P (new_inner))
+	DECL_MODULE_IMPORT_P (old_inner) = false;
+    }
+
+  if (tree *p = imported_temploid_friends->get (newdecl))
+    {
+      tree orig = *p;
+      tree &slot = imported_temploid_friends->get_or_insert (olddecl);
+      if (!slot)
+	slot = orig;
+      else if (slot != orig)
+	/* This can happen when multiple classes declare the same
+	   friend function (e.g. g++.dg/modules/tpl-friend-4);
+	   make sure we at least attach to the same module.  */
+	gcc_checking_assert (get_originating_module (slot)
+			     == get_originating_module (orig));
+    }
+}
+
 /* DECL is being freed, clear data we don't need anymore.  */
 
 void
@@ -21854,20 +21905,14 @@ module_state::set_flatname ()
     flatname = IDENTIFIER_POINTER (name);
 }
 
-/* Read the CMI file for a module.  */
+/* Open the GCM file and prepare to read.  Return whether that was
+   successful.  */
 
 bool
-module_state::do_import (cpp_reader *reader, bool outermost)
+module_state::open_slurp (cpp_reader *reader)
 {
-  gcc_assert (global_namespace == current_scope () && loadedness == ML_NONE);
-
-  /* If this TU is a partition of the module we're importing,
-     that module is the primary module interface.  */
-  if (this_module ()->is_partition ()
-      && this == get_primary (this_module ()))
-    module_p = true;
-
-  loc = linemap_module_loc (line_table, loc, get_flatname ());
+  if (slurp)
+    return true;
 
   if (lazy_open >= lazy_limit)
     freeze_an_elf ();
@@ -21890,14 +21935,50 @@ module_state::do_import (cpp_reader *reader, bool outermost)
   gcc_checking_assert (!slurp);
   slurp = new slurping (new elf_in (fd, e));
 
-  bool ok = true;
+  bool ok = from ()->begin (loc);
+  if (ok)
+    {
+      lazy_open++;
+      slurp->lru = ++lazy_lru;
+    }
+  return ok;
+}
+
+/* Return whether importing this GCM would work without an error in
+   read_config.  */
+
+bool
+module_state::check_importable (cpp_reader *reader)
+{
+  if (loadedness > ML_CONFIG)
+    return true;
+  if (!open_slurp (reader))
+    return false;
+  module_state_config config;
+  return read_config (config, /*complain*/false);
+}
+
+/* Read the CMI file for a module.  */
+
+bool
+module_state::do_import (cpp_reader *reader, bool outermost)
+{
+  gcc_assert (global_namespace == current_scope () && loadedness == ML_NONE);
+
+  /* If this TU is a partition of the module we're importing,
+     that module is the primary module interface.  */
+  if (this_module ()->is_partition ()
+      && this == get_primary (this_module ()))
+    module_p = true;
+
+  loc = linemap_module_loc (line_table, loc, get_flatname ());
+
+  bool ok = open_slurp (reader);
   if (!from ()->get_error ())
     {
       announce ("importing");
       loadedness = ML_CONFIG;
-      lazy_open++;
       ok = read_initial (reader);
-      slurp->lru = ++lazy_lru;
     }
 
   gcc_assert (slurp->current == ~0u);
@@ -22439,7 +22520,7 @@ maybe_translate_include (cpp_reader *reader, line_maps *lmaps, location_t loc,
   auto packet = mapper->IncludeTranslate (path, Cody::Flags::None, len);
 
   enum class xlate_kind {
-    unknown, text, import,
+    unknown, text, import, invalid
   } translate = xlate_kind::unknown;
 
   if (packet.GetCode () == Cody::Client::PC_BOOL)
@@ -22450,7 +22531,10 @@ maybe_translate_include (cpp_reader *reader, line_maps *lmaps, location_t loc,
 	 We may already know about this import, but libcpp doesn't yet.  */
       module_state *import = get_module (build_string (len, path));
       import->set_filename (packet);
-      translate = xlate_kind::import;
+      if (import->check_importable (reader))
+	translate = xlate_kind::import;
+      else
+	translate = xlate_kind::invalid;
     }
   else
     {
@@ -22459,7 +22543,7 @@ maybe_translate_include (cpp_reader *reader, line_maps *lmaps, location_t loc,
 		path, packet.GetString ().c_str ());
     }
 
-  bool note = false;
+  bool note = (translate == xlate_kind::invalid);
   if (note_include_translate_yes && translate == xlate_kind::import)
     note = true;
   else if (note_include_translate_no && translate == xlate_kind::unknown)
@@ -22474,6 +22558,8 @@ maybe_translate_include (cpp_reader *reader, line_maps *lmaps, location_t loc,
   if (note)
     inform (loc, translate == xlate_kind::import
 	    ? G_("include %qs translated to import")
+	    : translate == xlate_kind::invalid
+	    ? G_("import of %qs failed, falling back to include")
 	    : G_("include %qs processed textually"), path);
 
   dump () && dump (translate == xlate_kind::import

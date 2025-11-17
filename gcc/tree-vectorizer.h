@@ -1135,10 +1135,6 @@ public:
      for single-rgroup control.  */
   bool using_select_vl_p;
 
-  /* True if we've decided to use partially-populated vectors for the
-     epilogue of loop.  */
-  bool epil_using_partial_vectors_p;
-
   /* True if we've decided to use peeling with versioning together, which allows
      unaligned unsupported data refs to be uniformly aligned after a certain
      amount of peeling (mutual alignment).  Otherwise, we use versioning alone
@@ -1272,8 +1268,6 @@ public:
 #define LOOP_VINFO_USING_PARTIAL_VECTORS_P(L) (L)->using_partial_vectors_p
 #define LOOP_VINFO_USING_DECREMENTING_IV_P(L) (L)->using_decrementing_iv_p
 #define LOOP_VINFO_USING_SELECT_VL_P(L) (L)->using_select_vl_p
-#define LOOP_VINFO_EPIL_USING_PARTIAL_VECTORS_P(L)                             \
-  (L)->epil_using_partial_vectors_p
 #define LOOP_VINFO_ALLOW_MUTUAL_ALIGNMENT(L) (L)->allow_mutual_alignment
 #define LOOP_VINFO_PARTIAL_LOAD_STORE_BIAS(L) (L)->partial_load_store_bias
 #define LOOP_VINFO_VECT_FACTOR(L)          (L)->vectorization_factor
@@ -2642,7 +2636,7 @@ extern tree neutral_op_for_reduction (tree, code_helper, tree, bool = true);
 extern widest_int vect_iv_limit_for_partial_vectors (loop_vec_info loop_vinfo);
 bool vect_rgroup_iv_might_wrap_p (loop_vec_info, rgroup_controls *);
 /* Used in tree-vect-loop-manip.cc */
-extern opt_result vect_determine_partial_vectors_and_peeling (loop_vec_info);
+extern bool vect_need_peeling_or_partial_vectors_p (loop_vec_info);
 /* Used in gimple-loop-interchange.c and tree-parloops.cc.  */
 extern bool check_reduction_path (dump_user_location_t, loop_p, gphi *, tree,
 				  enum tree_code);

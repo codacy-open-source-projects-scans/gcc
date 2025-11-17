@@ -740,12 +740,11 @@ _loop_vec_info::_loop_vec_info (class loop *loop_in, vec_info_shared *shared)
     scan_map (NULL),
     inner_loop_cost_factor (param_vect_inner_loop_cost_factor),
     vectorizable (false),
-    can_use_partial_vectors_p (param_vect_partial_vector_usage != 0),
+    can_use_partial_vectors_p (true),
     must_use_partial_vectors_p (false),
     using_partial_vectors_p (false),
     using_decrementing_iv_p (false),
     using_select_vl_p (false),
-    epil_using_partial_vectors_p (false),
     allow_mutual_alignment (false),
     partial_load_store_bias (0),
     peeling_for_gaps (false),
@@ -938,7 +937,7 @@ vect_min_prec_for_max_niters (loop_vec_info loop_vinfo, unsigned int factor)
 
 /* True if the loop needs peeling or partial vectors when vectorized.  */
 
-static bool
+bool
 vect_need_peeling_or_partial_vectors_p (loop_vec_info loop_vinfo)
 {
   unsigned HOST_WIDE_INT const_vf;
@@ -1995,7 +1994,6 @@ vect_get_datarefs_in_loop (loop_p loop, basic_block *bbs,
        In this case:
 
 	 LOOP_VINFO_USING_PARTIAL_VECTORS_P == true
-	 LOOP_VINFO_EPIL_USING_PARTIAL_VECTORS_P == false
 	 LOOP_VINFO_PEELING_FOR_NITER == false
 
    (2) Make LOOP_VINFO operate on full vectors and use an epilogue loop
@@ -2004,22 +2002,18 @@ vect_get_datarefs_in_loop (loop_p loop, basic_block *bbs,
 	 LOOP_VINFO_USING_PARTIAL_VECTORS_P == false
 	 LOOP_VINFO_PEELING_FOR_NITER == true
 
-       There are two choices:
+   The MASKED_P argument specifies to what extent
+   param_vect_partial_vector_usage is to be honored.  For MASKED_P == 0
+   no partial vectors are to be used, for MASKED_P == -1 it's
+   param_vect_partial_vector_usage that gets to decide whether we may
+   consider partial vector usage.  For MASKED_P == 1 partial vectors
+   may be used if possible.
 
-       (2a) Consider vectorizing the epilogue loop at the same VF as the
-	    main loop, but using partial vectors instead of full vectors.
-	    In this case:
-
-	      LOOP_VINFO_EPIL_USING_PARTIAL_VECTORS_P == true
-
-       (2b) Consider vectorizing the epilogue loop at lower VFs only.
-	    In this case:
-
-	      LOOP_VINFO_EPIL_USING_PARTIAL_VECTORS_P == false
  */
 
-opt_result
-vect_determine_partial_vectors_and_peeling (loop_vec_info loop_vinfo)
+static opt_result
+vect_determine_partial_vectors_and_peeling (loop_vec_info loop_vinfo,
+					    int masked_p)
 {
   /* Determine whether there would be any scalar iterations left over.  */
   bool need_peeling_or_partial_vectors_p
@@ -2027,9 +2021,12 @@ vect_determine_partial_vectors_and_peeling (loop_vec_info loop_vinfo)
 
   /* Decide whether to vectorize the loop with partial vectors.  */
   LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo) = false;
-  LOOP_VINFO_EPIL_USING_PARTIAL_VECTORS_P (loop_vinfo) = false;
-  if (LOOP_VINFO_CAN_USE_PARTIAL_VECTORS_P (loop_vinfo)
-      && LOOP_VINFO_MUST_USE_PARTIAL_VECTORS_P (loop_vinfo))
+  if (masked_p == 0
+      || (masked_p == -1 && param_vect_partial_vector_usage == 0))
+    /* If requested explicitly do not use partial vectors.  */
+    LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo) = false;
+  else if (LOOP_VINFO_CAN_USE_PARTIAL_VECTORS_P (loop_vinfo)
+	   && LOOP_VINFO_MUST_USE_PARTIAL_VECTORS_P (loop_vinfo))
     LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo) = true;
   else if (LOOP_VINFO_CAN_USE_PARTIAL_VECTORS_P (loop_vinfo)
 	   && need_peeling_or_partial_vectors_p)
@@ -2050,7 +2047,7 @@ vect_determine_partial_vectors_and_peeling (loop_vec_info loop_vinfo)
 	   || loop_vinfo->suggested_unroll_factor > 1)
 	  && !LOOP_VINFO_EPILOGUE_P (loop_vinfo)
 	  && !vect_known_niters_smaller_than_vf (loop_vinfo))
-	LOOP_VINFO_EPIL_USING_PARTIAL_VECTORS_P (loop_vinfo) = true;
+	;
       else
 	LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo) = true;
     }
@@ -2073,19 +2070,6 @@ vect_determine_partial_vectors_and_peeling (loop_vec_info loop_vinfo)
     = (!LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo)
        && need_peeling_or_partial_vectors_p);
 
-  /* We set LOOP_VINFO_USING_SELECT_VL_P as true before loop vectorization
-     analysis that we don't know whether the loop is vectorized by partial
-     vectors (More details see tree-vect-loop-manip.cc).
-
-     However, SELECT_VL vectorizaton style should only applied on partial
-     vectorization since SELECT_VL is the GIMPLE IR that calculates the
-     number of elements to be process for each iteration.
-
-     After loop vectorization analysis, Clear LOOP_VINFO_USING_SELECT_VL_P
-     if it is not partial vectorized loop.  */
-  if (!LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo))
-    LOOP_VINFO_USING_SELECT_VL_P (loop_vinfo) = false;
-
   return opt_result::success ();
 }
 
@@ -2100,7 +2084,7 @@ vect_determine_partial_vectors_and_peeling (loop_vec_info loop_vinfo)
    SINGLE_LANE_SLP_DONE_FOR_SUGGESTED_UF is to hold whether single-lane
    slp was forced when the suggested unroll factor was worked out.  */
 static opt_result
-vect_analyze_loop_2 (loop_vec_info loop_vinfo, bool &fatal,
+vect_analyze_loop_2 (loop_vec_info loop_vinfo, int masked_p, bool &fatal,
 		     unsigned *suggested_unroll_factor,
 		     bool& single_lane_slp_done_for_suggested_uf)
 {
@@ -2355,10 +2339,18 @@ start_over:
 	  LOOP_VINFO_CAN_USE_PARTIAL_VECTORS_P (loop_vinfo) = false;
     }
 
+  /* Decide whether this loop_vinfo should use partial vectors or peeling,
+     assuming that the loop will be used as a main loop.  We will redo
+     this analysis later if we instead decide to use the loop as an
+     epilogue loop.  */
+  ok = vect_determine_partial_vectors_and_peeling (loop_vinfo, masked_p);
+  if (!ok)
+    return ok;
+
   /* If we're vectorizing a loop that uses length "controls" and
      can iterate more than once, we apply decrementing IV approach
      in loop control.  */
-  if (LOOP_VINFO_CAN_USE_PARTIAL_VECTORS_P (loop_vinfo)
+  if (LOOP_VINFO_USING_PARTIAL_VECTORS_P (loop_vinfo)
       && LOOP_VINFO_PARTIAL_VECTORS_STYLE (loop_vinfo) == vect_partial_vectors_len
       && LOOP_VINFO_PARTIAL_LOAD_STORE_BIAS (loop_vinfo) == 0
       && !(LOOP_VINFO_NITERS_KNOWN_P (loop_vinfo)
@@ -2449,14 +2441,6 @@ start_over:
 	      break;
 	    }
     }
-
-  /* Decide whether this loop_vinfo should use partial vectors or peeling,
-     assuming that the loop will be used as a main loop.  We will redo
-     this analysis later if we instead decide to use the loop as an
-     epilogue loop.  */
-  ok = vect_determine_partial_vectors_and_peeling (loop_vinfo);
-  if (!ok)
-    return ok;
 
   /* If we're vectorizing an epilogue loop, the vectorized loop either needs
      to be able to handle fewer than VF scalars, or needs to have a lower VF
@@ -2779,13 +2763,11 @@ vect_analyze_loop_1 (class loop *loop, vec_info_shared *shared,
 
   machine_mode vector_mode = vector_modes[mode_i];
   loop_vinfo->vector_mode = vector_mode;
-  if (masked_p != -1)
-    loop_vinfo->can_use_partial_vectors_p = masked_p;
   unsigned int suggested_unroll_factor = 1;
   bool single_lane_slp_done_for_suggested_uf = false;
 
   /* Run the main analysis.  */
-  opt_result res = vect_analyze_loop_2 (loop_vinfo, fatal,
+  opt_result res = vect_analyze_loop_2 (loop_vinfo, masked_p, fatal,
 					&suggested_unroll_factor,
 					single_lane_slp_done_for_suggested_uf);
   if (dump_enabled_p ())
@@ -2828,8 +2810,8 @@ vect_analyze_loop_1 (class loop *loop, vec_info_shared *shared,
 	    unroll_vinfo->vector_mode = vector_mode;
 	    unroll_vinfo->suggested_unroll_factor = suggested_unroll_factor;
 	    opt_result new_res
-		= vect_analyze_loop_2 (unroll_vinfo, fatal, NULL,
-				       single_lane_slp_done_for_suggested_uf);
+	      = vect_analyze_loop_2 (unroll_vinfo, masked_p, fatal, NULL,
+				     single_lane_slp_done_for_suggested_uf);
 	    if (new_res)
 	      {
 		delete loop_vinfo;
@@ -3067,13 +3049,9 @@ vect_analyze_loop (class loop *loop, gimple *loop_vectorized_call,
 
   bool supports_partial_vectors = (param_vect_partial_vector_usage != 0
 				   || masked_p == 1);
-  machine_mode mask_mode;
   if (supports_partial_vectors
       && !partial_vectors_supported_p ()
-      && !(VECTOR_MODE_P (first_loop_vinfo->vector_mode)
-	   && targetm.vectorize.get_mask_mode
-		(first_loop_vinfo->vector_mode).exists (&mask_mode)
-	   && SCALAR_INT_MODE_P (mask_mode)))
+      && !LOOP_VINFO_CAN_USE_PARTIAL_VECTORS_P (first_loop_vinfo))
     supports_partial_vectors = false;
   poly_uint64 first_vinfo_vf = LOOP_VINFO_VECT_FACTOR (first_loop_vinfo);
 

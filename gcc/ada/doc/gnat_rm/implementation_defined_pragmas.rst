@@ -6672,12 +6672,9 @@ names that are implementation defined (as permitted by the RM):
 
 
 *
-  ``Alignment_Check`` can be used to suppress alignment checks
-  on addresses used in address clauses. Such checks can also be suppressed
-  by suppressing range checks, but the specific use of ``Alignment_Check``
-  allows suppression of alignment checks without suppressing other range checks.
-  Note that ``Alignment_Check`` is suppressed by default on machines (such as
-  the x86) with non-strict alignment.
+  ``Alignment_Check`` can be used to suppress alignment checks on addresses
+  used in address clauses. Note that ``Alignment_Check`` is suppressed by
+  default on non-strict alignment machines (such as the x86).
 
 *
   ``Atomic_Synchronization`` can be used to suppress the special memory
@@ -7346,7 +7343,7 @@ units and unreferenced entities within these units.
 
 For the variable case, warnings are never given for unreferenced variables
 whose name contains one of the substrings
-``DISCARD, DUMMY, IGNORE, JUNK, UNUSED`` in any casing. Such names
+``DISCARD, DUMMY, IGNORE, JUNK, UNUSE, TMP, TEMP`` in any casing. Such names
 are typically to be used in cases where such warnings are expected.
 Thus it is never necessary to use ``pragma Unreferenced`` for such
 variables, though it is harmless to do so.
@@ -7479,7 +7476,7 @@ that it might be.
 
 For the variable case, warnings are never given for unreferenced
 variables whose name contains one of the substrings
-``DISCARD, DUMMY, IGNORE, JUNK, UNUSED`` in any casing. Such names
+``DISCARD, DUMMY, IGNORE, JUNK, UNUSE, TMP, TEMP`` in any casing. Such names
 are typically to be used in cases where such warnings are expected.
 Thus it is never necessary to use ``pragma Unused`` for such
 variables, though it is harmless to do so.

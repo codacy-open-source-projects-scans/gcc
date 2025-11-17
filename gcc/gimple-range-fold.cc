@@ -162,11 +162,10 @@ fur_stmt::query_relation (tree op1, tree op2)
   return m_query->relation ().query (m_stmt, op1, op2);
 }
 
-// Instantiate a stmt based fur_source with a GORI object.
+// Instantiate a stmt based fur_source with a GORI object and a ranger cache.
 
-
-fur_depend::fur_depend (gimple *s, range_query *q)
-  : fur_stmt (s, q)
+fur_depend::fur_depend (gimple *s, range_query *q, ranger_cache *c)
+  : fur_stmt (s, q), m_cache (c)
 {
   m_depend_p = true;
 }
@@ -177,6 +176,13 @@ void
 fur_depend::register_relation (gimple *s, relation_kind k, tree op1, tree op2)
 {
   m_query->relation ().record (s, k, op1, op2);
+  // This new relation could cause different calculations, so mark the operands
+  // with a new timestamp, forcing recalculations.
+  if (m_cache)
+    {
+      m_cache->update_consumers (op1);
+      m_cache->update_consumers (op2);
+    }
 }
 
 // Register a relation on an edge if there is an oracle.
@@ -185,6 +191,13 @@ void
 fur_depend::register_relation (edge e, relation_kind k, tree op1, tree op2)
 {
   m_query->relation ().record (e, k, op1, op2);
+  // This new relation could cause different calculations, so mark the operands
+  // with a new timestamp, forcing recalculations.
+  if (m_cache)
+    {
+      m_cache->update_consumers (op1);
+      m_cache->update_consumers (op2);
+    }
 }
 
 // This version of fur_source will pick a range up from a list of ranges
@@ -995,31 +1008,9 @@ fold_using_range::range_of_phi (vrange &r, gphi *phi, fur_source &src)
 	}
     }
 
-  // If PHI analysis is available, see if there is an iniital range.
-  if (phi_analysis_available_p ()
-      && irange::supports_p (TREE_TYPE (phi_def)))
-    {
-      phi_group *g = (phi_analysis())[phi_def];
-      if (g && !(g->range ().varying_p ()))
-	{
-	  if (dump_file && (dump_flags & TDF_DETAILS))
-	    {
-	      fprintf (dump_file, "PHI GROUP query for ");
-	      print_generic_expr (dump_file, phi_def, TDF_SLIM);
-	      fprintf (dump_file, " found : ");
-	      g->range ().dump (dump_file);
-	      fprintf (dump_file, " and adjusted original range from :");
-	      r.dump (dump_file);
-	    }
-	  r.intersect (g->range ());
-	  if (dump_file && (dump_flags & TDF_DETAILS))
-	    {
-	      fprintf (dump_file, " to :");
-	      r.dump (dump_file);
-	      fprintf (dump_file, "\n");
-	    }
-	}
-    }
+  // Incorporate any global value.  If a PHI analysis phase was run, there may
+  // be a restricted global range already.  Query the range with no context
+  // to get a global range.
 
   // If SCEV is available, query if this PHI has any known values.
   if (scev_initialized_p ()

@@ -22,6 +22,8 @@ along with GCC; see the file COPYING3.  If not see
 #ifndef GCC_LOONGARCH_PROTOS_H
 #define GCC_LOONGARCH_PROTOS_H
 
+#include "common/config/loongarch/cpu-features.h"
+
 /* Classifies a SYMBOL_REF, LABEL_REF or UNSPEC address.
 
    SYMBOL_GOT_DISP
@@ -201,6 +203,7 @@ extern void loongarch_expand_vec_cond_mask_expr (machine_mode, machine_mode,
 						 rtx *);
 extern void loongarch_expand_vec_widen_hilo (rtx, rtx, rtx, bool,
 	rtx (*)(rtx, rtx, rtx), rtx (*)(rtx, rtx, rtx));
+extern bool loongarch_16b_atomic_lock_free_p (void);
 
 /* Routines implemented in loongarch-c.c.  */
 void loongarch_cpu_cpp_builtins (cpp_reader *);
@@ -227,4 +230,9 @@ extern void loongarch_register_pragmas (void);
 extern bool loongarch_process_target_attr (tree args, tree fndecl);
 extern rtx loongarch_gen_stepped_int_parallel (unsigned int nelts, int base,
 					       int step);
+extern bool loongarch_parse_fmv_features (tree, string_slice, loongarch_fmv_feature_mask *,
+					  auto_vec<unsigned int> *);
+extern void get_feature_mask_for_version (tree, loongarch_fmv_feature_mask *,
+					  auto_vec<unsigned int> *);
+extern int loongarch_compare_version_priority (tree, tree);
 #endif /* ! GCC_LOONGARCH_PROTOS_H */

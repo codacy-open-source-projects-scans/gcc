@@ -1753,6 +1753,20 @@ interpret_rhs_expr (class loop *loop, gimple *at_stmt,
       res = chrec_fold_plus (type, chrec1, chrec2);
       break;
 
+    case POINTER_DIFF_EXPR:
+      {
+	tree utype = unsigned_type_for (type);
+	chrec1 = analyze_scalar_evolution (loop, rhs1);
+	chrec2 = analyze_scalar_evolution (loop, rhs2);
+	chrec1 = chrec_convert (utype, chrec1, at_stmt);
+	chrec2 = chrec_convert (utype, chrec2, at_stmt);
+	chrec1 = instantiate_parameters (loop, chrec1);
+	chrec2 = instantiate_parameters (loop, chrec2);
+	res = chrec_fold_minus (utype, chrec1, chrec2);
+	res = chrec_convert (type, res, at_stmt);
+	break;
+      }
+
     case PLUS_EXPR:
       chrec1 = analyze_scalar_evolution (loop, rhs1);
       chrec2 = analyze_scalar_evolution (loop, rhs2);
@@ -3952,6 +3966,11 @@ final_value_replacement_loop (class loop *loop)
       gimple_seq stmts;
       def = force_gimple_operand (def, &stmts, false, NULL_TREE);
 
+      /* Propagate constants immediately, but leave an unused initialization
+	 around to avoid invalidating the SCEV cache.  */
+      if (CONSTANT_CLASS_P (def) && !SSA_NAME_OCCURS_IN_ABNORMAL_PHI (rslt))
+	replace_uses_by (rslt, def);
+
       /* Remove the old phi after the gimplification to make sure the
 	 SSA name is defined by a statement so that fold_stmt during
 	 the gimplification does not crash. */
@@ -3959,11 +3978,6 @@ final_value_replacement_loop (class loop *loop)
       gassign *ass = gimple_build_assign (rslt, def);
       gimple_set_location (ass, loc);
       gimple_seq_add_stmt (&stmts, ass);
-
-      /* Propagate constants immediately, but leave an unused initialization
-	 around to avoid invalidating the SCEV cache.  */
-      if (CONSTANT_CLASS_P (def) && !SSA_NAME_OCCURS_IN_ABNORMAL_PHI (rslt))
-	replace_uses_by (rslt, def);
 
       /* If def's type has undefined overflow and there were folded
 	 casts, rewrite all stmts added for def into arithmetics

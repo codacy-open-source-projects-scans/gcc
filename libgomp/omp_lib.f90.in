@@ -164,6 +164,8 @@
                  parameter :: omp_thread_mem_alloc = 8
         integer (kind=omp_allocator_handle_kind), &
                  parameter :: ompx_gnu_pinned_mem_alloc = 200
+        integer (kind=omp_allocator_handle_kind), &
+                 parameter :: ompx_gnu_managed_mem_alloc = 201
         integer (omp_memspace_handle_kind), &
                  parameter :: omp_default_mem_space = 0
         integer (omp_memspace_handle_kind), &
@@ -174,8 +176,11 @@
                  parameter :: omp_high_bw_mem_space = 3
         integer (omp_memspace_handle_kind), &
                  parameter :: omp_low_lat_mem_space = 4
+        integer (omp_memspace_handle_kind), &
+                 parameter :: ompx_gnu_managed_mem_space = 200
         integer, parameter :: omp_initial_device = -1
         integer, parameter :: omp_invalid_device = -4
+        integer, parameter :: omp_default_device = -5
         integer (omp_interop_kind), &
                  parameter :: omp_interop_none = 0_omp_interop_kind
         integer (omp_interop_fr_kind), parameter :: omp_ifr_cuda = 1

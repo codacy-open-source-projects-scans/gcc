@@ -1167,6 +1167,137 @@ public:
   }
 };
 
+
+/* Map the function directly to the appropriate scalar shift builtin.  */
+enum which_scalar_shift {
+  ss_ASRL,
+  ss_LSLL,
+  ss_SQRSHR,
+  ss_SQRSHRL,
+  ss_SQRSHRL_SAT48,
+  ss_SQSHL,
+  ss_SQSHLL,
+  ss_SRSHR,
+  ss_SRSHRL,
+  ss_UQRSHL,
+  ss_UQRSHLL,
+  ss_UQRSHLL_SAT48,
+  ss_UQSHL,
+  ss_UQSHLL,
+  ss_URSHR,
+  ss_URSHRL
+};
+
+class mve_function_scalar_shift : public function_base
+{
+public:
+  CONSTEXPR mve_function_scalar_shift (enum which_scalar_shift shl)
+    : m_scalar_shift (shl)
+  {}
+
+  /* Which scalar_shift builtin to map.  */
+  enum which_scalar_shift m_scalar_shift;
+
+  rtx
+  expand (function_expander &e) const override
+  {
+    insn_code code;
+
+    switch (m_scalar_shift)
+      {
+      case ss_ASRL:
+	e.args[1] = simplify_gen_subreg (QImode, e.args[1], SImode, 0);
+	code = CODE_FOR_mve_asrl;
+	break;
+
+      case ss_LSLL:
+	e.args[1] = simplify_gen_subreg (QImode, e.args[1], SImode, 0);
+	code = CODE_FOR_mve_lsll;
+	break;
+
+      case ss_SQRSHR:
+	code = CODE_FOR_mve_sqrshr_si;
+	break;
+
+      case ss_SQRSHRL:
+	code = code_for_mve_sqrshrl_sat_di (SQRSHRL_64);
+	break;
+
+      case ss_SQRSHRL_SAT48:
+	code = code_for_mve_sqrshrl_sat_di (SQRSHRL_48);
+	break;
+
+      case ss_SQSHL:
+	code = CODE_FOR_mve_sqshl_si;
+	break;
+
+      case ss_SRSHR:
+	code = CODE_FOR_mve_srshr_si;
+	break;
+
+      case ss_UQRSHL:
+	code = CODE_FOR_mve_uqrshl_si;
+	break;
+
+      case ss_SQSHLL:
+	code = CODE_FOR_mve_sqshll_di;
+	break;
+
+      case ss_SRSHRL:
+	code = CODE_FOR_mve_srshrl_di;
+	break;
+
+      case ss_UQRSHLL:
+	code = code_for_mve_uqrshll_sat_di (UQRSHLL_64);
+	break;
+
+      case ss_UQRSHLL_SAT48:
+	code = code_for_mve_uqrshll_sat_di (UQRSHLL_48);
+	break;
+
+      case ss_UQSHL:
+	code = CODE_FOR_mve_uqshl_si;
+	break;
+
+      case ss_UQSHLL:
+	code = CODE_FOR_mve_uqshll_di;
+	break;
+
+      case ss_URSHR:
+	code = CODE_FOR_mve_urshr_si;
+	break;
+
+      case ss_URSHRL:
+	code = CODE_FOR_mve_urshrl_di;
+	break;
+
+      default:
+	gcc_unreachable ();
+      }
+
+    return e.use_unpred_insn (code);
+  }
+};
+
+
+/* Map the function directly to mve_vpnotv16bi, and convert the result into
+   HImode like we do for vcmp.  */
+class mve_function_vpnot : public function_base
+{
+public:
+  CONSTEXPR mve_function_vpnot (void)
+  {}
+
+  rtx
+  expand (function_expander &e) const override
+  {
+    rtx target = e.use_unpred_insn (CODE_FOR_mve_vpnotv16bi);
+    rtx HItarget = gen_reg_rtx (HImode);
+    emit_move_insn (HItarget, gen_lowpart (HImode, target));
+    return HItarget;
+  }
+};
+
 } /* end anonymous namespace */
 
 namespace arm_mve {
@@ -1334,6 +1465,22 @@ namespace arm_mve {
    (-1, -1, UNSPEC##_F,							\
     -1, -1, UNSPEC##_P_F))
 
+FUNCTION (asrl, mve_function_scalar_shift, (ss_ASRL))
+FUNCTION (lsll, mve_function_scalar_shift, (ss_LSLL))
+FUNCTION (sqrshr, mve_function_scalar_shift, (ss_SQRSHR))
+FUNCTION (sqrshrl, mve_function_scalar_shift, (ss_SQRSHRL))
+FUNCTION (sqrshrl_sat48, mve_function_scalar_shift, (ss_SQRSHRL_SAT48))
+FUNCTION (sqshl, mve_function_scalar_shift, (ss_SQSHL))
+FUNCTION (sqshll, mve_function_scalar_shift, (ss_SQSHLL))
+FUNCTION (srshr, mve_function_scalar_shift, (ss_SRSHR))
+FUNCTION (srshrl, mve_function_scalar_shift, (ss_SRSHRL))
+FUNCTION (uqrshl, mve_function_scalar_shift, (ss_UQRSHL))
+FUNCTION (uqrshll, mve_function_scalar_shift, (ss_UQRSHLL))
+FUNCTION (uqrshll_sat48, mve_function_scalar_shift, (ss_UQRSHLL_SAT48))
+FUNCTION (uqshl, mve_function_scalar_shift, (ss_UQSHL))
+FUNCTION (uqshll, mve_function_scalar_shift, (ss_UQSHLL))
+FUNCTION (urshr, mve_function_scalar_shift, (ss_URSHR))
+FUNCTION (urshrl, mve_function_scalar_shift, (ss_URSHRL))
 FUNCTION_PRED_P_S_U (vabavq, VABAVQ)
 FUNCTION_WITHOUT_N (vabdq, VABDQ)
 FUNCTION (vabsq, unspec_based_mve_function_exact_insn, (ABS, ABS, ABS, -1, -1, -1, VABSQ_M_S, -1, VABSQ_M_F, -1, -1, -1))
@@ -1453,6 +1600,7 @@ FUNCTION (vmulltq_poly, unspec_mve_function_exact_insn_vmull_poly, (VMULLTQ_POLY
 FUNCTION_WITH_RTX_M_N (vmulq, MULT, VMULQ)
 FUNCTION_WITH_RTX_M_N_NO_F (vmvnq, NOT, VMVNQ)
 FUNCTION (vnegq, unspec_based_mve_function_exact_insn, (NEG, NEG, NEG, -1, -1, -1, VNEGQ_M_S, -1, VNEGQ_M_F, -1, -1, -1))
+FUNCTION (vpnot, mve_function_vpnot, )
 FUNCTION_WITHOUT_M_N (vpselq, VPSELQ)
 FUNCTION (vornq, unspec_based_mve_function_exact_insn_vorn, (-1, -1, VORNQ_M_S, VORNQ_M_U, VORNQ_M_F, -1, -1))
 FUNCTION_WITH_RTX_M_N_NO_N_F (vorrq, IOR, VORRQ)

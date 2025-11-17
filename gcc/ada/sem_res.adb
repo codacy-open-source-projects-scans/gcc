@@ -11310,12 +11310,13 @@ package body Sem_Res is
 
             if Den /= 1 then
 
-               --  For a source program literal for a decimal fixed-point type,
-               --  this is statically illegal (RM 4.9(36)).
+               --  This is illegal for the value of a static expression of type
+               --  universal_real if the expected type is a decimal fixed-point
+               --  type (RM 4.9(36/2)).
 
-               if Is_Decimal_Fixed_Point_Type (Typ)
+               if Is_OK_Static_Expression (N)
                  and then Actual_Typ = Universal_Real
-                 and then Comes_From_Source (N)
+                 and then Is_Decimal_Fixed_Point_Type (Typ)
                then
                   Error_Msg_N ("value has extraneous low order digits", N);
                end if;
@@ -13741,8 +13742,10 @@ package body Sem_Res is
 
             --  Report the first two interpretations
 
-            Report_Interpretation (Operand, It.Nam, It.Typ);
-            Report_Interpretation (Operand, N1, T1);
+            if Report_Errors then
+               Report_Interpretation (Operand, It.Nam, It.Typ);
+               Report_Interpretation (Operand, N1, T1);
+            end if;
 
             return True;
          end if;

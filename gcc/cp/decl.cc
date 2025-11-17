@@ -2595,6 +2595,9 @@ duplicate_decls (tree newdecl, tree olddecl, bool hiding, bool was_hidden)
   else
     DECL_ATTRIBUTES (olddecl) = DECL_ATTRIBUTES (newdecl);
 
+  /* Transfer purviewness and importingness to the old decl.  */
+  transfer_defining_module (olddecl, newdecl);
+
   if (TREE_CODE (newdecl) == TEMPLATE_DECL)
     {
       tree old_result = DECL_TEMPLATE_RESULT (olddecl);
@@ -2667,18 +2670,6 @@ duplicate_decls (tree newdecl, tree olddecl, bool hiding, bool was_hidden)
 
 	      merge_attribute_bits (new_result, old_result);
 	    }
-	}
-
-      /* Propagate purviewness and importingness as with
-	 set_instantiating_module, unless newdecl is a friend injection.  */
-      if (modules_p () && DECL_LANG_SPECIFIC (new_result)
-	  && !(TREE_CODE (new_result) == FUNCTION_DECL
-	       && DECL_UNIQUE_FRIEND_P (new_result)))
-	{
-	  if (DECL_MODULE_PURVIEW_P (new_result))
-	    DECL_MODULE_PURVIEW_P (old_result) = true;
-	  if (!DECL_MODULE_IMPORT_P (new_result))
-	    DECL_MODULE_IMPORT_P (old_result) = false;
 	}
 
       /* If the new declaration is a definition, update the file and
@@ -12105,6 +12096,11 @@ grokfndecl (tree ctype,
 
 	  gcc_assert (identifier_p (fns) || OVL_P (fns));
 	  DECL_TEMPLATE_INFO (decl) = build_template_info (fns, args);
+
+	  /* Remember the befriending class like push_template_decl does for
+	     template friends.  */
+	  gcc_checking_assert (!DECL_CHAIN (decl));
+	  DECL_CHAIN (decl) = current_scope ();
 
 	  for (t = TYPE_ARG_TYPES (TREE_TYPE (decl)); t; t = TREE_CHAIN (t))
 	    if (TREE_PURPOSE (t)

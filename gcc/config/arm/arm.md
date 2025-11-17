@@ -4588,10 +4588,8 @@
       if (arm_reg_or_long_shift_imm (operands[2], GET_MODE (operands[2]))
 	  && (REG_P (operands[2]) || INTVAL(operands[2]) != 32))
         {
-	  if (!reg_overlap_mentioned_p(operands[0], operands[1]))
-	    emit_insn (gen_movdi (operands[0], operands[1]));
-
-	  emit_insn (gen_thumb2_lsll (operands[0], operands[2]));
+	  operands[2] = convert_modes (QImode, SImode, operands[2], 0);
+	  emit_insn (gen_mve_lsll (operands[0], operands[1], operands[2]));
 	  DONE;
 	}
     }
@@ -4627,10 +4625,8 @@
   if (TARGET_HAVE_MVE && !BYTES_BIG_ENDIAN
       && arm_reg_or_long_shift_imm (operands[2], GET_MODE (operands[2])))
     {
-      if (!reg_overlap_mentioned_p(operands[0], operands[1]))
-	emit_insn (gen_movdi (operands[0], operands[1]));
-
-      emit_insn (gen_thumb2_asrl (operands[0], operands[2]));
+      operands[2] = convert_modes (QImode, SImode, operands[2], 0);
+      emit_insn (gen_mve_asrl (operands[0], operands[1], operands[2]));
       DONE;
     }
 
@@ -4662,10 +4658,7 @@
   if (TARGET_HAVE_MVE && !BYTES_BIG_ENDIAN
     && long_shift_imm (operands[2], GET_MODE (operands[2])))
     {
-      if (!reg_overlap_mentioned_p(operands[0], operands[1]))
-        emit_insn (gen_movdi (operands[0], operands[1]));
-
-      emit_insn (gen_thumb2_lsrl (operands[0], operands[2]));
+      emit_insn (gen_mve_lsrl (operands[0], operands[1], operands[2]));
       DONE;
     }
 
@@ -8350,7 +8343,7 @@
 
 (define_expand "movhfcc"
   [(set (match_operand:HF 0 "s_register_operand")
-	(if_then_else:HF (match_operand 1 "arm_cond_move_operator")
+	(if_then_else:HF (match_operand 1 "expandable_comparison_operator")
 			 (match_operand:HF 2 "s_register_operand")
 			 (match_operand:HF 3 "s_register_operand")))]
   "TARGET_VFP_FP16INST"
@@ -8372,7 +8365,7 @@
 
 (define_expand "movsfcc"
   [(set (match_operand:SF 0 "s_register_operand")
-	(if_then_else:SF (match_operand 1 "arm_cond_move_operator")
+	(if_then_else:SF (match_operand 1 "expandable_comparison_operator")
 			 (match_operand:SF 2 "s_register_operand")
 			 (match_operand:SF 3 "s_register_operand")))]
   "TARGET_32BIT && TARGET_HARD_FLOAT"
@@ -8394,7 +8387,7 @@
 
 (define_expand "movdfcc"
   [(set (match_operand:DF 0 "s_register_operand")
-	(if_then_else:DF (match_operand 1 "arm_cond_move_operator")
+	(if_then_else:DF (match_operand 1 "expandable_comparison_operator")
 			 (match_operand:DF 2 "s_register_operand")
 			 (match_operand:DF 3 "s_register_operand")))]
   "TARGET_32BIT && TARGET_HARD_FLOAT && TARGET_VFP_DOUBLE"

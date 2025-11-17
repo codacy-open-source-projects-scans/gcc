@@ -426,16 +426,16 @@ Driver Alias(v)
 ;; as -fhelp; the following four entries are for compatibility with
 ;; any direct uses of those (undocumented) -f forms
 fhelp
-Common Driver Alias(-help)
+Common Driver RejectNegative Alias(-help) Undocumented
 
 fhelp=
-Common Driver Joined Alias(-help=)
+Common Driver RejectNegative Joined Alias(-help=) Undocumented
 
 ftarget-help
-Common Driver Alias(-target-help)
+Common Driver RejectNegative Alias(-target-help) Undocumented
 
 fversion
-Common Driver Alias(-version)
+Common Driver RejectNegative Alias(-version) Undocumented
 
 -sysroot
 Driver Separate Alias(-sysroot=)
@@ -457,6 +457,7 @@ Driver Joined Separate
 
 N
 Driver
+Passed to the linker.
 
 O
 Common JoinedOrMissing Optimization
@@ -478,8 +479,10 @@ Oz
 Common Optimization
 Optimize for space aggressively rather than speed.
 
+; Driver passes -quiet to the front end if -Q is not specified.
 Q
 Driver
+-Q --help prints what options are enabled.  Just -Q enables verbose messages.
 
 Qn
 Driver Negative(Qy)
@@ -492,27 +495,35 @@ Driver Joined Separate
 
 S
 Driver
+Stop processing after generating assembly code; do not assemble.
 
 T
 Driver Joined Separate
+Passed to the linker.
 
 Tbss
 Driver Separate
+Passed to the linker.
 
 Tbss=
 Driver Joined
+Passed to the linker.
 
 Tdata
 Driver Separate
+Passed to the linker.
 
 Tdata=
 Driver Joined
+Passed to the linker.
 
 Ttext
 Driver Separate
+Passed to the linker.
 
 Ttext=
 Driver Joined
+Passed to the linker.
 
 W
 Common RejectNegative Warning Alias(Wextra)
@@ -628,7 +639,7 @@ Common RejectNegative Joined Host_Wide_Int ByteSize Warning Var(warn_frame_large
 -Wframe-larger-than=<byte-size>	Warn if a function's stack frame requires in excess of <byte-size>.
 
 Wno-frame-larger-than
-Common Alias(Wframe-larger-than=,18446744073709551615EiB,none) Warning
+Common RejectNegative Alias(Wframe-larger-than=,18446744073709551615EiB,none) Warning
 Disable -Wframe-larger-than= warning.  Equivalent to -Wframe-larger-than=<SIZE_MAX> or larger.
 
 Wfree-nonheap-object
@@ -670,7 +681,7 @@ Common RejectNegative Joined Host_Wide_Int ByteSize Warning Var(warn_larger_than
 -Wlarger-than=<byte-size>	Warn if an object's size exceeds <byte-size>.
 
 Wno-larger-than
-Common Alias(Wlarger-than=,18446744073709551615EiB,none) Warning
+Common RejectNegative Alias(Wlarger-than=,18446744073709551615EiB,none) Warning
 Disable -Wlarger-than= warning.  Equivalent to -Wlarger-than=<SIZE_MAX> or larger.
 
 Wnonnull-compare
@@ -755,7 +766,7 @@ Common Joined RejectNegative Host_Wide_Int ByteSize Var(warn_stack_usage) Warnin
 -Wstack-usage=<byte-size>	Warn if stack usage might exceed <byte-size>.
 
 Wno-stack-usage
-Common Alias(Wstack-usage=,18446744073709551615EiB,none) Warning
+Common RejectNegative Alias(Wstack-usage=,18446744073709551615EiB,none) Warning
 Disable Wstack-usage= warning.  Equivalent to Wstack-usage=<SIZE_MAX> or larger.
 
 Wstrict-aliasing
@@ -929,6 +940,7 @@ Driver Separate
 
 Z
 Driver
+Passed to the linker.
 
 aux-info
 Common Separate Var(aux_info_file_name)
@@ -1200,10 +1212,9 @@ fauto-profile-inlining
 Common Var(flag_auto_profile_inlining) Init(1) Optimization
 Perform inlining using auto-profile.
 
-; -fcheck-bounds causes gcc to generate array bounds checks.
-; For C, C++ and ObjC: defaults off.
-; For Java: defaults to on.
-; For Fortran: defaults to off.
+; -fbounds-check causes gcc to generate array bounds checks.
+; It's presently used only for fortran and d languages, and is documented
+; in the manuals for those languages.
 fbounds-check
 Common Var(flag_bounds_check)
 Generate code to check bounds before indexing arrays.
@@ -1618,7 +1629,7 @@ EnumValue
 Enum(diagnostic_text_art_charset) String(emoji) Value(DIAGNOSTICS_TEXT_ART_CHARSET_EMOJI)
 
 fdiagnostics-minimum-margin-width=
-Common Joined UInteger Var(diagnostics_minimum_margin_width) Init(6)
+Common Joined RejectNegative UInteger Var(diagnostics_minimum_margin_width) Init(6)
 Set minimum width of left margin of source code when showing source.
 
 fdiagnostics-show-nesting
@@ -1861,7 +1872,7 @@ Common Enum(dwarf_gnat_encodings) Joined RejectNegative Undocumented Var(gnat_en
 
 ; This option is not documented yet as its semantics will change.
 fgraphite
-Common Var(flag_graphite) Optimization
+Common Var(flag_graphite) Optimization Undocumented
 Enable in and out of Graphite representation.
 
 fgraphite-identity
@@ -1981,13 +1992,11 @@ Enum(hardcfr_check_noreturn_calls) String(no-xthrow) Value(HCFRNR_NO_XTHROW)
 EnumValue
 Enum(hardcfr_check_noreturn_calls) String(always) Value(HCFRNR_ALWAYS)
 
-; Nonzero means ignore `#ident' directives.  0 means handle them.
-; Generate position-independent code for executables if possible
-; On SVR4 targets, it also controls whether or not to emit a
-; string identifying the compiler.
+; Nonzero means do not emit .ident assembler directives and ignore
+; `#ident' preprocessor directives.
 fident
 Common Var(flag_no_ident,0)
-Process #ident directives.
+Emit .ident assembler directives.
 
 fif-conversion
 Common Var(flag_if_conversion) Optimization
@@ -2311,7 +2320,7 @@ Common RejectNegative Joined Var(flag_lto)
 Link-time optimization with number of parallel jobs or jobserver.
 
 flto-incremental=
-Common Joined Var(flag_lto_incremental)
+Common Joined RejectNegative Var(flag_lto_incremental)
 Enable incremental LTO, with its cache in given directory.
 
 flto-incremental-cache-size=
@@ -2443,10 +2452,10 @@ Common Var(flag_non_call_exceptions) Optimization
 Support synchronous non-call exceptions.
 
 foffload=
-Driver Joined MissingArgError(targets missing after %qs)
+Driver Joined RejectNegative MissingArgError(targets missing after %qs)
 
 foffload-options=
-Common Driver Joined MissingArgError(options or targets=options missing after %qs)
+Common Driver Joined RejectNegative MissingArgError(options or targets=options missing after %qs)
 -foffload-options=<targets>=<options>	Specify options for the offloading targets.
 
 foffload-abi=
@@ -2463,7 +2472,7 @@ EnumValue
 Enum(offload_abi) String(lp64) Value(OFFLOAD_ABI_LP64)
 
 foffload-abi-host-opts=
-Common Joined MissingArgError(option missing after %qs)
+Common Joined RejectNegative MissingArgError(option missing after %qs)
 -foffload-abi-host-opts=<options>	Specify host ABI options.
 
 fomit-frame-pointer
@@ -2716,7 +2725,7 @@ Common Var(flag_profile_reorder_functions) Optimization
 Enable function reordering that improves code placement.
 
 fpatchable-function-entry=
-Common Var(flag_patchable_function_entry) Joined Optimization
+Common Var(flag_patchable_function_entry) Joined RejectNegative Optimization
 Insert NOP instructions at each function entry.
 
 frandom-seed
@@ -2889,8 +2898,9 @@ fsel-sched-pipelining-outer-loops
 Common Var(flag_sel_sched_pipelining_outer_loops) Init(0) Optimization
 Perform software pipelining of outer loops during selective scheduling.
 
+; This flag has never been documented or done anything useful AFAICT.
 fsel-sched-reschedule-pipelined
-Common Var(flag_sel_sched_reschedule_pipelined) Init(0) Optimization
+Common Var(flag_sel_sched_reschedule_pipelined) Init(0) Optimization Undocumented
 Reschedule pipelined regions without pipelining.
 
 fsemantic-interposition
@@ -3029,6 +3039,7 @@ Common Var(flag_stack_clash_protection) Optimization
 Insert code to probe each page of stack space as it is allocated to protect
 from stack-clash style attacks.
 
+; The real option is fno-stack-limit.
 fstack-limit
 Common Var(common_deferred_options) Defer
 
@@ -3345,8 +3356,8 @@ Common Var(flag_tree_ter) Optimization
 Replace temporary expressions in the SSA->normal pass.
 
 ftree-lrs
-Common Var(flag_tree_live_range_split) Optimization
-Perform live range splitting during the SSA->normal pass.
+Common Ignore
+Does nothing.  Preserved for backward compatibility.
 
 ftree-vrp
 Common Var(flag_tree_vrp) Init(0) Optimization
@@ -3723,15 +3734,15 @@ RejectNegative Joined Undocumented
 ; Catch the gno- prefix, so it doesn't backtrack to g<level>.
 
 gno-pubnames
-Common Driver Negative(gpubnames) Var(debug_generate_pub_sections, 0) Init(-1)
+Common Driver RejectNegative Negative(gpubnames) Var(debug_generate_pub_sections, 0) Init(-1)
 Don't generate DWARF pubnames and pubtypes sections.
 
 gpubnames
-Common Driver Negative(ggnu-pubnames) Var(debug_generate_pub_sections, 1)
+Common Driver RejectNegative Negative(ggnu-pubnames) Var(debug_generate_pub_sections, 1)
 Generate DWARF pubnames and pubtypes sections.
 
 ggnu-pubnames
-Common Driver Negative(gno-pubnames) Var(debug_generate_pub_sections, 2)
+Common Driver RejectNegative Negative(gno-pubnames) Var(debug_generate_pub_sections, 2)
 Generate DWARF pubnames and pubtypes sections with GNU extensions.
 
 grecord-gcc-switches
@@ -3826,6 +3837,7 @@ Driver Joined Separate
 
 n
 Driver
+Passed to the linker.
 
 no-canonical-prefixes
 Driver
@@ -3899,15 +3911,18 @@ Driver Var(print_sysroot)
 print-sysroot-headers-suffix
 Driver Var(print_sysroot_headers_suffix)
 
+; The driver doesn't understand -quiet, only its inverse -Q.
 quiet
-Common Var(quiet_flag) RejectDriver
+Common Var(quiet_flag) RejectDriver Undocumented
 Do not display functions compiled or elapsed time.
 
 r
 Driver
+Produce a relocatable object as output.
 
 s
 Driver
+Remove all symbol table and relocation information from the executable.
 
 save-temps
 Driver
@@ -3917,6 +3932,7 @@ Driver Joined
 
 t
 Driver
+Passed to the linker.
 
 time
 Driver Var(report_times)
@@ -4027,6 +4043,7 @@ Create a static position independent executable.
 
 z
 Driver Joined Separate
+Passed to the linker.
 
 fipa-ra
 Common Var(flag_ipa_ra) Optimization

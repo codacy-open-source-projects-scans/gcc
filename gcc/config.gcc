@@ -502,6 +502,7 @@ loongarch*-*-*)
 	extra_headers="larchintrin.h lsxintrin.h lasxintrin.h"
 	extra_objs="loongarch-c.o loongarch-builtins.o loongarch-cpu.o loongarch-opts.o loongarch-def.o loongarch-evolution.o loongarch-target-attr.o"
 	extra_gcc_objs="loongarch-driver.o loongarch-cpu.o loongarch-opts.o loongarch-def.o"
+	target_gtfiles="\$(srcdir)/config/loongarch/loongarch-builtins.cc"
 	extra_options="${extra_options} g.opt fused-madd.opt"
 	;;
 nds32*)
@@ -1140,6 +1141,9 @@ case ${target} in
   extra_headers="${extra_headers} ../vxworks/math.h ../vxworks/complex.h"
   extra_headers="${extra_headers} ../vxworks/inttypes.h ../vxworks/setjmp.h"
 
+  # The /././ sequence marks the beginning of the install name.
+  extra_headers="${extra_headers} ../vxworks/././base/b_NULL.h"
+
   # We provide (a tailored version of) stdint.h
   tm_file="${tm_file} vxworks-stdint.h"
   use_gcc_stdint=provide
@@ -1312,6 +1316,7 @@ aarch64-*-mingw*)
 	    ;;
 	esac
 	default_use_cxa_atexit=yes
+	use_gcc_stdint=wrap
 	user_headers_inc_next_post="${user_headers_inc_next_post} float.h"
 	tm_defines="${tm_defines} TARGET_AARCH64_MS_ABI=1"
 	;;
