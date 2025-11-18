@@ -6341,7 +6341,7 @@ package body Exp_Ch6 is
 
       begin
          if not (Nkind (Specification (N)) = N_Procedure_Specification
-                  and then Is_Constructor_Procedure (Spec_Id))
+                  and then Is_Constructor (Spec_Id))
          then
             return; -- the usual case
          end if;
@@ -7724,6 +7724,7 @@ package body Exp_Ch6 is
 
             if Is_Interface (R_Type) then
                Rewrite (Exp, Convert_To (R_Type, Relocate_Node (Exp)));
+               Flag_Interface_Pointer_Displacement (Exp);
             end if;
 
             Analyze_And_Resolve (Exp, R_Type);
@@ -7802,6 +7803,7 @@ package body Exp_Ch6 is
 
                if Is_Interface (R_Type) then
                   Rewrite (Exp, Convert_To (R_Type, Relocate_Node (Exp)));
+                  Flag_Interface_Pointer_Displacement (Exp);
                end if;
 
                Analyze_And_Resolve (Exp, R_Type);
@@ -7996,6 +7998,7 @@ package body Exp_Ch6 is
         and then Utyp /= Underlying_Type (Exp_Typ)
       then
          Rewrite (Exp, Convert_To (Utyp, Relocate_Node (Exp)));
+         Flag_Interface_Pointer_Displacement (Exp);
          Analyze_And_Resolve (Exp);
       end if;
 
@@ -9196,6 +9199,7 @@ package body Exp_Ch6 is
          Rewrite
            (Ref_Func_Call,
             OK_Convert_To (Acc_Type, Ref_Func_Call));
+         Flag_Interface_Pointer_Displacement (Ref_Func_Call);
 
       --  If the types are incompatible, we need an unchecked conversion. Note
       --  that the full types will be compatible, but the types not visibly
@@ -10002,6 +10006,7 @@ package body Exp_Ch6 is
       Rewrite (Allocator,
         Convert_To (Etype (Allocator),
           New_Occurrence_Of (Tmp_Id, Loc)));
+      Flag_Interface_Pointer_Displacement (Allocator);
    end Make_Build_In_Place_Iface_Call_In_Allocator;
 
    ---------------------------------------------------------
@@ -10155,7 +10160,7 @@ package body Exp_Ch6 is
       pragma Assert (Nkind (Allocator) = N_Allocator
                       and then Nkind (Function_Call) = N_Function_Call);
       pragma Assert (Convention (Function_Id) = Convention_CPP
-                      and then Is_Constructor (Function_Id));
+                      and then Is_CPP_Constructor (Function_Id));
       pragma Assert (Is_Constrained (Underlying_Type (Result_Subt)));
 
       --  Replace the initialized allocator of form "new T'(Func (...))" with
@@ -10219,6 +10224,7 @@ package body Exp_Ch6 is
 
       if Is_Interface (Designated_Type (Acc_Type)) then
          Rewrite (Allocator, Convert_To (Acc_Type, Relocate_Node (Allocator)));
+         Flag_Interface_Pointer_Displacement (Allocator);
       end if;
 
       Analyze_And_Resolve (Allocator, Acc_Type);

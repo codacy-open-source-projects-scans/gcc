@@ -5489,10 +5489,12 @@ simplify_const_binary_operation (enum rtx_code code, machine_mode mode,
       && code == VEC_CONCAT
       && (CONST_SCALAR_INT_P (op0)
 	  || CONST_FIXED_P (op0)
-	  || CONST_DOUBLE_AS_FLOAT_P (op0))
+	  || CONST_DOUBLE_AS_FLOAT_P (op0)
+	  || CONST_VECTOR_P (op0))
       && (CONST_SCALAR_INT_P (op1)
 	  || CONST_DOUBLE_AS_FLOAT_P (op1)
-	  || CONST_FIXED_P (op1)))
+	  || CONST_FIXED_P (op1)
+	  || CONST_VECTOR_P (op1)))
     {
       /* Both inputs have a constant number of elements, so the result
 	 must too.  */
@@ -6498,10 +6500,10 @@ simplify_context::simplify_relational_operation_1 (rtx_code code,
 	  /* only enters if op1 is 0 */
 	  /* Verify IOR operand is NE */
 	  && GET_CODE (XEXP (op0, 0)) == NE
-	  /* Verfiy second NE operand is 0 */
+	  /* Verify second NE operand is 0 */
 	  && XEXP (XEXP (op0, 0), 1) == CONST0_RTX (mode))
 	{
-	  rtx t = gen_rtx_IOR (mode, XEXP (XEXP (op0, 0), 0), XEXP (op0, 1));
+	  rtx t = gen_rtx_IOR (cmp_mode, XEXP (XEXP (op0, 0), 0), XEXP (op0, 1));
 	  t = gen_rtx_fmt_ee (code, mode, t, CONST0_RTX (mode));
 	  return t;
 	}

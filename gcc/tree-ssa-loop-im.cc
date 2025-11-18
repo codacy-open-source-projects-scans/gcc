@@ -1383,7 +1383,7 @@ move_computations_worker (basic_block bb)
 
       if (dump_file && (dump_flags & TDF_DETAILS))
 	{
-	  fprintf (dump_file, "Moving statement\n");
+	  fprintf (dump_file, "Moving statement ");
 	  print_gimple_stmt (dump_file, stmt, 0);
 	  fprintf (dump_file, "(cost %u) out of loop %d.\n\n",
 		   cost, level->num);
@@ -3534,6 +3534,12 @@ fill_always_executed_in (void)
   bitmap_clear (contains_call);
   FOR_EACH_BB_FN (bb, cfun)
     {
+      if (loop_depth (bb->loop_father) == 0)
+	{
+	  /* Outside of loops we can skip scanning all stmts.  */
+	  bitmap_set_bit (contains_call, bb->index);
+	  continue;
+	}
       gimple_stmt_iterator gsi;
       for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
 	{

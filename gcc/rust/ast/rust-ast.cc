@@ -248,7 +248,7 @@ Attribute::as_string () const
 bool
 Attribute::is_derive () const
 {
-  return has_attr_input () && get_path () == Values::Attributes::DERIVE;
+  return has_attr_input () && get_path () == Values::Attributes::DERIVE_ATTR;
 }
 
 /**
@@ -3834,6 +3834,9 @@ MetaItemLitExpr::check_cfg_predicate (const Session &) const
 {
   /* as far as I can tell, a literal expr can never be a valid cfg body, so
    * false */
+  rust_error_at (this->get_locus (), "'%s' predicate key cannot be a literal",
+		 this->as_string ().c_str ());
+
   return false;
 }
 
@@ -4179,10 +4182,19 @@ Attribute::check_cfg_predicate (const Session &session) const
 
   auto &meta_item = static_cast<AttrInputMetaItemContainer &> (*attr_input);
   if (meta_item.get_items ().empty ()
-      && string_path == Values::Attributes::CFG_ATTR)
+      && (string_path == Values::Attributes::CFG
+	  || string_path == Values::Attributes::CFG_ATTR))
     {
-      rust_error_at (path.get_locus (),
-		     "malformed %<cfg_attr%> attribute input");
+      rust_error_at (path.get_locus (), "malformed %<%s%> attribute input",
+		     string_path.c_str ());
+      return false;
+    }
+
+  if (string_path == Values::Attributes::CFG
+      && meta_item.get_items ().size () != 1)
+    {
+      rust_error_at (path.get_locus (), "multiple %qs predicates are specified",
+		     path.as_string ().c_str ());
       return false;
     }
   return meta_item.get_items ().front ()->check_cfg_predicate (session);

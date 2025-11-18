@@ -3262,8 +3262,12 @@ Parser<ManagedTokenSource>::parse_generic_params (EndTokenPred is_end_token)
 
   // Did we parse a generic type param yet
   auto type_seen = false;
+  // Did we parse a const param with a default value yet
+  auto const_with_default_seen = false;
   // Did the user write a lifetime parameter after a type one
   auto order_error = false;
+  // Did the user write a const param with a default value after a type one
+  auto const_with_default_order_error = false;
 
   // parse lifetime params
   while (!is_end_token (lexer.peek_token ()->get_id ()))
@@ -3271,12 +3275,29 @@ Parser<ManagedTokenSource>::parse_generic_params (EndTokenPred is_end_token)
       auto param = parse_generic_param (is_end_token);
       if (param)
 	{
-	  // TODO: Handle `Const` here as well if necessary
 	  if (param->get_kind () == AST::GenericParam::Kind::Type)
-	    type_seen = true;
+	    {
+	      type_seen = true;
+	      if (const_with_default_seen)
+		const_with_default_order_error = true;
+	    }
 	  else if (param->get_kind () == AST::GenericParam::Kind::Lifetime
 		   && type_seen)
-	    order_error = true;
+	    {
+	      order_error = true;
+	      if (const_with_default_seen)
+		const_with_default_order_error = true;
+	    }
+	  else if (param->get_kind () == AST::GenericParam::Kind::Const)
+	    {
+	      type_seen = true;
+	      AST::ConstGenericParam *const_param
+		= static_cast<AST::ConstGenericParam *> (param.get ());
+	      if (const_param->has_default_value ())
+		const_with_default_seen = true;
+	      else if (const_with_default_seen)
+		const_with_default_order_error = true;
+	    }
 
 	  generic_params.emplace_back (std::move (param));
 	  maybe_skip_token (COMMA);
@@ -3291,6 +3312,13 @@ Parser<ManagedTokenSource>::parse_generic_params (EndTokenPred is_end_token)
       Error error (generic_params.front ()->get_locus (),
 		   "invalid order for generic parameters: lifetime parameters "
 		   "must be declared prior to type and const parameters");
+      add_error (std::move (error));
+    }
+  if (const_with_default_order_error)
+    {
+      Error error (generic_params.front ()->get_locus (),
+		   "invalid order for generic parameters: generic parameters "
+		   "with a default must be trailing");
       add_error (std::move (error));
     }
 
@@ -8206,7 +8234,14 @@ Parser<ManagedTokenSource>::parse_while_let_loop_expr (
   // parse predicate patterns
   std::vector<std::unique_ptr<AST::Pattern>> predicate_patterns
     = parse_match_arm_patterns (EQUAL);
-  // TODO: have to ensure that there is at least 1 pattern?
+  // ensure that there is at least 1 pattern
+  if (predicate_patterns.empty ())
+    {
+      Error error (lexer.peek_token ()->get_locus (),
+		   "should be at least 1 pattern");
+      add_error (std::move (error));
+      return nullptr;
+    }
 
   if (!skip_token (EQUAL))
     {
@@ -10345,7 +10380,7 @@ Parser<ManagedTokenSource>::parse_literal_or_range_pattern ()
       return std::unique_ptr<AST::LiteralPattern> (
 	new AST::LiteralPattern (range_lower->get_str (), type,
 				 range_lower->get_locus (),
-				 range_lower->get_type_hint ()));
+				 range_lower->get_type_hint (), has_minus));
     }
 }
 

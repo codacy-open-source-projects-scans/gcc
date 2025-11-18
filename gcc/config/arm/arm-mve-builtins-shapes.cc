@@ -249,7 +249,8 @@ static void
 build_one (function_builder &b, const char *signature,
 	   const function_group_info &group, mode_suffix_index mode_suffix_id,
 	   unsigned int ti, unsigned int pi, bool preserve_user_namespace,
-	   bool force_direct_overloads)
+	   bool force_direct_overloads,
+	   unsigned int which_overload = NONOVERLOADED_FORM | OVERLOADED_FORM)
 {
   /* Current functions take at most five arguments.  Match
      parse_signature parameter below.  */
@@ -261,7 +262,7 @@ build_one (function_builder &b, const char *signature,
   apply_predication (instance, return_type, argument_types);
   b.add_unique_function (instance, return_type, argument_types,
 			 preserve_user_namespace, group.requires_float,
-			 force_direct_overloads);
+			 force_direct_overloads, which_overload);
 }
 
 /* Add a function instance for every type and predicate combination in
@@ -1467,19 +1468,93 @@ struct create_def : public nonoverloaded_base
 };
 SHAPE (create)
 
-/* <T0>[xN]_t vfoo_t0().
+/* <S0>_t vfoo[_t0](<T0>_t, const int)
 
-   Example: vuninitializedq.
-   int8x16_t [__arm_]vuninitializedq_s8(void)
-   int8x16_t [__arm_]vuninitializedq(int8x16_t t)  */
-struct inherent_def : public nonoverloaded_base
+   Check that 'idx' is in the [0..#num_lanes - 1] range.
+
+   Example: vgetq_lane.
+   int8_t [__arm_]vgetq_lane[_s8](int8x16_t a, const int idx)  */
+
+struct getq_lane_def : public overloaded_base<0>
 {
   void
   build (function_builder &b, const function_group_info &group,
 	 bool preserve_user_namespace) const override
   {
-    build_all (b, "t0", group, MODE_none, preserve_user_namespace);
+    b.add_overloaded_functions (group, MODE_none, preserve_user_namespace);
+    build_all (b, "s0,v0,su64", group, MODE_none, preserve_user_namespace);
   }
+
+  tree
+  resolve (function_resolver &r) const override
+  {
+    unsigned int i, nargs;
+    type_suffix_index type;
+    if (!r.check_gp_argument (2, i, nargs)
+	|| (type = r.infer_vector_type (i-1)) == NUM_TYPE_SUFFIXES
+	|| !r.require_integer_immediate (i))
+      return error_mark_node;
+
+    return r.resolve_to (r.mode_suffix_id, type);
+  }
+
+  bool
+  check (function_checker &c) const override
+  {
+    unsigned int num_lanes = 128 / c.type_suffix (0).element_bits;
+
+    return c.require_immediate_range (1, 0, num_lanes - 1);
+  }
+
+};
+SHAPE (getq_lane)
+
+/* <T0>[xN]_t vfoo_t0().
+   <T0>[xN]_t vfoo(<T0>_t).
+
+   Example: vuninitializedq.
+   int8x16_t [__arm_]vuninitializedq_s8(void)
+   int8x16_t [__arm_]vuninitializedq(int8x16_t t)  */
+struct inherent_def : public overloaded_base<0>
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    b.add_overloaded_functions (group, MODE_none, preserve_user_namespace);
+
+    /* Overloaded and non-overloaded forms have different signatures, so call
+       build_one with either OVERLOADED_FORM or NONOVERLOADED_FORM.  */
+    unsigned int pi = 0;
+    bool force_direct_overloads = false;
+    for (unsigned int ti = 0;
+	 ti == 0 || group.types[ti][0] != NUM_TYPE_SUFFIXES; ++ti)
+      {
+	/* For int8x16_t [__arm_]vuninitializedq(int8x16_t t), generate only
+	   the overloaded form, i.e. without type suffix.  */
+	build_one (b, "t0,t0", group, MODE_none, ti, pi,
+		   preserve_user_namespace, force_direct_overloads,
+		   OVERLOADED_FORM);
+	/* For int8x16_t [__arm_]vuninitializedq_s8(void), generate only the
+	   non-overloaded form, i.e. with type suffix.  */
+	build_one (b, "t0", group, MODE_none, ti, pi,
+		   preserve_user_namespace, force_direct_overloads,
+		   NONOVERLOADED_FORM);
+      }
+  }
+
+  tree
+  resolve (function_resolver &r) const override
+  {
+    type_suffix_index type;
+    if (!r.check_num_arguments (1)
+	|| (type = r.infer_vector_type (0)) == NUM_TYPE_SUFFIXES)
+      return error_mark_node;
+
+    /* We need to pop the useless argument for the non-overloaded function.  */
+    return r.pop_and_resolve_to (r.mode_suffix_id, type);
+  }
+
 };
 SHAPE (inherent)
 
@@ -1833,6 +1908,46 @@ struct scalar_u64_shift_imm_def : public nonoverloaded_base
   }
 };
 SHAPE (scalar_u64_shift_imm)
+
+/* <T0>_t vfoo[_t0](<S0>_t, <T0>_t, const_int)
+
+   Check that 'idx' is in the [0..#num_lanes - 1] range.
+
+   Example: vsetq_lane.
+   int8x16_t [__arm_]vsetq_lane[_s8](int8_t a, int8x16_t b, const int idx)  */
+struct setq_lane_def : public overloaded_base<0>
+{
+  void
+  build (function_builder &b, const function_group_info &group,
+	 bool preserve_user_namespace) const override
+  {
+    b.add_overloaded_functions (group, MODE_none, preserve_user_namespace);
+    build_all (b, "v0,s0,v0,su64", group, MODE_none, preserve_user_namespace);
+  }
+
+  tree
+  resolve (function_resolver &r) const override
+  {
+    unsigned int i, nargs;
+    type_suffix_index type;
+    if (!r.check_gp_argument (3, i, nargs)
+	|| (type = r.infer_vector_type (i-1)) == NUM_TYPE_SUFFIXES
+	|| !r.require_derived_scalar_type (i - 2, r.SAME_TYPE_CLASS)
+	|| !r.require_integer_immediate (i))
+      return error_mark_node;
+
+    return r.resolve_to (r.mode_suffix_id, type);
+  }
+
+  bool
+  check (function_checker &c) const override
+  {
+    unsigned int num_lanes = 128 / c.type_suffix (0).element_bits;
+
+    return c.require_immediate_range (2, 0, num_lanes - 1);
+  }
+};
+SHAPE (setq_lane)
 
 /* void vfoo[_t0](<X>_t *, <T0>[xN]_t)
 

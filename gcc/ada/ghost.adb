@@ -112,6 +112,11 @@ package body Ghost is
    --  applicable to the enclosing declaration, statement, assertion pragma
    --  or specification aspect.
    --
+   --  If the declaration occurs inside a ghost declaration, ghost statement,
+   --  assertion pragma or specification aspect and the assertion policy
+   --  applicable to this scope is Ignore, then the assertion policy applicable
+   --  to the declaration is also Ignore.
+   --
    --  Otherwise, the assertion policy applicable to an object declaration
    --  comes either from its assertion level if any, or from the ghost
    --  policy at the point of declaration.
@@ -1031,10 +1036,6 @@ package body Ghost is
       --  Check that the the assertion level of the declared entity is
       --  compatible with assertion level of the ghost region.
 
-      procedure Check_Valid_Ghost_Policy (Id : Entity_Id; Ref : Node_Id);
-      --  Check that the declared identifier does not have a Checked assertion
-      --  policy while being declared inside an ignored ghost region.
-
       ---------------------------------
       -- Check_Valid_Assertion_Level --
       ---------------------------------
@@ -1063,24 +1064,6 @@ package body Ghost is
          end if;
       end Check_Valid_Assertion_Level;
 
-      ------------------------------
-      -- Check_Valid_Ghost_Policy --
-      ------------------------------
-
-      procedure Check_Valid_Ghost_Policy (Id : Entity_Id; Ref : Node_Id) is
-         Policy : constant Name_Id := Ghost_Policy_In_Effect (Id);
-      begin
-         if Ghost_Config.Ghost_Mode = Ignore and then Policy = Name_Check
-         then
-            Error_Msg_Sloc := Sloc (Ref);
-
-            Error_Msg_N (Ghost_Policy_Error_Msg, Ref);
-            Error_Msg_NE ("\& has ghost policy `Check`", Ref, Id);
-            Error_Msg_NE
-              ("\& is declared # within ghost policy `Ignore`", Ref, Id);
-         end if;
-      end Check_Valid_Ghost_Policy;
-
       --  Local variables
 
       Id : constant Entity_Id := Defining_Entity (N);
@@ -1092,7 +1075,6 @@ package body Ghost is
          return;
       end if;
 
-      Check_Valid_Ghost_Policy (Id, N);
       Check_Valid_Assertion_Level (Id, N);
    end Check_Valid_Ghost_Declaration;
 
@@ -1568,7 +1550,9 @@ package body Ghost is
       Level_Nam : constant Name_Id :=
         (if No (Level) then No_Name else Chars (Level));
    begin
-      if Ghost_Config.Is_Inside_Statement_Or_Pragma
+      if Present (Ghost_Config.Ignored_Ghost_Region) then
+         return Name_Ignore;
+      elsif Ghost_Config.Is_Inside_Statement_Or_Pragma
         and then Is_Implicit_Ghost (Id)
       then
          case Ghost_Config.Ghost_Mode is
@@ -2126,8 +2110,16 @@ package body Ghost is
       --  the region.
 
       if Present (Level) then
-         Policy :=
-           Policy_In_Effect (Name_Ghost, Assertion_Level_To_Name (Level));
+         --  Default to the Ignore policy inside ignored ghost regions.
+         --  Similarly to how we do it in Ghost_Policy_In_Effect.
+         --  SPARK RM 6.9 (3)
+
+         if Present (Ghost_Config.Ignored_Ghost_Region) then
+            Policy := Name_Ignore;
+         else
+            Policy :=
+              Policy_In_Effect (Name_Ghost, Assertion_Level_To_Name (Level));
+         end if;
 
       --  A declaration elaborated in a Ghost region is automatically Ghost
       --  (SPARK RM 6.9(2)).
@@ -2271,6 +2263,108 @@ package body Ghost is
 
       Check_Ghost_Actuals;
    end Mark_And_Set_Ghost_Instantiation;
+
+   ------------------------------------------
+   -- Check_Procedure_Call_Argument_Levels --
+   ------------------------------------------
+
+   procedure Check_Procedure_Call_Argument_Levels (N : Node_Id) is
+      procedure Check_Argument_Levels
+        (Actual : Entity_Id; Actual_Ref : Node_Id);
+      --  Check that the ghost assertion level of an actual is an assertion
+      --  level which depends on the ghost region where the procedure call
+      --  is located.
+
+      ---------------------------
+      -- Check_Argument_Levels --
+      ---------------------------
+
+      procedure Check_Argument_Levels
+        (Actual : Entity_Id; Actual_Ref : Node_Id)
+      is
+         Actual_Level : constant Entity_Id := Ghost_Assertion_Level (Actual);
+         Region_Level : constant Entity_Id :=
+           Ghost_Config.Ghost_Mode_Assertion_Level;
+      begin
+         --  If an assignment to a part of a ghost variable occurs in a ghost
+         --  entity, then the variable should be assertion-level-dependent on
+         --  this entity [This includes both assignment statements and passing
+         --  a ghost variable as an out or in out mode actual parameter.]
+         --  (SPARK RM 6.9(18)).
+
+         if Present (Region_Level)
+           and then not Is_Assertion_Level_Dependent
+                          (Actual_Level, Region_Level)
+         then
+            Error_Msg_N (Assertion_Level_Error_Msg, Actual_Ref);
+            Error_Msg_Name_1 := Chars (Actual_Level);
+            Error_Msg_N ("\& has assertion level %", Actual_Ref);
+            Error_Msg_Name_1 := Chars (Region_Level);
+            Error_Msg_N ("\& is modified within a region with %", Actual_Ref);
+            Error_Msg_Name_1 := Chars (Region_Level);
+            Error_Msg_N
+              ("\assertion level of & should depend on %", Actual_Ref);
+         end if;
+      end Check_Argument_Levels;
+
+      --  Local variables
+
+      Actual      : Node_Id;
+      Actual_Id   : Entity_Id;
+      Formal      : Node_Id;
+      Id          : Entity_Id;
+      Orig_Actual : Node_Id;
+
+   --  Start of processing for Check_Procedure_Call_Argument_Levels
+
+   begin
+      if Nkind (N) not in N_Procedure_Call_Statement then
+         return;
+      end if;
+
+      --  Handle the access-to-subprogram case
+
+      if Ekind (Etype (Name (N))) = E_Subprogram_Type then
+         Id := Etype (Name (N));
+      else
+         Id := Get_Enclosing_Ghost_Entity (Name (N));
+      end if;
+
+      --  Check for context if we are able to derive the called subprogram and
+      --  we are not dealing with an expanded construct.
+
+      if Present (Id)
+        and then Comes_From_Source (N)
+        and then Ghost_Config.Ghost_Mode /= None
+      then
+         Orig_Actual := First_Actual (N);
+         Formal := First_Formal (Id);
+
+         while Present (Orig_Actual) loop
+            --  Similarly to Mark_And_Set_Ghost_Procedure_Call we need to
+            --  analyze the call argument first to get its level for this
+            --  analysis.
+
+            Actual :=
+              (if Analyzed (Orig_Actual)
+               then Orig_Actual
+               else New_Copy_Tree (Orig_Actual));
+            if not Analyzed (Actual) then
+               Preanalyze_Without_Errors (Actual);
+            end if;
+
+            if Ekind (Formal) in E_Out_Parameter | E_In_Out_Parameter then
+               Actual_Id := Get_Enclosing_Ghost_Entity (Actual);
+               if Present (Actual_Id) then
+                  Check_Argument_Levels (Actual_Id, Orig_Actual);
+               end if;
+            end if;
+
+            Next_Formal (Formal);
+            Next_Actual (Orig_Actual);
+         end loop;
+      end if;
+   end Check_Procedure_Call_Argument_Levels;
 
    ---------------------------------------
    -- Mark_And_Set_Ghost_Procedure_Call --

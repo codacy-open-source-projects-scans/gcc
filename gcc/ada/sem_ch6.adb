@@ -886,6 +886,8 @@ package body Sem_Ch6 is
                                       Designated_Type (Etype (Expr)))
             then
                Rewrite (Expr, Convert_To (R_Type, Relocate_Node (Expr)));
+               Flag_Interface_Pointer_Displacement (Expr);
+
                Analyze (Expr);
             end if;
 
@@ -1899,6 +1901,7 @@ package body Sem_Ch6 is
 
    <<Leave>>
       Restore_Ghost_Region (Saved_Ghost_Config);
+      Check_Procedure_Call_Argument_Levels (N);
    end Analyze_Procedure_Call;
 
    ------------------------------
@@ -5354,6 +5357,7 @@ package body Sem_Ch6 is
 
                else
                   Set_Needs_Construction (Prefix_E);
+                  Set_Is_Constructor (Designator);
                end if;
 
             when others =>
@@ -5730,7 +5734,7 @@ package body Sem_Ch6 is
             declare
                D : constant Entity_Id := Directly_Designated_Type (Etype (F1));
                Partial_View_Of_Desig : constant Entity_Id :=
-                 Incomplete_Or_Partial_View (D);
+                 Incomplete_Or_Partial_View (D, Partial_Only => True);
             begin
                return No (Partial_View_Of_Desig)
                  or else Is_Tagged_Type (Partial_View_Of_Desig)

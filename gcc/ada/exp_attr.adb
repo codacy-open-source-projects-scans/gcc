@@ -2186,6 +2186,16 @@ package body Exp_Attr is
          end if;
       end Build_And_Insert_Type_Attr_Subp;
 
+      --  Two instances, used for doing what the instance names suggest.
+
+      procedure Build_And_Insert_Record_Or_Elementary_Input_Func is
+        new Build_And_Insert_Type_Attr_Subp
+          (Build_Record_Or_Elementary_Input_Function);
+
+      procedure Build_And_Insert_Record_Or_Elementary_Output_Proc is
+        new Build_And_Insert_Type_Attr_Subp
+          (Build_Record_Or_Elementary_Output_Procedure);
+
       ----------------------
       -- Get_Integer_Type --
       ----------------------
@@ -2641,6 +2651,7 @@ package body Exp_Attr is
                      Rewrite (Prefix (N),
                        Convert_To (Btyp_DDT,
                          New_Copy_Tree (Prefix (N))));
+                     Flag_Interface_Pointer_Displacement (Prefix (N));
 
                      Analyze_And_Resolve (Prefix (N), Btyp_DDT);
                   end if;
@@ -2665,6 +2676,8 @@ package body Exp_Attr is
                         Rewrite (N,
                           Convert_To (Typ,
                             New_Copy_Tree (Prefix (Ref_Object))));
+                        Flag_Interface_Pointer_Displacement (N);
+
                         Analyze_And_Resolve (N, Typ);
                      end if;
                   end;
@@ -3117,6 +3130,7 @@ package body Exp_Attr is
                              Designated_Type (Etype (Parent (N)));
             begin
                Rewrite (Pref, Convert_To (Iface_Typ, Relocate_Node (Pref)));
+               Flag_Interface_Pointer_Displacement (Pref);
                Analyze_And_Resolve (Pref, Iface_Typ);
                return;
             end;
@@ -4761,9 +4775,11 @@ package body Exp_Attr is
                --  since in this case we are required to call this routine.
 
                if Present (Find_Inherited_TSS (P_Type, TSS_Stream_Read)) then
-                  Build_Record_Or_Elementary_Input_Function
-                    (P_Type, Decl, Fname);
-                  Insert_Action (N, Decl);
+                  Build_And_Insert_Record_Or_Elementary_Input_Func
+                    (Typ      => Base_Type (U_Type),
+                     Decl     => Decl,
+                     Subp     => Fname,
+                     Attr_Ref => N);
 
                --  For normal cases, we call the I_xxx routine directly
 
@@ -4882,17 +4898,11 @@ package body Exp_Attr is
                --  first named subtype is unconstrained? Shouldn't we be
                --  passing in the first named subtype of the type?
 
-               declare
-                  procedure Build_And_Insert_Record_Input_Func is
-                    new Build_And_Insert_Type_Attr_Subp
-                          (Build_Record_Or_Elementary_Input_Function);
-               begin
-                  Build_And_Insert_Record_Input_Func
-                    (Typ      => U_Type,
-                     Decl     => Decl,
-                     Subp     => Fname,
-                     Attr_Ref => N);
-               end;
+               Build_And_Insert_Record_Or_Elementary_Input_Func
+                 (Typ      => Underlying_Type (First_Subtype (P_Type)),
+                  Decl     => Decl,
+                  Subp     => Fname,
+                  Attr_Ref => N);
 
                if Nkind (Parent (N)) = N_Object_Declaration
                  and then Is_Record_Type (U_Type)
@@ -5952,9 +5962,11 @@ package body Exp_Attr is
                --  since in this case we are required to call this routine.
 
                if Present (Find_Inherited_TSS (P_Type, TSS_Stream_Write)) then
-                  Build_Record_Or_Elementary_Output_Procedure
-                    (P_Type, Decl, Pname);
-                  Insert_Action (N, Decl);
+                  Build_And_Insert_Record_Or_Elementary_Output_Proc
+                    (Typ      => Base_Type (U_Type),
+                     Decl     => Decl,
+                     Subp     => Pname,
+                     Attr_Ref => N);
 
                --  For normal cases, we call the W_xxx routine directly
 
@@ -6033,17 +6045,11 @@ package body Exp_Attr is
                   return;
                end if;
 
-               declare
-                  procedure Build_And_Insert_Record_Output_Proc is
-                    new Build_And_Insert_Type_Attr_Subp
-                          (Build_Record_Or_Elementary_Output_Procedure);
-               begin
-                  Build_And_Insert_Record_Output_Proc
-                    (Typ      => Base_Type (U_Type),
-                     Decl     => Decl,
-                     Subp     => Pname,
-                     Attr_Ref => N);
-               end;
+               Build_And_Insert_Record_Or_Elementary_Output_Proc
+                 (Typ      => Underlying_Type (First_Subtype (P_Type)),
+                  Decl     => Decl,
+                  Subp     => Pname,
+                  Attr_Ref => N);
             end if;
 
             if not Is_Tagged_Type (U_Type) then

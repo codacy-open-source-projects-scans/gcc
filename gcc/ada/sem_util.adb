@@ -11863,7 +11863,7 @@ package body Sem_Util is
       Cursor := Get_Name_Entity_Id
                   (Direct_Attribute_Definition_Name (Typ, Name_Constructor));
       while Present (Cursor) loop
-         if Is_Constructor_Procedure (Cursor)
+         if Is_Constructor (Cursor)
            and then No (Next_Formal (First_Formal (Cursor)))
          then
             return True;
@@ -14914,7 +14914,9 @@ package body Sem_Util is
    -- Incomplete_Or_Partial_View --
    --------------------------------
 
-   function Incomplete_Or_Partial_View (Id : Entity_Id) return Entity_Id is
+   function Incomplete_Or_Partial_View
+     (Id : Entity_Id; Partial_Only : Boolean := False) return Entity_Id
+   is
       S : constant Entity_Id := Scope (Id);
 
       function Inspect_Decls
@@ -14997,6 +14999,7 @@ package body Sem_Util is
         and then (Is_Incomplete_Type (Prev) or else Ekind (Prev) = E_Constant)
         and then Present (Full_View (Prev))
         and then Full_View (Prev) = Id
+        and then not Partial_Only
       then
          return Prev;
       end if;
@@ -15008,7 +15011,7 @@ package body Sem_Util is
             Pkg_Decl : constant Node_Id := Package_Specification (S);
 
          begin
-            --  It is knows that Typ has a private view, look for it in the
+            --  It is known that Typ has a private view, look for it in the
             --  visible declarations of the enclosing scope. A special case
             --  of this is when the two views have been exchanged - the full
             --  appears earlier than the private.
@@ -15028,7 +15031,7 @@ package body Sem_Util is
             --  Taft amendment type. The incomplete view should be located in
             --  the private declarations of the enclosing scope.
 
-            elsif In_Package_Body (S) then
+            elsif In_Package_Body (S) and then not Partial_Only then
                return Inspect_Decls (Private_Declarations (Pkg_Decl), True);
             end if;
          end;
@@ -16145,6 +16148,12 @@ package body Sem_Util is
              (Nkind (Parent (Obj)) = N_Object_Renaming_Declaration
                and then Is_Return_Object (Defining_Entity (Parent (Obj))));
 
+      --  RM 4.1.5(6/3): A generalized reference denotes a view equivalent to
+      --  that of a dereference of the reference discriminant of the object.
+
+      elsif Nkind (Obj) = N_Function_Call then
+         return Has_Implicit_Dereference (Etype (Obj));
+
       elsif Nkind (Obj) = N_Slice then
          --  A slice of a bit-packed array is not considered aliased even
          --  for an extended access type because even extended access types
@@ -16720,28 +16729,6 @@ package body Sem_Util is
       end if;
    end Is_Constant_Bound;
 
-   ------------------------------
-   -- Is_Constructor_Procedure --
-   ------------------------------
-
-   function Is_Constructor_Procedure (Subp : Entity_Id) return Boolean is
-      First_Param : Entity_Id;
-   begin
-      if not (Present (First_Formal (Subp))
-                and then Ekind (First_Formal (Subp)) = E_In_Out_Parameter
-                and then Is_Direct_Attribute_Subp_Spec (Parent (Subp))
-                and then Attribute_Name (Defining_Unit_Name
-                                          (Original_Node (Parent (Subp))))
-                           = Name_Constructor)
-      then
-         return False;
-      end if;
-
-      First_Param := Implementation_Base_Type (Etype (First_Formal (Subp)));
-      return Scope (Subp) = Scope (First_Param)
-        and then Needs_Construction (First_Param);
-   end Is_Constructor_Procedure;
-
    ---------------------------
    --  Is_Container_Element --
    ---------------------------
@@ -17009,7 +16996,7 @@ package body Sem_Util is
 
       return Present (Ret_Typ)
         and then Is_CPP_Class (Ret_Typ)
-        and then Is_Constructor (Entity (Name (N)))
+        and then Is_CPP_Constructor (Entity (Name (N)))
         and then Is_Imported (Entity (Name (N)));
    end Is_CPP_Constructor_Call;
 
