@@ -3688,7 +3688,8 @@ vectorizable_call (vec_info *vinfo,
     }
 
   int reduc_idx = SLP_TREE_REDUC_IDX (slp_node);
-  internal_fn cond_fn = get_conditional_internal_fn (ifn);
+  internal_fn cond_fn = (internal_fn_mask_index (ifn) != -1
+			 ? ifn : get_conditional_internal_fn (ifn));
   internal_fn cond_len_fn = get_len_internal_fn (ifn);
   int len_opno = internal_fn_len_index (cond_len_fn);
   vec_loop_masks *masks = (loop_vinfo ? &LOOP_VINFO_MASKS (loop_vinfo) : NULL);
@@ -3769,7 +3770,7 @@ vectorizable_call (vec_info *vinfo,
       else if (reduc_idx >= 0)
 	gcc_unreachable ();
     }
-  else if (masked_loop_p && reduc_idx >= 0)
+  else if (masked_loop_p && mask_opno == -1 && reduc_idx >= 0)
     {
       ifn = cond_fn;
       vect_nargs += 2;
@@ -3812,8 +3813,10 @@ vectorizable_call (vec_info *vinfo,
 	  FOR_EACH_VEC_ELT (vec_oprnds0, i, vec_oprnd0)
 	    {
 	      int varg = 0;
-	      if (masked_loop_p && reduc_idx >= 0)
+	      /* Add the mask if necessary.  */
+	      if (masked_loop_p && mask_opno == -1 && reduc_idx >= 0)
 		{
+		  gcc_assert (internal_fn_mask_index (ifn) == varg);
 		  unsigned int vec_num = vec_oprnds0.length ();
 		  vargs[varg++] = vect_get_loop_mask (loop_vinfo, gsi, masks,
 						      vec_num, vectype_out, i);
@@ -3824,8 +3827,12 @@ vectorizable_call (vec_info *vinfo,
 		  vec<tree> vec_oprndsk = vec_defs[k];
 		  vargs[varg++] = vec_oprndsk[i];
 		}
-	      if (masked_loop_p && reduc_idx >= 0)
-		vargs[varg++] = vargs[reduc_idx + 1];
+	      /* Add the else value if necessary.  */
+	      if (masked_loop_p && mask_opno == -1 && reduc_idx >= 0)
+		{
+		  gcc_assert (internal_fn_else_index (ifn) == varg);
+		  vargs[varg++] = vargs[reduc_idx + 1];
+		}
 	      if (clz_ctz_arg1)
 		vargs[varg++] = clz_ctz_arg1;
 
@@ -9625,7 +9632,6 @@ vectorizable_load (vec_info *vinfo,
   tree msq = NULL_TREE, lsq;
   tree realignment_token = NULL_TREE;
   gphi *phi = NULL;
-  vec<tree> dr_chain = vNULL;
   bool grouped_load = false;
   stmt_vec_info first_stmt_info;
   stmt_vec_info first_stmt_info_for_drptr = NULL;
@@ -10421,7 +10427,6 @@ vectorizable_load (vec_info *vinfo,
 	{
 	  group_gap_adj = group_size - scalar_lanes;
 	}
-      dr_chain.create (vec_num);
 
       ref_type = get_group_alias_ptr_type (first_stmt_info);
     }
@@ -10756,6 +10761,8 @@ vectorizable_load (vec_info *vinfo,
   if (mat_gather_scatter_p (memory_access_type))
     {
       gcc_assert ((!grouped_load && !ls.slp_perm) || ls.ls_type);
+
+      auto_vec<tree> dr_chain (vec_num);
 
       /* If we pun the original vectype the loads as well as costing, length,
 	 etc. is performed with the new type.  After loading we VIEW_CONVERT
@@ -11254,6 +11261,7 @@ vectorizable_load (vec_info *vinfo,
 				       stmt_info, bump);
     }
 
+  auto_vec<tree> dr_chain;
   if (grouped_load || ls.slp_perm)
     dr_chain.create (vec_num);
 
@@ -11813,7 +11821,6 @@ vectorizable_load (vec_info *vinfo,
 						  nullptr, true);
 	  gcc_assert (ok && ls.n_perms == n_perms2);
 	}
-      dr_chain.release ();
     }
 
   if (costing_p)
