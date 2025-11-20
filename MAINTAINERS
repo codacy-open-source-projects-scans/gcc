@@ -270,6 +270,7 @@ gdbhooks.py             David Malcolm           <dmalcolm@redhat.com>
 jit                     David Malcolm           <dmalcolm@redhat.com>
 gen* on machine desc    Richard Sandiford       <rdsandiford@googlemail.com>
 static analyzer         David Malcolm           <dmalcolm@redhat.com>
+forge integration       Claudio Bantaloukas     <claudio.bantaloukas@arm.com>
 
 Note that individuals who maintain parts of the compiler need approval to
 check in changes outside of the parts of the compiler they maintain.
@@ -343,7 +344,7 @@ Pedro Alves                     palves          <palves@redhat.com>
 John David Anglin               danglin         <dave.anglin@bell.net>
 Harald Anlauf                   anlauf          <anlauf@gmx.de>
 Paul-Antoine Arras              parras          <parras@baylibre.com>
-Arsen Arsenović                 arsen           <arsen@aarsen.me>
+Arsen Arsenović                 arsen           <aarsenovic@baylibre.com>
 Raksit Ashok                    raksit          <raksit@google.com>
 Sterling Augustine              sterling        <augustine.sterling@gmail.com>
 Matt Austern                    austern         <austern@google.com>
@@ -680,7 +681,7 @@ Bryce McKinlay                  bryce           <mckinlay@redhat.com>
 Adam Megacz                     -               <adam@xwt.org>
 Bingfeng Mei                    meibf           <bmei@broadcom.com>
 Michael Meissner                meissner        <gnu@the-meissners.org>
-Josef Melcr                     jmelcr          <jmelcr02@gmail.com>
+Josef Melcr                     jmelcr          <josef.melcr@suse.com>
 Jason Merrill                   jason           <jason@redhat.com>
 Jim Meyering                    -               <jim@meyering.net>
 Martin Michlmayr                tbm             <tbm@cyrius.com>

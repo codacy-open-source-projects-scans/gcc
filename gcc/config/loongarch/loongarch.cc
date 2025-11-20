@@ -8712,10 +8712,7 @@ loongarch_try_expand_lsx_vshuf_const (struct expand_vec_perm_d *d)
       rtx sel = force_reg (sel_mode,
 			   gen_rtx_CONST_VECTOR (sel_mode, sel_v));
 
-      if (d->vmode == E_V16QImode)
-	emit_insn (gen_lsx_vshuf_b (target, op1, op0, sel));
-      else
-	emit_insn (gen_lsx_vshuf (d->vmode, target, sel, op1, op0));
+      emit_insn (gen_simd_vshuf (d->vmode, target, op1, op0, sel));
 
       return true;
     }
@@ -9090,101 +9087,44 @@ loongarch_expand_vec_perm_1 (rtx operands[])
   rtx t1 = NULL;
   rtx t2 = NULL;
   rtx t3, t4, t5, t6, vt = NULL;
-  rtx vec[32] = {NULL};
   machine_mode mode = GET_MODE (op0);
   machine_mode maskmode = GET_MODE (mask);
-  int w, i;
+  int w;
 
   /* Number of elements in the vector.  */
   w = GET_MODE_NUNITS (mode);
 
-  rtx round_data[MAX_VECT_LEN];
-  rtx round_reg, round_data_rtx;
-
-  if (mode != E_V32QImode)
+  /* If we are using xvshuf.*, clamp the selector to avoid unpredictable
+     output; if we need to blend two shuf results for the final result,
+     also clamp it so we can use xvslei to generate the bitmask for
+     the blending.  */
+  if ((maskmode != V8SImode && maskmode != V4DImode)
+      || !one_operand_shuffle)
     {
-      for (int i = 0; i < w; i += 1)
-	{
-	  round_data[i] = GEN_INT (0x1f);
-	}
-
-      if (mode == E_V4DFmode)
-	{
-	  round_data_rtx = gen_rtx_CONST_VECTOR (E_V4DImode,
-						 gen_rtvec_v (w, round_data));
-	  round_reg = gen_reg_rtx (E_V4DImode);
-	}
-      else if (mode == E_V8SFmode)
-	{
-
-	  round_data_rtx = gen_rtx_CONST_VECTOR (E_V8SImode,
-						 gen_rtvec_v (w, round_data));
-	  round_reg = gen_reg_rtx (E_V8SImode);
-	}
-      else
-	{
-	  round_data_rtx = gen_rtx_CONST_VECTOR (mode,
-						 gen_rtvec_v (w, round_data));
-	  round_reg = gen_reg_rtx (mode);
-	}
-
-      emit_move_insn (round_reg, round_data_rtx);
-      switch (mode)
-	{
-	case E_V32QImode:
-	  emit_insn (gen_andv32qi3 (mask, mask, round_reg));
-	  break;
-	case E_V16HImode:
-	  emit_insn (gen_andv16hi3 (mask, mask, round_reg));
-	  break;
-	case E_V8SImode:
-	case E_V8SFmode:
-	  emit_insn (gen_andv8si3 (mask, mask, round_reg));
-	  break;
-	case E_V4DImode:
-	case E_V4DFmode:
-	  emit_insn (gen_andv4di3 (mask, mask, round_reg));
-	  break;
-	default:
-	  gcc_unreachable ();
-	  break;
-	}
+      rtx t = gen_const_vec_duplicate (maskmode, GEN_INT (2 * w - 1));
+      mask = expand_binop (maskmode, and_optab, mask, t, NULL_RTX, false,
+			   OPTAB_DIRECT);
     }
 
   if (mode == V4DImode || mode == V4DFmode)
     {
       maskmode = mode = V8SImode;
       w = 8;
-      t1 = gen_reg_rtx (maskmode);
 
       /* Replicate the low bits of the V4DImode mask into V8SImode:
-	 mask = { A B C D }
-	 t1 = { A A B B C C D D }.  */
-      for (i = 0; i < w / 2; ++i)
-	vec[i*2 + 1] = vec[i*2] = GEN_INT (i * 2);
-      vt = gen_rtx_CONST_VECTOR (maskmode, gen_rtvec_v (w, vec));
-      vt = force_reg (maskmode, vt);
-      mask = gen_lowpart (maskmode, mask);
-      emit_insn (gen_lasx_xvperm_w (t1, mask, vt));
-
-      /* Multiply the shuffle indicies by two.  */
-      t1 = expand_simple_binop (maskmode, PLUS, t1, t1, t1, 1,
-				OPTAB_DIRECT);
-
-      /* Add one to the odd shuffle indicies:
-	 t1 = { A*2, A*2+1, B*2, B*2+1, ... }.  */
-      for (i = 0; i < w / 2; ++i)
-	{
-	  vec[i * 2] = const0_rtx;
-	  vec[i * 2 + 1] = const1_rtx;
-	}
-      vt = gen_rtx_CONST_VECTOR (maskmode, gen_rtvec_v (w, vec));
-      vt = validize_mem (force_const_mem (maskmode, vt));
-      t1 = expand_simple_binop (maskmode, PLUS, t1, vt, t1, 1,
-				OPTAB_DIRECT);
+	 mask = lasx_xvpackev_w (mask * 2, mask * 2 + 1)  */
+      t1 = expand_binop (V4DImode, add_optab, mask, mask, NULL_RTX,
+			 false, OPTAB_DIRECT);
+      t2 = gen_const_vec_duplicate (V4DImode, CONST1_RTX (DImode));
+      t2 = expand_binop (V4DImode, add_optab, t1, t2, NULL_RTX,
+			 true, OPTAB_DIRECT);
+      t1 = gen_lowpart (mode, t1);
+      t2 = gen_lowpart (mode, t2);
+      t3 = gen_reg_rtx (mode);
+      emit_insn (gen_lasx_xvpackev_w (t3, t1, t2));
 
       /* Continue as if V8SImode (resp.  V32QImode) was used initially.  */
-      operands[3] = mask = t1;
+      operands[3] = mask = t3;
       target = gen_reg_rtx (mode);
       op0 = gen_lowpart (mode, op0);
       op1 = gen_lowpart (mode, op1);
@@ -9193,112 +9133,68 @@ loongarch_expand_vec_perm_1 (rtx operands[])
   switch (mode)
     {
     case E_V8SImode:
+    case E_V8SFmode:
       if (one_operand_shuffle)
 	{
-	  emit_insn (gen_lasx_xvperm_w (target, op0, mask));
+	  emit_insn (gen_lasx_xvperm (mode, target, op0, mask));
 	  if (target != operands[0])
 	    emit_move_insn (operands[0],
 			    gen_lowpart (GET_MODE (operands[0]), target));
 	}
       else
 	{
-	  t1 = gen_reg_rtx (V8SImode);
-	  t2 = gen_reg_rtx (V8SImode);
-	  emit_insn (gen_lasx_xvperm_w (t1, op0, mask));
-	  emit_insn (gen_lasx_xvperm_w (t2, op1, mask));
-	  goto merge_two;
+	  t1 = gen_reg_rtx (mode);
+	  t2 = gen_reg_rtx (mode);
+	  emit_insn (gen_lasx_xvperm (mode, t1, op0, mask));
+	  emit_insn (gen_lasx_xvperm (mode, t2, op1, mask));
 	}
-      return;
-
-    case E_V8SFmode:
-      mask = gen_lowpart (V8SImode, mask);
-      if (one_operand_shuffle)
-	emit_insn (gen_lasx_xvperm_w_f (target, op0, mask));
-      else
-	{
-	  t1 = gen_reg_rtx (V8SFmode);
-	  t2 = gen_reg_rtx (V8SFmode);
-	  emit_insn (gen_lasx_xvperm_w_f (t1, op0, mask));
-	  emit_insn (gen_lasx_xvperm_w_f (t2, op1, mask));
-	  goto merge_two;
-	}
-      return;
+      break;
 
     case E_V16HImode:
-      if (one_operand_shuffle)
-	{
-	  t1 = gen_reg_rtx (V16HImode);
-	  t2 = gen_reg_rtx (V16HImode);
-	  emit_insn (gen_lasx_xvpermi_d_v16hi (t1, op0, GEN_INT (0x44)));
-	  emit_insn (gen_lasx_xvpermi_d_v16hi (t2, op0, GEN_INT (0xee)));
-	  emit_insn (gen_lasx_xvshuf_h (target, mask, t2, t1));
-	}
-      else
-	{
-	  t1 = gen_reg_rtx (V16HImode);
-	  t2 = gen_reg_rtx (V16HImode);
-	  t3 = gen_reg_rtx (V16HImode);
-	  t4 = gen_reg_rtx (V16HImode);
-	  t5 = gen_reg_rtx (V16HImode);
-	  t6 = gen_reg_rtx (V16HImode);
-	  emit_insn (gen_lasx_xvpermi_d_v16hi (t3, op0, GEN_INT (0x44)));
-	  emit_insn (gen_lasx_xvpermi_d_v16hi (t4, op0, GEN_INT (0xee)));
-	  emit_insn (gen_lasx_xvshuf_h (t1, mask, t4, t3));
-	  emit_insn (gen_lasx_xvpermi_d_v16hi (t5, op1, GEN_INT (0x44)));
-	  emit_insn (gen_lasx_xvpermi_d_v16hi (t6, op1, GEN_INT (0xee)));
-	  emit_insn (gen_lasx_xvshuf_h (t2, mask, t6, t5));
-	  goto merge_two;
-	}
-      return;
-
     case E_V32QImode:
       if (one_operand_shuffle)
 	{
-	  t1 = gen_reg_rtx (V32QImode);
-	  t2 = gen_reg_rtx (V32QImode);
-	  emit_insn (gen_lasx_xvpermi_d_v32qi (t1, op0, GEN_INT (0x44)));
-	  emit_insn (gen_lasx_xvpermi_d_v32qi (t2, op0, GEN_INT (0xee)));
-	  emit_insn (gen_lasx_xvshuf_b (target, t2, t1, mask));
+	  t1 = gen_reg_rtx (mode);
+	  t2 = gen_reg_rtx (mode);
+	  emit_insn (gen_lasx_xvpermi_d (mode, t1, op0, GEN_INT (0x44)));
+	  emit_insn (gen_lasx_xvpermi_d (mode, t2, op0, GEN_INT (0xee)));
+	  emit_insn (gen_simd_vshuf (mode, target, t2, t1, mask));
 	}
       else
 	{
-	  t1 = gen_reg_rtx (V32QImode);
-	  t2 = gen_reg_rtx (V32QImode);
-	  t3 = gen_reg_rtx (V32QImode);
-	  t4 = gen_reg_rtx (V32QImode);
-	  t5 = gen_reg_rtx (V32QImode);
-	  t6 = gen_reg_rtx (V32QImode);
-	  emit_insn (gen_lasx_xvpermi_d_v32qi (t3, op0, GEN_INT (0x44)));
-	  emit_insn (gen_lasx_xvpermi_d_v32qi (t4, op0, GEN_INT (0xee)));
-	  emit_insn (gen_lasx_xvshuf_b (t1, t4, t3, mask));
-	  emit_insn (gen_lasx_xvpermi_d_v32qi (t5, op1, GEN_INT (0x44)));
-	  emit_insn (gen_lasx_xvpermi_d_v32qi (t6, op1, GEN_INT (0xee)));
-	  emit_insn (gen_lasx_xvshuf_b (t2, t6, t5, mask));
-	  goto merge_two;
+	  t1 = gen_reg_rtx (mode);
+	  t2 = gen_reg_rtx (mode);
+	  t3 = gen_reg_rtx (mode);
+	  t4 = gen_reg_rtx (mode);
+	  t5 = gen_reg_rtx (mode);
+	  t6 = gen_reg_rtx (mode);
+	  emit_insn (gen_lasx_xvpermi_d (mode, t3, op0, GEN_INT (0x44)));
+	  emit_insn (gen_lasx_xvpermi_d (mode, t4, op0, GEN_INT (0xee)));
+	  emit_insn (gen_simd_vshuf (mode, t1, t4, t3, mask));
+	  emit_insn (gen_lasx_xvpermi_d (mode, t5, op1, GEN_INT (0x44)));
+	  emit_insn (gen_lasx_xvpermi_d (mode, t6, op1, GEN_INT (0xee)));
+	  emit_insn (gen_simd_vshuf (mode, t2, t6, t5, mask));
 	}
-      return;
+      break;
 
     default:
-      gcc_assert (GET_MODE_SIZE (mode) == 32);
+      gcc_unreachable ();
       break;
     }
 
-merge_two:
+  if (one_operand_shuffle)
+    return;
+
   /* Then merge them together.  The key is whether any given control
      element contained a bit set that indicates the second word.  */
   rtx xops[6];
-  mask = operands[3];
-  vt = GEN_INT (w);
-  vt = gen_const_vec_duplicate (maskmode, vt);
-  vt = force_reg (maskmode, vt);
-  mask = expand_simple_binop (maskmode, AND, mask, vt,
-			      NULL_RTX, 0, OPTAB_DIRECT);
+  vt = gen_const_vec_duplicate (maskmode, GEN_INT (w - 1));
   if (GET_MODE (target) != mode)
     target = gen_reg_rtx (mode);
   xops[0] = target;
-  xops[1] = gen_lowpart (mode, t2);
-  xops[2] = gen_lowpart (mode, t1);
-  xops[3] = gen_rtx_EQ (maskmode, mask, vt);
+  xops[1] = gen_lowpart (mode, t1);
+  xops[2] = gen_lowpart (mode, t2);
+  xops[3] = gen_rtx_LEU (maskmode, mask, vt);
   xops[4] = mask;
   xops[5] = vt;
 
@@ -9306,55 +9202,6 @@ merge_two:
   if (target != operands[0])
     emit_move_insn (operands[0],
 		    gen_lowpart (GET_MODE (operands[0]), target));
-}
-
-void
-loongarch_expand_vec_perm (rtx target, rtx op0, rtx op1, rtx sel)
-{
-  machine_mode vmode = GET_MODE (target);
-  machine_mode vimode = GET_MODE (sel);
-  auto nelt = GET_MODE_NUNITS (vmode);
-  auto round_reg = gen_reg_rtx (vimode);
-  rtx round_data[MAX_VECT_LEN];
-
-  for (int i = 0; i < nelt; i += 1)
-    {
-      round_data[i] = GEN_INT (0x1f);
-    }
-
-  rtx round_data_rtx = gen_rtx_CONST_VECTOR (vimode, gen_rtvec_v (nelt, round_data));
-  emit_move_insn (round_reg, round_data_rtx);
-
-  if (vmode != vimode)
-    {
-      target = lowpart_subreg (vimode, target, vmode);
-      op0 = lowpart_subreg (vimode, op0, vmode);
-      op1 = lowpart_subreg (vimode, op1, vmode);
-    }
-
-  switch (vmode)
-    {
-    case E_V16QImode:
-      emit_insn (gen_andv16qi3 (sel, sel, round_reg));
-      emit_insn (gen_lsx_vshuf_b (target, op1, op0, sel));
-      break;
-    case E_V2DFmode:
-    case E_V2DImode:
-      emit_insn (gen_andv2di3 (sel, sel, round_reg));
-      emit_insn (gen_lsx_vshuf_d (target, sel, op1, op0));
-      break;
-    case E_V4SFmode:
-    case E_V4SImode:
-      emit_insn (gen_andv4si3 (sel, sel, round_reg));
-      emit_insn (gen_lsx_vshuf_w (target, sel, op1, op0));
-      break;
-    case E_V8HImode:
-      emit_insn (gen_andv8hi3 (sel, sel, round_reg));
-      emit_insn (gen_lsx_vshuf_h (target, sel, op1, op0));
-      break;
-    default:
-      break;
-    }
 }
 
 /* Following are the assist function for const vector permutation support.  */
@@ -9821,11 +9668,7 @@ expand_perm_const_end:
 	  rtx sel = force_reg (sel_mode,
 			       gen_rtx_CONST_VECTOR (sel_mode, sel_v));
 
-	  if (d->vmode == E_V32QImode)
-	    emit_insn (gen_lasx_xvshuf_b (target, op1, op0, sel));
-	  else
-	    emit_insn (gen_lasx_xvshuf (d->vmode, target, sel, op1, op0));
-
+	  emit_insn (gen_simd_vshuf (d->vmode, target, op1, op0, sel));
 	  return true;
 	}
     }

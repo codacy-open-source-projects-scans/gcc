@@ -224,7 +224,7 @@ along with GCC; see the file COPYING3.  If not see
    in that case, and for executable link with --{,no-}whole-archive around
    it to force everything into the executable.  */
 
-#ifndef USE_GLD
+#if !HAVE_GNU_LD
 #define LD_WHOLE_ARCHIVE_OPTION "-z allextract"
 #define LD_NO_WHOLE_ARCHIVE_OPTION "-z defaultextract"
 #else
@@ -270,38 +270,20 @@ along with GCC; see the file COPYING3.  If not see
   "%{Ofast|ffast-math|funsafe-math-optimizations:%{!shared:crtfastmath.o%s}} \
    %(endfile_arch) %(endfile_vtv) %(endfile_crtend) crtn.o%s"
 
-#undef LINK_ARCH32_SPEC_BASE
-#define LINK_ARCH32_SPEC_BASE \
+#undef LINK_ARCH_SPEC_BASE
+#define LINK_ARCH_SPEC_BASE \
   "%{G:-G} \
    %{YP,*} \
-   %{R*} \
-   %{!YP,*:%{p|pg:-Y P,%R/usr/lib/libp%R/lib:%R/usr/lib} \
-	   %{!p:%{!pg:-Y P,%R/lib:%R/usr/lib}}}"
+   %{R*}"
 
-#undef LINK_ARCH32_SPEC
-#define LINK_ARCH32_SPEC LINK_ARCH32_SPEC_BASE
-
-/* This should be the same as LINK_ARCH32_SPEC_BASE, except with
-   ARCH64_SUBDIR appended to the paths.  */
-#undef LINK_ARCH64_SPEC_BASE
-#define LINK_ARCH64_SPEC_BASE \
-  "%{G:-G} \
-   %{YP,*} \
-   %{R*} \
-   %{!YP,*:%{p|pg:-Y P,%R/usr/lib/libp/" ARCH64_SUBDIR ":%R/lib/" ARCH64_SUBDIR ":%R/usr/lib/" ARCH64_SUBDIR "}	\
-	   %{!p:%{!pg:-Y P,%R/lib/" ARCH64_SUBDIR ":%R/usr/lib/" ARCH64_SUBDIR "}}}"
-
-#undef LINK_ARCH64_SPEC
-#ifndef USE_GLD
-/* FIXME: Used to be SPARC-only.  Not SPARC-specfic but for the model name!  */
-#define LINK_ARCH64_SPEC \
-  "%{mcmodel=medlow:-M /usr/lib/ld/" ARCH64_SUBDIR "/map.below4G} " \
-  LINK_ARCH64_SPEC_BASE
+#if !HAVE_GNU_LD
+#define LINK_ARCH_SPEC_1 \
+  "%{mcmodel=medlow:-M /usr/lib/ld/map.below4G} " LINK_ARCH_SPEC_BASE
 #else
-#define LINK_ARCH64_SPEC LINK_ARCH64_SPEC_BASE
+#define LINK_ARCH_SPEC_1 LINK_ARCH_SPEC_BASE
 #endif
 
-#ifdef USE_GLD
+#if HAVE_GNU_LD
 #if DEFAULT_ARCH32_P
 #define ARCH_DEFAULT_EMULATION ARCH32_EMULATION
 #else
@@ -314,46 +296,32 @@ along with GCC; see the file COPYING3.  If not see
 #define TARGET_LD_EMULATION ""
 #endif
 
-#undef LINK_ARCH_SPEC
 #if DISABLE_MULTILIB
 #if DEFAULT_ARCH32_P
-#define LINK_ARCH_SPEC TARGET_LD_EMULATION " \
-%{m32:%(link_arch32)} \
-%{m64:%edoes not support multilib} \
-%{!m32:%{!m64:%(link_arch_default)}} \
-"
+#define LINK_ARCH_ERROR_SPEC "%{m64:%edoes not support multilib}"
 #else
-#define LINK_ARCH_SPEC TARGET_LD_EMULATION " \
-%{m32:%edoes not support multilib} \
-%{m64:%(link_arch64)} \
-%{!m32:%{!m64:%(link_arch_default)}} \
-"
+#define LINK_ARCH_ERROR_SPEC "%{m32:%edoes not support multilib}"
 #endif
 #else
-#define LINK_ARCH_SPEC TARGET_LD_EMULATION " \
-%{m32:%(link_arch32)} \
-%{m64:%(link_arch64)} \
-%{!m32:%{!m64:%(link_arch_default)}}"
+#define LINK_ARCH_ERROR_SPEC ""
 #endif
 
-#define LINK_ARCH_DEFAULT_SPEC \
-(DEFAULT_ARCH32_P ? LINK_ARCH32_SPEC : LINK_ARCH64_SPEC)
+#undef LINK_ARCH_SPEC
+#define LINK_ARCH_SPEC TARGET_LD_EMULATION \
+  " " LINK_ARCH_ERROR_SPEC " " LINK_ARCH_SPEC_1
 
 #undef SUBTARGET_EXTRA_SPECS
 #define SUBTARGET_EXTRA_SPECS \
   { "startfile_arch",	 	STARTFILE_ARCH_SPEC },		\
   { "startfile_crtbegin",	STARTFILE_CRTBEGIN_SPEC },	\
   { "startfile_vtv",		STARTFILE_VTV_SPEC },		\
-  { "link_arch32",       	LINK_ARCH32_SPEC },		\
-  { "link_arch64",       	LINK_ARCH64_SPEC },		\
-  { "link_arch_default", 	LINK_ARCH_DEFAULT_SPEC },	\
   { "link_arch",	 	LINK_ARCH_SPEC },		\
   { "endfile_arch",	 	ENDFILE_ARCH_SPEC },		\
   { "endfile_crtend",		ENDFILE_CRTEND_SPEC },		\
   { "endfile_vtv",		ENDFILE_VTV_SPEC },		\
   SUBTARGET_CPU_EXTRA_SPECS
 
-#ifndef USE_GLD
+#if !HAVE_GNU_LD
 /* With Sun ld, -rdynamic is a no-op.  */
 #define RDYNAMIC_SPEC ""
 #else
@@ -361,12 +329,12 @@ along with GCC; see the file COPYING3.  If not see
 #define RDYNAMIC_SPEC "--export-dynamic"
 #endif
 
-#ifndef USE_GLD
+#if !HAVE_GNU_LD
 /* Prefer native form with Solaris ld.  */
 #define SYSROOT_SPEC "-z sysroot=%R"
 #endif
 
-#if !defined(USE_GLD) && defined(ENABLE_SHARED_LIBGCC)
+#if !HAVE_GNU_LD && defined(ENABLE_SHARED_LIBGCC)
 /* With Sun ld, use mapfile to enforce direct binding to libgcc_s unwinder.  */
 #define LINK_LIBGCC_MAPFILE_SPEC \
   "%{shared|shared-libgcc:-M %slibgcc-unwind.map}"
@@ -399,12 +367,12 @@ along with GCC; see the file COPYING3.  If not see
 #define USE_LD_AS_NEEDED 1
 #endif
 
-#ifdef USE_GLD
+#if HAVE_GNU_LD
 /* GNU ld needs --eh-frame-hdr to create the required .eh_frame_hdr sections.  */
 #define LINK_EH_SPEC "%{!static|static-pie:--eh-frame-hdr} "
 #endif
 
-#ifdef USE_GLD
+#if HAVE_GNU_LD
 /* Assert -z text by default to match Solaris ld.  */
 #define LD_PIE_SPEC "-pie %{!mimpure-text:-z text}"
 #else
@@ -455,7 +423,7 @@ along with GCC; see the file COPYING3.  If not see
     }								\
   while (0)
 
-#ifndef USE_GAS
+#if !HAVE_GNU_AS
 #undef TARGET_ASM_ASSEMBLE_VISIBILITY
 #define TARGET_ASM_ASSEMBLE_VISIBILITY solaris_assemble_visibility
 
