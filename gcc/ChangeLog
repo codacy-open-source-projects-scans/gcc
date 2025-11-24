@@ -1,3 +1,343 @@
+2025-11-23  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa64-linux.h (GLIBC_DYNAMIC_LINKER): Define.
+
+2025-11-23  John David Anglin  <danglin@gcc.gnu.org>
+
+	PR target/113932
+	PR target/113933
+	* config/pa/pa.opt (mlra): Default to LRA instead of reload.
+
+2025-11-23  John David Anglin  <danglin@gcc.gnu.org>
+
+	* config/pa/pa.cc (pa_print_operand): Use REG_POINTER
+	flag to select base and index registers on targets with
+	non-equivalent space registers.
+	(pa_legitimate_address_p): Don't allow scaled and unscaled
+	indexed addresses until reload is complete.  Allow any
+	register order in unscaled addresses as long as the
+	REG_POINTER flag is correctly set/unset in the base/index
+	registers.
+	* config/pa/predicates.md (mem_operand): Remove code to
+	delay creating move insns with unscaled indexed addresses
+	until CSE is not expected.
+	(move_src_operand): Likewise.
+
+2025-11-23  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	* match.pd (1/x): Use fold_before_rtl_expansion_p.
+	(`(m1 CMP m2) * d`): Likewise.
+
+2025-11-23  Pan Li  <pan2.li@intel.com>
+
+	* match.pd: Remove unnecessary outer convert and add
+	c for the outer bit_ior.
+
+2025-11-23  Pan Li  <pan2.li@intel.com>
+
+	* match.pd: Add simplfy to fold outer convert of bit_op
+	to inner captures.
+
+2025-11-23  Kugan Vivekanandarajah  <kvivekananda@nvidia.com>
+
+	* ipa-split.cc (pass_split_functions::gate): Do not run when
+	flag_auto_profile.
+	(pass_feedback_split_functions::gate): Run when flag_auto_profile.
+
+2025-11-23  Kugan Vivekanandarajah  <kvivekananda@nvidia.com>
+
+	* tree-ssa-loop-im.cc (is_self_write): New.
+	(ref_indep_loop_p): Allow hoisting when aliasing references
+	form a self write pattern.
+
+2025-11-22  Jeff Law  <jlaw@ventanamicro.com>
+
+	PR rtl-optimization/122701
+	* ext-dce.cc (ext_dce_try_optimize_rshift): Emit a fresh reg->reg
+	copy rather than modifying the existing right shift.
+
+2025-11-22  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	* omp-general.cc (omp_context_selector_matches): Add an optional
+	bool argument for the code elision case.
+	* omp-general.h (omp_context_selector_matches): Likewise.
+
+2025-11-22  Sandra Loosemore  <sloosemore@baylibre.com>
+
+	* omp-general.cc (omp_mangle_variant_name): New.
+	(omp_check_for_duplicate_variant): New.
+	(omp_copy_trait_set): New.
+	(omp_trait_selectors_equivalent): New.
+	(omp_combine_trait_sets): New.
+	(omp_merge_context_selectors): New.
+	* omp-general.h (omp_mangle_variant_name): Declare.
+	(omp_check_for_duplicate_variant): Declare.
+	(omp_merge_context_selectors): Declare.
+
+2025-11-22  zhaozhou  <zhaozhou@loongson.cn>
+
+	* config/loongarch/loongarch.cc: Extract plus operation.
+
+2025-11-22  Deng Jianbo  <dengjianbo@loongson.cn>
+
+	* config/loongarch/loongarch.md
+	(*bstrins_w_for_ior_ashift_and_extend): New template.
+	(*bstrins_d_for_ior_ashift_and): New template.
+	* config/loongarch/predicates.md (const_uimm63_operand): New
+	predicate.
+
+2025-11-22  zhaozhou  <zhaozhou@loongson.cn>
+
+	* config/loongarch/lsx.md (lsx_vshuf4i_mem_w_0): Add template.
+	(lsx_vldrepl_merge_w_0): Ditto.
+
+2025-11-22  Kees Cook  <kees@kernel.org>
+
+	* config/aarch64/aarch64-protos.h (aarch64_indirect_branch_asm):
+	Declare.
+	* config/aarch64/aarch64.cc (aarch64_indirect_branch_asm): New
+	function to generate indirect branch with SLS barrier.
+	* config/aarch64/aarch64.md (*sibcall_insn): Use
+	aarch64_indirect_branch_asm.
+	(*sibcall_value_insn): Likewise.
+
+2025-11-21  Vladimir N. Makarov  <vmakarov@redhat.com>
+
+	PR target/118358
+	* lra-constraints.cc (curr_insn_transform): Move insn reloading
+	constant into a register right before insn using it.
+
+2025-11-21  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/122762
+	PR tree-optimization/122736
+	PR tree-optimization/122790
+	* cgraph.h (cgraph_simd_clone_arg::linear_step): Document
+	use for SIMD_CLONE_ARG_TYPE_MASK.
+	* omp-simd-clone.cc (simd_clone_adjust_argument_types):
+	Record the number of mask arguments in linear_step if
+	mask_mode is not VOIDmode.
+	* tree-vect-stmts.cc (vectorizable_simd_clone_call):
+	Remove num_mask_args computation, use a proper ncopies
+	to query/register loop masks, use linear_step for the
+	number of mask arguments when determining the number of
+	mask elements in a mask argument.
+
+2025-11-21  Richard Biener  <rguenther@suse.de>
+
+	PR tree-optimization/122778
+	* tree-vect-stmts.cc (vectorizable_simd_clone_call): Honor
+	a loop mask when passing the conditional mask with AVX512
+	style masking.
+
+2025-11-21  Jakub Jelinek  <jakub@redhat.com>
+
+	PR target/122598
+	* config/i386/predicates.md (const_vec_dup_operand): Remove.
+	* config/i386/sse.md (cond<<insn><mode> with VI1_AVX512VL iterator):
+	Remove.
+
+2025-11-21  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* doc/invoke.texi (Optimize Options) <-fmalloc-dce>: Remove
+	trailing space.
+	(AArch64 Options) <-march>: Fix pasto.
+
+2025-11-21  Jakub Jelinek  <jakub@redhat.com>
+
+	PR middle-end/122773
+	* gimplify.cc (collect_fallthrough_labels): Check whether
+	gimple_goto_dest is a LABEL_DECL before testing VACUOUS_INIT_LABEL_P.
+	(expand_FALLTHROUGH_r): Likewise.
+
+2025-11-21  Loeka Rogge  <loeka@synopsys.com>
+	    Keith Packard  <keithp@keithp.com>
+
+	PR target/120375
+	* config/arc/arc.md (*<insn>si3_nobs): merged with <insn>si3_loop.
+	(<insn>si3_loop): splits to relevant pattern or emits loop assembly.
+	(<insn>si3_cnt1_clobber): Removes clobber for shift or rotate by
+	const1.
+
+2025-11-21  Claudiu Zissulescu  <claziss@gmail.com>
+	    Michiel Derhaeg  <michiel@synopsys.com>
+
+	* config/arc/arc.md: Modify define_insn_and_split "*extvsi_n_0"
+
+2025-11-21  Josef Melcr  <josef.melcr@suse.com>
+
+	* attr-callback.cc (callback_edge_callee_has_attr): New
+	function.
+	* attr-callback.h (callback_edge_callee_has_attr): New function
+	decl.
+	* ipa-prop.cc (ipa_compute_jump_functions_for_bb): Don't skip
+	callback carriers when calculating jump functions.
+
+2025-11-21  Josef Melcr  <josef.melcr@suse.com>
+
+	PR ipa/122768
+	* attr-callback.cc (callback_edge_useful_p): Rewrite the
+	heuristic, now consider clones as well as icf bodies.
+
+2025-11-21  Deng Jianbo  <dengjianbo@loongson.cn>
+
+	* config/loongarch/constraints.md: Update constraint YI to support
+	more numbers.
+	* config/loongarch/loongarch-protos.h
+	(loongarch_const_vector_vrepli): Rename.
+	(loongarch_const_vector_vldi): Ditto.
+	* config/loongarch/loongarch.cc (VLDI_NEG_MASK): New macro.
+	(loongarch_parse_vldi_const): New function to check if numbers can
+	be generated by {x}vldi instruction.
+	(loongarch_const_vector_vrepli): Rename.
+	(loongarch_const_vector_vldi): Use above function.
+	(loongarch_const_insns): Call renamed function.
+	(loongarch_split_vector_move_p): Ditto.
+	(loongarch_output_move): Ditto.
+
+2025-11-21  zhaozhou  <zhaozhou@loongson.cn>
+
+	* config/loongarch/lsx.md: Fix predicate.
+
+2025-11-20  Andrew MacLeod  <amacleod@redhat.com>
+
+	PR tree-optimization/121345
+	* gimple-range-phi.cc (phi_group::calculate_using_modifier): Restore
+	performance loss by being more selective when iterating.
+
+2025-11-20  Kito Cheng  <kito.cheng@sifive.com>
+
+	* config/riscv/riscv-opt-popretz.cc: New file.
+	* config/riscv/riscv-passes.def: Insert pass_combine_popretz before
+	pass_shorten_branches.
+	* config/riscv/riscv-protos.h (make_pass_combine_popretz): New
+	declaration.
+	* config/riscv/t-riscv: Add riscv-opt-popretz.o build rule.
+	* config.gcc (riscv*): Add riscv-opt-popretz.o to extra_objs.
+
+2025-11-20  Pan Li  <pan2.li@intel.com>
+
+	PR target/122692
+	* config/riscv/riscv.cc (riscv_expand_ustrunc): Leverage
+	riscv_extend_to_xmode_reg to take care of src rtx.
+
+2025-11-20  Tamar Christina  <tamar.christina@arm.com>
+
+	* target.def (instruction_selection): New.
+	* doc/tm.texi.in: Document it.
+	* doc/tm.texi: Regenerate
+	* gimple-isel.cc (pass_gimple_isel::execute): Use it.
+	* targhooks.cc (default_instruction_selection): New.
+	* targhooks.h (default_instruction_selection): New.
+
+2025-11-20  Josef Melcr  <josef.melcr@suse.com>
+
+	PR ipa/122358
+	* cgraph.cc (cgraph_add_edge_to_call_site_hash): Add an early
+	return when the hashed edge is a callback-carrying edge.
+
+2025-11-20  Arsen Arsenović  <aarsenovic@baylibre.com>
+
+	* doc/rtl.texi (Regs and Memory): Use @table instead of @itemize
+	for lists with named items.
+
+2025-11-20  Xinhui Yang  <cyan@cyano.uk>
+
+	PR bootstrap/105664
+	* Makefile.in (install-driver): detect name collision when
+	installing the driver program.
+
+2025-11-20  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* config/i386/sol2.h: Replace USE_GAS by HAVE_GNU_AS.
+	Replace USE_GLD by HAVE_GNU_LD.
+	* config/sol2.h: Likewise.
+	* config/sparc/sol2.h: Likewise.
+	* config/i386/i386.cc (i386_solaris_elf_named_section)
+	[TARGET_SOLARIS]: Replace USE_GAS by HAVE_GNU_AS.
+	* config/ia64/hpux.h: Likewise.
+	* config.gcc: Remove usegas.h, usegld.h.
+	* config/usegas.h: Remove.
+	* config/usegld.h: Remove
+
+2025-11-20  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* config/sol2.h (LINK_ARCH32_SPEC_BASE): Don't provide -YP
+	defaults.  Rename to ...
+	(LINK_ARCH_SPEC_BASE): ... this.
+	(LINK_ARCH32_SPEC): Remove.
+	(LINK_ARCH64_SPEC_BASE): Remove.
+	(LINK_ARCH64_SPEC): Rename to ...
+	(LINK_ARCH_SPEC_1): ... this.
+	[!USE_GLD]: Simplify map.below4G use.
+	(LINK_ARCH_ERROR_SPEC): New macro.
+	(LINK_ARCH32_SPEC): Remove.
+	(LINK_ARCH_DEFAULT_SPEC): Remove.
+	(LINK_ARCH_SPEC): Simplify using LINK_ARCH_ERROR_SPEC,
+	LINK_ARCH_SPEC_1.
+	(SUBTARGET_EXTRA_SPECS): Remove link_arch32, link_arch64
+	link_arch_default.
+
+2025-11-20  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/lsx.md (vec_perm<mode>): Expand directly with
+	RTL template.
+	* config/loongarch/loongarch-protos.h
+	(loongarch_expand_vec_perm): Delete.
+	* config/loongarch/loongarch.cc (loongarch_expand_vec_perm):
+	Delete.
+
+2025-11-20  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/lasx.md (lasx_xvpermi_d): Add "@".
+	* config/loongarch/loongarch.cc (loongarch_expand_vec_perm_1):
+	Use gen_lasx_xvpermi_d instead of
+	gen_lasx_xvpermi_d_{v32qi,v16hi} to deduplicate the logic.  Do
+	structrual programming instead of goto and label.
+
+2025-11-20  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/loongarch.cc (loongarch_expand_vec_perm_1):
+	Clamp the selector using the twice of actual number of elements.
+	Compare the clamped selector with the element number to get the
+	blending mask.
+
+2025-11-20  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/lasx.md (lasx_xvshuf_b): Remove.
+	(lasx_xvshuf_<lasxfmt_f): Remove.
+	(unspec): Remove UNSPEC_LASX_XVSHUF and UNSPEC_LASX_XVSHUF_B.
+	* config/loongarch/lsx.md (lsx_vshuf_b): Remove.
+	(lsx_vshuf_<lasxfmt_f): Remove.
+	(unspec): Remove UNSPEC_LSX_VSHUF and UNSPEC_LSX_VSHUF_B.
+	* config/loongarch/simd.md (unspec): Add UNSPEC_SIMD_VSHUF.
+	(@simd_vshuf): New define_insn.
+	(<simd_isa>_<x>vshuf_<simdfmt><_f>): New define_expand.
+	* config/loongarch/loongarch.cc
+	(loongarch_try_expand_lsx_vshuf_const): Call gen_simd_vshuf
+	instead of gen_lasx_xvshuf and gen_lasx_xvshuf_b.
+	(loongarch_expand_vec_perm_const): Likewise.
+
+2025-11-20  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/lasx.md (lasx_xvperm_<lasxfmt_f_wd>): Add
+	"@" for gen_lasx_xvperm helper.
+	* config/loongarch/loongarch.cc (loongarch_expand_vec_perm_1):
+	Call gen_lasx_xvperm to unify V8SF and V8SI handling.
+
+2025-11-20  Xi Ruoyao  <xry111@xry111.site>
+
+	* config/loongarch/loongarch.cc (loongarch_expand_vec_perm_1):
+	Use lasx_xvpackev_h (mask * 2, mask * 2 + 1) to "expand" the
+	V4DI selector to V8SI.
+
+2025-11-20  Xi Ruoyao  <xry111@xry111.site>
+
+	PR target/122695
+	* config/loongarch/loongarch.cc (loongarch_expand_vec_perm_1):
+	Simplify and fix the logic preventing the xvshuf.* unpredictable
+	behavior.
+
 2025-11-19  Andrew MacLeod  <amacleod@redhat.com>
 
 	PR tree-optimization/122756
@@ -21511,7 +21851,7 @@
 	original address with more adaptive operations
 
 2025-05-06  Julian Waters  <tanksherman27@gmail.com>
-	    Eric Botcazou  <botcazou@adacore.com>
+	    Eric Botcazou  <ebotcazou@adacore.com>
 	    Uroš Bizjak  <ubizjak@gmail.com>
 	    Liu Hao  <lh_mouse@126.com>
 

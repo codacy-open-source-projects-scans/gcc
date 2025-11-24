@@ -4051,6 +4051,13 @@ finish_translation_unit (void)
 	       "#pragma omp end declare target");
       vec_safe_truncate (scope_chain->omp_declare_target_attribute, 0);
     }
+  if (vec_safe_length (scope_chain->omp_declare_variant_attribute))
+    {
+      if (!errorcount)
+	error ("%<omp begin declare variant%> without corresponding "
+	       "%<omp end declare variant%>");
+      vec_safe_truncate (scope_chain->omp_declare_variant_attribute, 0);
+    }
   if (vec_safe_length (scope_chain->omp_begin_assumes))
     {
       if (!errorcount)
@@ -13081,26 +13088,57 @@ classtype_has_nothrow_assign_or_copy_p (tree type, bool assign_p)
   return saw_copy;
 }
 
-/* Return true if DERIVED is pointer interconvertible base of BASE.  */
+/* Return true if BASE is a pointer-interconvertible base of DERIVED.  */
 
-static bool
-pointer_interconvertible_base_of_p (tree base, tree derived)
+bool
+pointer_interconvertible_base_of_p (tree base, tree derived,
+				    bool explain/*=false*/)
 {
   if (base == error_mark_node || derived == error_mark_node)
     return false;
+
   base = TYPE_MAIN_VARIANT (base);
   derived = TYPE_MAIN_VARIANT (derived);
-  if (!NON_UNION_CLASS_TYPE_P (base)
-      || !NON_UNION_CLASS_TYPE_P (derived))
-    return false;
+  if (!NON_UNION_CLASS_TYPE_P (base))
+    {
+      if (explain)
+	inform (location_of (base),
+		"%qT is not a non-union class type", base);
+      return false;
+    }
+  if (!NON_UNION_CLASS_TYPE_P (derived))
+    {
+      if (explain)
+	inform (location_of (derived),
+		"%qT is not a non-union class type", derived);
+      return false;
+    }
 
   if (same_type_p (base, derived))
     return true;
 
   if (!std_layout_type_p (derived))
-    return false;
+    {
+      if (explain)
+	inform (location_of (derived),
+		"%qT is not a standard-layout type", derived);
+      return false;
+    }
 
-  return uniquely_derived_from_p (base, derived);
+  if (!uniquely_derived_from_p (base, derived))
+    {
+      if (explain)
+	{
+	  /* An ambiguous base should already be impossible due to
+	     the std_layout_type_p check.  */
+	  gcc_checking_assert (!DERIVED_FROM_P (base, derived));
+	  inform (location_of (derived),
+		  "%qT is not a base of %qT", base, derived);
+	}
+      return false;
+    }
+
+  return true;
 }
 
 /* Helper function for fold_builtin_is_pointer_inverconvertible_with_class,
