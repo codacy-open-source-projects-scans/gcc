@@ -1335,10 +1335,11 @@
 ;; == SELECT_VL
 ;; =========================================================================
 
-(define_expand "select_vl<mode>"
+(define_expand "select_vl<V:mode><P:mode>"
   [(match_operand:P 0 "register_operand")
    (match_operand:P 1 "vector_length_operand")
-   (match_operand:P 2 "immediate_operand")]
+   (match_operand:P 2 "immediate_operand")
+   (match_operand:V 3)]
   "TARGET_VECTOR"
 {
   riscv_vector::expand_select_vl (operands);
@@ -1350,9 +1351,9 @@
 ;; -------------------------------------------------------------------------
 
 (define_expand "vec_set<mode>"
-  [(match_operand:V_VLS 0 "register_operand")
-   (match_operand:<VEL> 1 "register_operand")
-   (match_operand       2 "nonmemory_operand")]
+  [(match_operand:V_VLS_ZVFH 0 "register_operand")
+   (match_operand:<VEL>	     1 "register_operand")
+   (match_operand	     2 "nonmemory_operand")]
   "TARGET_VECTOR"
 {
   /* If we set the first element, emit an v(f)mv.s.[xf].  */
