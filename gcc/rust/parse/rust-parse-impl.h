@@ -1861,7 +1861,8 @@ Parser<ManagedTokenSource>::parse_macro_invocation_semi (
 
   t = lexer.peek_token ();
   // parse token trees until the initial delimiter token is found again
-  while (!token_id_matches_delims (t->get_id (), delim_type))
+  while (!token_id_matches_delims (t->get_id (), delim_type)
+	 && t->get_id () != END_OF_FILE)
     {
       std::unique_ptr<AST::TokenTree> tree = parse_token_tree ();
 
@@ -5221,6 +5222,13 @@ Parser<ManagedTokenSource>::parse_trait_type (AST::AttrVec outer_attrs,
 
   Identifier ident{ident_tok};
 
+  // Parse optional generic parameters for GATs (Generic Associated Types)
+  std::vector<std::unique_ptr<AST::GenericParam>> generic_params;
+  if (lexer.peek_token ()->get_id () == LEFT_ANGLE)
+    {
+      generic_params = parse_generic_params_in_angles ();
+    }
+
   std::vector<std::unique_ptr<AST::TypeParamBound>> bounds;
 
   // parse optional colon
@@ -5241,8 +5249,9 @@ Parser<ManagedTokenSource>::parse_trait_type (AST::AttrVec outer_attrs,
     }
 
   return std::unique_ptr<AST::TraitItemType> (
-    new AST::TraitItemType (std::move (ident), std::move (bounds),
-			    std::move (outer_attrs), vis, locus));
+    new AST::TraitItemType (std::move (ident), std::move (generic_params),
+			    std::move (bounds), std::move (outer_attrs), vis,
+			    locus));
 }
 
 // Parses a constant trait item.

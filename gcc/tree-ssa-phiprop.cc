@@ -339,7 +339,8 @@ propagate_with_phi (basic_block bb, gphi *vphi, gphi *phi,
       tree vuse;
       bool delay = false;
 
-      if (!dom_info_available_p (cfun, CDI_POST_DOMINATORS))
+      if (canpossible_trap
+	  && !dom_info_available_p (cfun, CDI_POST_DOMINATORS))
 	calculate_dominance_info (CDI_POST_DOMINATORS);
 
       /* Only replace loads in blocks that post-dominate the PHI node.  That
@@ -506,6 +507,9 @@ next:;
   if (phi_inserted)
     for (auto use_stmt : delayed_uses)
       {
+	/* The types must match of the inserted phi.  */
+	if (!types_compatible_p (type, TREE_TYPE (gimple_assign_lhs (use_stmt))))
+	  continue;
 	gimple_assign_set_rhs1 (use_stmt, res);
 	update_stmt (use_stmt);
       }
