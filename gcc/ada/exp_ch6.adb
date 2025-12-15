@@ -2729,9 +2729,7 @@ package body Exp_Ch6 is
 
             --  Ada 2005 (AI-318-02): If the actual parameter is a call to a
             --  build-in-place function, then a temporary return object needs
-            --  to be created and access to it must be passed to the function
-            --  (and ensure that we have an activation chain defined for tasks
-            --  and a Master variable).
+            --  to be created and access to it must be passed to the function.
 
             --  But do not do it here for intrinsic subprograms since this will
             --  be done properly after the subprogram is expanded.
@@ -2740,11 +2738,6 @@ package body Exp_Ch6 is
                null;
 
             elsif Is_Build_In_Place_Function_Call (Actual) then
-               if Might_Have_Tasks (Etype (Actual)) then
-                  Build_Activation_Chain_Entity (N);
-                  Build_Master_Entity (Etype (Actual));
-               end if;
-
                Make_Build_In_Place_Call_In_Anonymous_Context (Actual);
 
             --  Ada 2005 (AI-318-02): Specialization of the previous case for
@@ -2752,8 +2745,6 @@ package body Exp_Ch6 is
             --  object covers interface types.
 
             elsif Present (Unqual_BIP_Iface_Function_Call (Actual)) then
-               Build_Activation_Chain_Entity (N);
-               Build_Master_Entity (Etype (Actual));
                Make_Build_In_Place_Iface_Call_In_Anonymous_Context (Actual);
             end if;
 
@@ -5908,8 +5899,6 @@ package body Exp_Ch6 is
       Loc          : constant Source_Ptr := Sloc (N);
       Func_Id      : constant Entity_Id :=
                        Return_Applies_To (Return_Statement_Entity (N));
-      Is_BIP_Func  : constant Boolean   :=
-                       Is_Build_In_Place_Function (Func_Id);
       Ret_Obj_Id   : constant Entity_Id :=
                        First_Entity (Return_Statement_Entity (N));
       Ret_Obj_Decl : constant Node_Id   := Parent (Ret_Obj_Id);
@@ -6024,12 +6013,13 @@ package body Exp_Ch6 is
          --  master. But Move_Activation_Chain updates their master to be that
          --  of the caller, so they will not be terminated unless the return
          --  statement completes unsuccessfully due to exception, abort, goto,
-         --  or exit. As a formality, we test whether the function requires the
-         --  result to be built in place, though that's necessarily true for
-         --  the case of result types with task parts.
+         --  or exit. Note that we test that the function is both BIP and has
+         --  implicit task formal parameters, because not all functions whose
+         --  result type contains tasks have them (see Needs_BIP_Task_Actuals).
 
-         if Is_BIP_Func and then Has_Task (Ret_Typ) then
-
+         if Is_Build_In_Place_Function (Func_Id)
+           and then Needs_BIP_Task_Actuals (Func_Id)
+         then
             --  The return expression is an aggregate for a complex type which
             --  contains tasks. This particular case is left unexpanded since
             --  the regular expansion would insert all temporaries and
@@ -6042,7 +6032,7 @@ package body Exp_Ch6 is
             --  Do not move the activation chain if the return object does not
             --  contain tasks.
 
-            if Has_Task (Etype (Ret_Obj_Id)) then
+            if Might_Have_Tasks (Etype (Ret_Obj_Id)) then
                Append_To (Stmts, Move_Activation_Chain (Func_Id));
             end if;
          end if;
@@ -9010,9 +9000,9 @@ package body Exp_Ch6 is
      (Allocator     : Node_Id;
       Function_Call : Node_Id)
    is
-      Acc_Type          : constant Entity_Id := Etype (Allocator);
+      Acc_Type          : constant Entity_Id  := Etype (Allocator);
       Loc               : constant Source_Ptr := Sloc (Function_Call);
-      Func_Call         : Node_Id := Function_Call;
+      Func_Call         : constant Node_Id    := Unqual_Conv (Function_Call);
       Ref_Func_Call     : Node_Id;
       Function_Id       : Entity_Id;
       Result_Subt       : Entity_Id;
@@ -9025,16 +9015,6 @@ package body Exp_Ch6 is
       Chain             : Entity_Id; -- activation chain, in case of tasks
 
    begin
-      --  Step past qualification or unchecked conversion (the latter can occur
-      --  in cases of calls to 'Input).
-
-      if Nkind (Func_Call) in N_Qualified_Expression
-                            | N_Type_Conversion
-                            | N_Unchecked_Type_Conversion
-      then
-         Func_Call := Expression (Func_Call);
-      end if;
-
       --  Mark the call as processed as a build-in-place call
 
       pragma Assert (not Is_Expanded_Build_In_Place_Call (Func_Call));
@@ -9288,6 +9268,7 @@ package body Exp_Ch6 is
       Loc         : constant Source_Ptr := Sloc (Function_Call);
       Func_Call   : constant Node_Id    := Unqual_Conv (Function_Call);
       Function_Id : Entity_Id;
+      Has_Tasks   : Boolean;
       Known_Size  : Boolean;
       Needs_Fin   : Boolean;
       Result_Subt : Entity_Id;
@@ -9316,6 +9297,7 @@ package body Exp_Ch6 is
       Warn_BIP (Func_Call);
 
       Result_Subt := Etype (Function_Id);
+      Has_Tasks := Might_Have_Tasks (Result_Subt);
       Known_Size := Caller_Known_Size (Func_Call, Result_Subt);
       Needs_Fin := Needs_Finalization (Result_Subt);
 
@@ -9327,15 +9309,11 @@ package body Exp_Ch6 is
       --  object also needs to be created and an access value designating it
       --  passed as an actual.
 
-      --  Create a temporary which is initialized with the function call:
-      --
-      --    Temp_Id : Func_Type := BIP_Func_Call;
-      --
-      --  The initialization expression of the temporary will be rewritten by
-      --  the expander using the appropriate mechanism in Make_Build_In_Place_
-      --  Call_In_Object_Declaration.
+      --  Insert a temporary before the call initialized with function call to
+      --  reuse the BIP machinery which takes care of adding the extra build-in
+      --  place actuals.
 
-      if Needs_Fin or else Known_Size then
+      if Needs_Fin or else Known_Size or else Has_Tasks then
          if Needs_Fin then
             Establish_Transient_Scope
               (Func_Call, Manage_Sec_Stack => not Known_Size);
@@ -9352,9 +9330,20 @@ package body Exp_Ch6 is
 
          begin
             Set_Assignment_OK (Temp_Decl);
+            Expander_Mode_Save_And_Set (False);
             Insert_Action (Function_Call, Temp_Decl);
+            Expander_Mode_Restore;
+
+            if Has_Tasks then
+               Build_Activation_Chain_Entity (Temp_Decl);
+               Build_Master_Entity (Temp_Id);
+            end if;
+
+            Make_Build_In_Place_Call_In_Object_Declaration
+              (Obj_Decl      => Temp_Decl,
+               Function_Call => Expression (Temp_Decl));
+
             Rewrite (Function_Call, New_Occurrence_Of (Temp_Id, Loc));
-            Analyze (Function_Call);
          end;
 
       --  When the result subtype is unconstrained, the function must allocate
@@ -9955,7 +9944,6 @@ package body Exp_Ch6 is
       Anon_Type := Create_Itype (E_Anonymous_Access_Type, Function_Call);
       Set_Directly_Designated_Type (Anon_Type, Etype (BIP_Func_Call));
       Set_Etype (Anon_Type, Anon_Type);
-      Build_Class_Wide_Master (Anon_Type);
 
       Tmp_Decl :=
         Make_Object_Declaration (Loc,
@@ -9978,6 +9966,9 @@ package body Exp_Ch6 is
       Expander_Mode_Save_And_Set (False);
       Insert_Action (Allocator, Tmp_Decl);
       Expander_Mode_Restore;
+
+      Build_Master_Entity (Anon_Type);
+      Build_Master_Renaming (Anon_Type);
 
       Make_Build_In_Place_Call_In_Allocator
         (Allocator     => Expression (Tmp_Decl),
@@ -10033,9 +10024,14 @@ package body Exp_Ch6 is
       Insert_Action (Function_Call, Tmp_Decl);
       Expander_Mode_Restore;
 
+      Build_Activation_Chain_Entity (Tmp_Decl);
+      Build_Master_Entity (Tmp_Id);
+
       Make_Build_In_Place_Iface_Call_In_Object_Declaration
         (Obj_Decl      => Tmp_Decl,
          Function_Call => Expression (Tmp_Decl));
+
+      Rewrite (Function_Call, New_Occurrence_Of (Tmp_Id, Loc));
    end Make_Build_In_Place_Iface_Call_In_Anonymous_Context;
 
    ----------------------------------------------------------
@@ -10559,8 +10555,9 @@ package body Exp_Ch6 is
 
                begin
                   pragma Assert (Check_BIP_Actuals (Call_Node, Subp));
-                    --  Build-in-place function calls return their result by
-                    --  reference.
+
+                  --  Build-in-place function calls return their result by
+                  --  reference.
 
                   pragma Assert (not Is_Build_In_Place_Function (Subp)
                     or else Returns_By_Ref (Subp));

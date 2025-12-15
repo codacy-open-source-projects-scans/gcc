@@ -2240,7 +2240,7 @@ package body Exp_Ch4 is
          --  Note: Entity for the comparison may be wrong, but it's not worth
          --  the effort to change it, since the back end does not use it.
 
-         if Is_Signed_Integer_Type (Ltype)
+         if Has_Overflow_Operations (Ltype)
            and then Base_Type (Ltype) = Base_Type (Rtype)
          then
             return;
@@ -4386,7 +4386,7 @@ package body Exp_Ch4 is
 
          for J in 1 .. Number_Dimensions (E) loop
 
-            if not Is_Modular_Integer_Type (Etype (Idx)) then
+            if not Has_Modular_Operations (Etype (Idx)) then
                Len :=
                  Make_Attribute_Reference (Loc,
                    Prefix         => New_Occurrence_Of (E, Loc),
@@ -5368,7 +5368,17 @@ package body Exp_Ch4 is
          --  When the alternative's expression involves controlled function
          --  calls, generated temporaries are chained on the corresponding
          --  list of actions. These temporaries need to be finalized after
-         --  the case expression is evaluated.
+         --  the case expression is evaluated. We first need to make them
+         --  explicit for build-in-place functions in anonymous contexts,
+         --  because calls to these do not go through Expand_Ctrl_Actions.
+
+         if Is_Build_In_Place_Function_Call (Expression (Alt))
+           and then not Optimize_Assignment_Stmt
+           and then not Optimize_Return_Stmt
+           and then not Optimize_Object_Decl
+         then
+            Make_Build_In_Place_Call_In_Anonymous_Context (Expression (Alt));
+         end if;
 
          Process_Transients_In_Expression (N, Actions (Alt));
 
@@ -6345,7 +6355,17 @@ package body Exp_Ch4 is
          --  When the "then" or "else" expressions involve controlled function
          --  calls, generated temporaries are chained on the corresponding list
          --  of actions. These temporaries need to be finalized after the if
-         --  expression is evaluated.
+         --  expression is evaluated. We first need to make them explicit for
+         --  build-in-place functions in anonymous contexts, because calls to
+         --  these do not go through Expand_Ctrl_Actions.
+
+         if Is_Build_In_Place_Function_Call (Thenx) then
+            Make_Build_In_Place_Call_In_Anonymous_Context (Thenx);
+         end if;
+
+         if Is_Build_In_Place_Function_Call (Elsex) then
+            Make_Build_In_Place_Call_In_Anonymous_Context (Elsex);
+         end if;
 
          Process_Transients_In_Expression (N, Then_Actions (N));
          Process_Transients_In_Expression (N, Else_Actions (N));
@@ -7805,7 +7825,7 @@ package body Exp_Ch4 is
 
       --  Deal with software overflow checking
 
-      if Is_Signed_Integer_Type (Typ)
+      if Has_Overflow_Operations (Typ)
         and then Do_Overflow_Check (N)
       then
          --  The only case to worry about is when the argument is equal to the
@@ -7878,11 +7898,8 @@ package body Exp_Ch4 is
       --  Arithmetic overflow checks for signed integer/fixed point types,
       --  and signed integer types with unsigned base range aspect.
 
-      if Is_Signed_Integer_Type (Typ)
+      if Has_Overflow_Operations (Typ)
         or else Is_Fixed_Point_Type (Typ)
-        or else
-          (Is_Modular_Integer_Type (Typ)
-            and then Has_Unsigned_Base_Range_Aspect (Base_Type (Typ)))
       then
          Apply_Arithmetic_Overflow_Check (N);
          return;
@@ -9053,7 +9070,7 @@ package body Exp_Ch4 is
             --  therefore we might need to generate an overflow check here
             --  if the type is signed.
 
-            if Is_Signed_Integer_Type (Typ) and then Ovflo then
+            if Has_Overflow_Operations (Typ) and then Ovflo then
                declare
                   OK : Boolean;
                   Lo : Uint;
@@ -9092,7 +9109,7 @@ package body Exp_Ch4 is
 
       --  First deal with modular case
 
-      if Is_Modular_Integer_Type (Rtyp) then
+      if Has_Modular_Operations (Rtyp) then
 
          --  Nonbinary modular case, we call the special exponentiation
          --  routine for the nonbinary case, converting the argument to
@@ -9153,7 +9170,7 @@ package body Exp_Ch4 is
       --  checks are required, and one when they are not required, since there
       --  is a real gain in omitting checks on many machines.
 
-      elsif Is_Signed_Integer_Type (Rtyp) then
+      elsif Has_Overflow_Operations (Rtyp) then
          if Esize (Rtyp) <= Standard_Integer_Size then
             Etyp := Standard_Integer;
 
@@ -9474,11 +9491,7 @@ package body Exp_Ch4 is
       end if;
 
       if not Backend_Overflow_Checks_On_Target
-         and then
-           (Is_Signed_Integer_Type (Typ)
-              or else
-                (Is_Modular_Integer_Type (Typ)
-                   and then Has_Unsigned_Base_Range_Aspect (Base_Type (Typ))))
+         and then Has_Overflow_Operations (Typ)
          and then Do_Overflow_Check (N)
       then
          --  Software overflow checking expands -expr into (0 - expr)
@@ -9789,7 +9802,7 @@ package body Exp_Ch4 is
             --  If the result is modular, perform the reduction of the result
             --  appropriately.
 
-            if Is_Modular_Integer_Type (Typ)
+            if Has_Modular_Operations (Typ)
               and then not Non_Binary_Modulus (Typ)
             then
                Rewrite (N,
@@ -9817,7 +9830,7 @@ package body Exp_Ch4 is
       --  Same processing for the operands the other way round
 
       elsif Lp2 then
-         if Is_Modular_Integer_Type (Typ)
+         if Has_Modular_Operations (Typ)
            and then not Non_Binary_Modulus (Typ)
          then
             Rewrite (N,
@@ -9902,11 +9915,7 @@ package body Exp_Ch4 is
 
       --  Non-fixed point cases, check software overflow checking required
 
-      elsif Is_Signed_Integer_Type (Etype (N))
-        or else
-          (Is_Modular_Integer_Type (Typ)
-            and then Has_Unsigned_Base_Range_Aspect (Base_Type (Typ)))
-      then
+      elsif Has_Overflow_Operations (Etype (N)) then
          Apply_Arithmetic_Overflow_Check (N);
       end if;
 
@@ -10473,11 +10482,8 @@ package body Exp_Ch4 is
       --  Arithmetic overflow checks for signed integer/fixed point types,
       --  and signed integer types with unsigned base range aspect.
 
-      if Is_Signed_Integer_Type (Typ)
+      if Has_Overflow_Operations (Typ)
         or else Is_Fixed_Point_Type (Typ)
-        or else
-          (Is_Modular_Integer_Type (Typ)
-            and then Has_Unsigned_Base_Range_Aspect (Base_Type (Typ)))
       then
          Apply_Arithmetic_Overflow_Check (N);
       end if;

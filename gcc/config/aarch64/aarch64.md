@@ -479,7 +479,7 @@
 ;; Q registers and is equivalent to "simd".
 
 (define_enum "arches" [any rcpc8_4 fp fp_q base_simd nobase_simd
-		       simd nosimd sve fp16 sme])
+		       simd nosimd sve fp16 sme cssc])
 
 (define_enum_attr "arch" "arches" (const_string "any"))
 
@@ -550,6 +550,9 @@
 
 	(and (eq_attr "arch" "fp16")
 	     (match_test "TARGET_FP_F16INST"))
+
+	(and (eq_attr "arch" "cssc")
+	     (match_test "TARGET_CSSC"))
 
 	(and (eq_attr "arch" "sve")
 	     (match_test "TARGET_SVE"))
@@ -4914,7 +4917,7 @@
    ;; data
    (match_operand:ALLI 2 "register_operand" "r")
    ;; polynomial without leading 1
-   (match_operand:ALLX 3)]
+   (match_operand:ALLX 3 "const_int_operand")]
   ""
   {
     /* If the polynomial is the same as the polynomial of crc32c* instruction,
@@ -4953,7 +4956,7 @@
    ;; data
    (match_operand:ALLI 2 "register_operand" "r")
    ;; polynomial without leading 1
-   (match_operand:ALLX 3)]
+   (match_operand:ALLX 3 "const_int_operand")]
   "TARGET_AES && <ALLI:sizen> <= <ALLX:sizen>"
   {
     aarch64_expand_crc_using_pmull (<ALLX:MODE>mode, <ALLI:MODE>mode,
@@ -5697,12 +5700,43 @@
   [(set_attr "type" "logics_shift_imm")]
 )
 
+;; CLZ, CTZ, CLS, RBIT instructions.
+
 (define_insn "clz<mode>2"
   [(set (match_operand:GPI 0 "register_operand" "=r")
 	(clz:GPI (match_operand:GPI 1 "register_operand" "r")))]
   ""
   "clz\\t%<w>0, %<w>1"
   [(set_attr "type" "clz")]
+)
+
+;; Model ctz as a target instruction.
+;; If TARGET_CSSC is not available, emit rbit and clz.
+
+(define_insn "ctz<mode>2"
+  [(set (match_operand:GPI 0 "register_operand")
+	(ctz:GPI (match_operand:GPI 1 "register_operand")))]
+  ""
+  {@ [ cons: =0, 1; attrs: type, arch, length ]
+     [ r , r; clz, cssc, 4 ] ctz\\t%<w>0, %<w>1
+     [ r , r; clz, *   , 8 ] rbit\\t%<w>0, %<w>1\;clz\\t%<w>0, %<w>0
+  }
+)
+
+(define_insn "clrsb<mode>2"
+  [(set (match_operand:GPI 0 "register_operand" "=r")
+	(clrsb:GPI (match_operand:GPI 1 "register_operand" "r")))]
+  ""
+  "cls\\t%<w>0, %<w>1"
+  [(set_attr "type" "clz")]
+)
+
+(define_insn "@aarch64_rbit<mode>"
+  [(set (match_operand:GPI 0 "register_operand" "=r")
+	(bitreverse:GPI (match_operand:GPI 1 "register_operand" "r")))]
+  ""
+  "rbit\\t%<w>0, %<w>1"
+  [(set_attr "type" "rbit")]
 )
 
 (define_expand "ffs<mode>2"
@@ -5712,9 +5746,7 @@
   {
     rtx ccreg = aarch64_gen_compare_reg (EQ, operands[1], const0_rtx);
     rtx x = gen_rtx_NE (VOIDmode, ccreg, const0_rtx);
-
-    emit_insn (gen_aarch64_rbit (<MODE>mode, operands[0], operands[1]));
-    emit_insn (gen_clz<mode>2 (operands[0], operands[0]));
+    emit_insn (gen_ctz<mode>2 (operands[0], operands[1]));
     emit_insn (gen_csinc3<mode>_insn (operands[0], x, operands[0], const0_rtx));
     DONE;
   }
@@ -5808,40 +5840,6 @@
   emit_insn (gen_aarch64_zero_extenddi_reduc_plus_v16qi (operands[0], v1));
   DONE;
 })
-
-(define_insn "clrsb<mode>2"
-  [(set (match_operand:GPI 0 "register_operand" "=r")
-        (clrsb:GPI (match_operand:GPI 1 "register_operand" "r")))]
-  ""
-  "cls\\t%<w>0, %<w>1"
-  [(set_attr "type" "clz")]
-)
-
-(define_insn "@aarch64_rbit<mode>"
-  [(set (match_operand:GPI 0 "register_operand" "=r")
-	(bitreverse:GPI (match_operand:GPI 1 "register_operand" "r")))]
-  ""
-  "rbit\\t%<w>0, %<w>1"
-  [(set_attr "type" "rbit")]
-)
-
-;; Split after reload into RBIT + CLZ.  Since RBIT is represented as an UNSPEC
-;; it is unlikely to fold with any other operation, so keep this as a CTZ
-;; expression and split after reload to enable scheduling them apart if
-;; needed.  For TARGET_CSSC we have a single CTZ instruction that can do this.
-
-(define_insn_and_split "ctz<mode>2"
- [(set (match_operand:GPI           0 "register_operand" "=r")
-       (ctz:GPI (match_operand:GPI  1 "register_operand" "r")))]
-  ""
-  { return TARGET_CSSC ? "ctz\\t%<w>0, %<w>1" : "#"; }
-  "reload_completed && !TARGET_CSSC"
-  [(const_int 0)]
-  "
-  emit_insn (gen_aarch64_rbit (<MODE>mode, operands[0], operands[1]));
-  emit_insn (gen_clz<mode>2 (operands[0], operands[0]));
-  DONE;
-")
 
 (define_insn "*and<mode>_compare0"
   [(set (reg:CC_Z CC_REGNUM)

@@ -517,7 +517,8 @@ pop_labels (tree block)
   auto_vec<tree, 32> labels (named_labels->elements ());
   hash_table<named_label_hash>::iterator end (named_labels->end ());
 
-  if (flag_auto_var_init > AUTO_INIT_UNINITIALIZED)
+  if (flag_auto_var_init > AUTO_INIT_UNINITIALIZED
+      && !processing_template_decl)
     {
       for (decltype (end) iter (named_labels->begin ()); iter != end; ++iter)
 	{
@@ -3875,6 +3876,7 @@ decl_instrument_init_bypass_p (tree decl)
   tree type = TREE_TYPE (decl);
 
   return (flag_auto_var_init > AUTO_INIT_UNINITIALIZED
+	  && !processing_template_decl
 	  && type != error_mark_node
 	  && VAR_P (decl)
 	  && !TREE_STATIC (decl)
@@ -4357,7 +4359,9 @@ check_goto_1 (named_label_entry *ent, tree *declp)
 	  && ent->uses->binding_level == current_binding_level
 	  && ent->uses->names_in_scope == current_binding_level->names)
 	{
-	  if (declp && flag_auto_var_init > AUTO_INIT_UNINITIALIZED)
+	  if (declp
+	      && flag_auto_var_init > AUTO_INIT_UNINITIALIZED
+	      && !processing_template_decl)
 	    vec_safe_push (ent->uses->direct_goto,
 			   named_label_fwd_direct_goto { declp });
 	  return;
@@ -4371,7 +4375,9 @@ check_goto_1 (named_label_entry *ent, tree *declp)
       new_use->in_omp_scope = false;
       new_use->computed_goto = computed ? make_tree_vector () : nullptr;
       new_use->direct_goto = nullptr;
-      if (declp && flag_auto_var_init > AUTO_INIT_UNINITIALIZED)
+      if (declp
+	  && flag_auto_var_init > AUTO_INIT_UNINITIALIZED
+	  && !processing_template_decl)
 	vec_safe_push (new_use->direct_goto,
 		       named_label_fwd_direct_goto { declp });
 
@@ -6975,6 +6981,7 @@ check_array_designated_initializer (constructor_elt *ce,
 	{
 	  error ("name %qD used in a GNU-style designated "
 		 "initializer for an array", ce->index);
+	  ce->index = error_mark_node;
 	  return false;
 	}
 
@@ -8647,8 +8654,15 @@ make_rtl_for_nonlocal_decl (tree decl, tree init, const char* asmspec)
 	 placed in a particular register.  */
       if (VAR_P (decl) && DECL_REGISTER (decl))
 	{
-	  set_user_assembler_name (decl, asmspec);
-	  DECL_HARD_REGISTER (decl) = 1;
+	  if (TREE_ADDRESSABLE (decl))
+	    error_at (DECL_SOURCE_LOCATION (decl),
+		      "address of explicit register variable %qD requested",
+		      decl);
+	  else
+	    {
+	      set_user_assembler_name (decl, asmspec);
+	      DECL_HARD_REGISTER (decl) = 1;
+	    }
 	}
       else
 	{
@@ -9649,8 +9663,15 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 
       if (VAR_P (decl) && DECL_REGISTER (decl) && asmspec)
 	{
-	  set_user_assembler_name (decl, asmspec);
-	  DECL_HARD_REGISTER (decl) = 1;
+	  if (TREE_ADDRESSABLE (decl))
+	    error_at (DECL_SOURCE_LOCATION (decl),
+		      "address of explicit register variable %qD requested",
+		      decl);
+	  else
+	    {
+	      set_user_assembler_name (decl, asmspec);
+	      DECL_HARD_REGISTER (decl) = 1;
+	    }
 	}
       return;
     }
@@ -18754,7 +18775,11 @@ start_enum (tree name, tree enumtype, tree underlying_type,
 }
 
 /* Returns true if TYPE is an enum that uses an enumerator name for
-   linkage purposes.  */
+   linkage purposes at namespace scope.  The term is defined in [dcl.enum]/12
+   for all enums, not just those at namespace scope, but for backward ABI
+   compatibility we want to treat those not at namespace scope the old way
+   and e.g. mangle the class scope ones based on their position within the
+   class rather than the first enumerator.  */
 
 bool
 enum_with_enumerator_for_linkage_p (tree type)
@@ -18762,7 +18787,8 @@ enum_with_enumerator_for_linkage_p (tree type)
   return (cxx_dialect >= cxx20
 	  && UNSCOPED_ENUM_P (type)
 	  && TYPE_ANON_P (type)
-	  && TYPE_VALUES (type));
+	  && TYPE_VALUES (type)
+	  && TYPE_NAMESPACE_SCOPE_P (type));
 }
 
 /* After processing and defining all the values of an enumeration type,

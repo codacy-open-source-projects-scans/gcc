@@ -25820,6 +25820,13 @@ gen_compile_unit_die (const char *filename)
 	    language = DW_LANG_Go;
 	  else if (strcmp (language_string, "GNU Rust") == 0)
 	    language = DW_LANG_Rust;
+          else if (strcmp (language_string, "GNU Algol 68") == 0)
+	    {
+	      language = DW_LANG_Algol68;
+	      lname = DW_LNAME_Algol68;
+	      lversion = 1978; /* Not a typo.  The revised language of the
+				  Revised Report.  */
+	    }
 	}
     }
   /* Use a degraded Fortran setting in strict DWARF2 so is_fortran works.  */

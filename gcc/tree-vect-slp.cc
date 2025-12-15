@@ -4310,7 +4310,9 @@ vect_analyze_slp_reduc_chain (loop_vec_info vinfo,
 
       /* When this linearization didn't produce a chain see if stripping
 	 a wrapping sign conversion produces one.  */
-      if (scalar_stmts.length () == 1)
+      if (scalar_stmts.length () == 1
+	  && (code == PLUS_EXPR || code == MULT_EXPR || code == BIT_IOR_EXPR
+	      || code == BIT_AND_EXPR || code == BIT_XOR_EXPR))
 	{
 	  gimple *stmt = scalar_stmts[0]->stmt;
 	  if (!is_gimple_assign (stmt)
@@ -5883,48 +5885,6 @@ vect_analyze_slp (vec_info *vinfo, unsigned max_tree_size,
 					     "SLP build failed.\n");
 	    }
 	}
-
-	/* Find and create slp instances for inductions that have been forced
-	   live due to early break.  */
-	edge latch_e = loop_latch_edge (LOOP_VINFO_LOOP (loop_vinfo));
-	for (auto stmt_info : LOOP_VINFO_EARLY_BREAKS_LIVE_IVS (loop_vinfo))
-	  {
-	    vec<stmt_vec_info> stmts;
-	    vec<stmt_vec_info> roots = vNULL;
-	    vec<tree> remain = vNULL;
-	    gphi *phi = as_a<gphi *> (STMT_VINFO_STMT (stmt_info));
-	    tree def = gimple_phi_arg_def_from_edge (phi, latch_e);
-	    stmt_vec_info lc_info = loop_vinfo->lookup_def (def);
-	    if (lc_info)
-	      {
-		stmts.create (1);
-		stmts.quick_push (vect_stmt_to_vectorize (lc_info));
-		if (! vect_build_slp_instance (vinfo, slp_inst_kind_reduc_group,
-					       stmts, roots, remain,
-					       max_tree_size, &limit,
-					       bst_map, force_single_lane))
-		  return opt_result::failure_at (vect_location,
-						 "SLP build failed.\n");
-	      }
-	    /* When the latch def is from a different cycle this can only
-	       be a induction.  Build a simple instance for this.
-	       ???  We should be able to start discovery from the PHI
-	       for all inductions, but then there will be stray
-	       non-SLP stmts we choke on as needing non-SLP handling.  */
-	    auto_vec<stmt_vec_info, 1> tem;
-	    tem.quick_push (stmt_info);
-	    if (!bst_map->get (tem))
-	      {
-		stmts.create (1);
-		stmts.quick_push (stmt_info);
-		if (! vect_build_slp_instance (vinfo, slp_inst_kind_reduc_group,
-					       stmts, roots, remain,
-					       max_tree_size, &limit,
-					       bst_map, force_single_lane))
-		  return opt_result::failure_at (vect_location,
-						 "SLP build failed.\n");
-	      }
-	  }
     }
 
   hash_set<slp_tree> visited_patterns;
@@ -11588,7 +11548,7 @@ vectorizable_slp_permutation_1 (vec_info *vinfo, gimple_stmt_iterator *gsi,
       return 0;
     }
 
-  /* Set REPEATING_P to true if the permutations are cylical wrt UNPACK_FACTOR
+  /* Set REPEATING_P to true if the permutations are cyclical wrt UNPACK_FACTOR
      and if we can generate the vectors in a vector-length agnostic way.
      This requires UNPACK_STEP == NUNITS / UNPACK_FACTOR to be known at
      compile time.
