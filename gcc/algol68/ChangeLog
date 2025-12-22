@@ -1,3 +1,24 @@
+2025-12-20  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* a68-low-moids.cc (a68_lower_moids): Fix for layout of
+	incomplete types.
+
+2025-12-19  Jakub Jelinek  <jakub@redhat.com>
+
+	* a68-low-decls.cc (a68_lower_variable_declaration): Fix comment typo,
+	varaible -> variable.
+
+2025-12-17  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	PR algol68/123006
+	* a68-imports.cc (complete_encoded_mode): Fix handling of flex
+	modes.
+
+2025-12-17  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	PR algol68/123132
+	* a68-imports.cc (DOFFSET): Fix big-endian path.
+
 2025-12-16  Jose E. Marchesi  <jose.marchesi@oracle.com>
 
 	* a68-parser-bottom-up.cc (reduce_prelude_packet): Do not support
