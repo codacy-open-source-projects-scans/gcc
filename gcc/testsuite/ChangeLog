@@ -1,3 +1,442 @@
+2025-12-28  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/execute/modules/module24.a68: New file.
+	* algol68/execute/modules/program-24.a68: New test.
+
+2025-12-28  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/execute/modules/module23bar.a68: New test.
+	* algol68/execute/modules/module23foo.a68: Likewise.
+	* algol68/execute/modules/program-23.a68: Likewise.
+
+2025-12-28  Rainer Orth  <ro@CeBiTec.Uni-Bielefeld.DE>
+
+	* gcc.target/i386/20040112-1.c: Add dg-add-options
+	check_function_bodies.
+	* gcc.target/i386/pr122343-1a.c: Likewise.
+	* gcc.target/i386/pr122343-1b.c: Likewise.
+	* gcc.target/i386/pr122343-2a.c: Likewise.
+	* gcc.target/i386/pr122343-2b.c: Likewise.
+	* gcc.target/i386/pr122343-3.c: Likewise.
+	* gcc.target/i386/pr122343-4a.c: Likewise.
+	* gcc.target/i386/pr122343-4b.c: Likewise.
+	* gcc.target/i386/pr122343-5a.c: Likewise.
+	* gcc.target/i386/pr122343-5b.c: Likewise.
+	* gcc.target/i386/pr122343-6a.c: Likewise.
+	* gcc.target/i386/pr122343-6b.c: Likewise.
+	* gcc.target/i386/pr122343-7.c: Likewise.
+	* gcc.target/i386/pr122675-1.c: Likewise.
+	(dg-options): Add -fomit-frame-pointer.
+
+2025-12-27  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/execute/modules/module22bar.a68: New test.
+	* algol68/execute/modules/module22foo.a68: Likewise.
+	* algol68/execute/modules/program-22.a68: Likewise.
+	* algol68/compile/modules/program-11.a68: Adjust test to
+	publicized modules.
+	* algol68/compile/modules/program-error-multiple-delaration-module-1.a68:
+	Likewise.
+
+2025-12-27  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/compile/error-loop-1.a68: New test.
+
+2025-12-27  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/compile/module-2.a68: Expand test a little.
+
+2025-12-27  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/execute/pack-soids-in-moid-1.a68: New test.
+
+2025-12-27  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/compile/modules/program-error-multiple-delaration-module-1.a68:
+	New test.
+
+2025-12-27  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/compile/modules/module10.a68: New test.
+	* algol68/execute/modules/program-18.a68: Likewise.
+	* algol68/execute/modules/module18c.a68: Likewise.
+	* algol68/execute/modules/module18b.a68: Likewise.
+	* algol68/execute/modules/module18a.a68: Likewise.
+	* algol68/compile/modules/program-11.a68: Likewise.
+	* algol68/compile/modules/program-10.a68: Likewise.
+	* algol68/compile/modules/module12.a68: Likewise.
+	* algol68/compile/modules/module11.a68: Likewise.
+
+2025-12-27  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/compile/error-module-nested-access-1.a68: New test.
+	* algol68/execute/modules/program-21.a68: Likewise.
+
+2025-12-27  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/execute/modules/module17.a68: New test.
+
+2025-12-27  Jakub Jelinek  <jakub@redhat.com>
+
+	PR rtl-optimization/123114
+	* gcc.dg/pr123114.c: New test.
+
+2025-12-27  Eric Botcazou  <ebotcazou@gcc.gnu.org>
+
+	* gnat.dg/specs/mutably_tagged1.ads: New test.
+
+2025-12-26  Eric Botcazou  <ebotcazou@gcc.gnu.org>
+
+	* gnat.dg/aggr34.adb: New test.
+	* gnat.dg/aggr34_pkg1.ads, gnat.dg/aggr34_pkg1.adb: New helper.
+	* gnat.dg/aggr34_pkg2.ads, gnat.dg/aggr34_pkg2.adb: Likewise.
+	* gnat.dg/aggr34_pkg3.ads: Likewise.
+
+2025-12-26  Eric Botcazou  <ebotcazou@gcc.gnu.org>
+
+	* gnat.dg/specs/aggr9.ads: New test.
+
+2025-12-25  Arsen Arsenović  <aarsenovic@baylibre.com>
+
+	* gcc.dg/tree-ssa/sincos-ice-on-ifn_sin-call.c: New test.
+	* gcc.target/gcn/sincos-ice-on-ifn_sin-call-1.c: New test.
+
+2025-12-24  Pan Li  <pan2.li@intel.com>
+
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-1-u32.c: Add asm check
+	for vmsleu.vx.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-1-u64.c: Ditto.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-1-u8.c: Ditto.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-2-u16.c: Ditto.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-2-u32.c: Ditto.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-2-u64.c: Ditto.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-2-u8.c: Ditto.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-3-u16.c: Ditto.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-3-u32.c: Ditto.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-3-u64.c: Ditto.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx-3-u8.c: Ditto.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx_binary.h: Add test
+	helper macros.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx_binary_data.h: Add test
+	data for run test.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx_vmsleu-run-1-u16.c: New test.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx_vmsleu-run-1-u32.c: New test.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx_vmsleu-run-1-u64.c: New test.
+	* gcc.target/riscv/rvv/autovec/vx_vf/vx_vmsleu-run-1-u8.c: New test.
+
+2025-12-24  Karl Meakin  <karl.meakin@arm.com>
+
+	* gcc.target/aarch64/sme2/acle-asm/dot_lane_za16_mf8_vg1x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_lane_za16_mf8_vg1x4.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_lane_za32_mf8_vg1x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_lane_za32_mf8_vg1x4.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_single_za16_mf8_vg1x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_single_za16_mf8_vg1x4.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_single_za32_mf8_vg1x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_single_za32_mf8_vg1x4.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_za16_mf8_vg1x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_za16_mf8_vg1x4.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_za32_mf8_vg1x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/dot_za32_mf8_vg1x4.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/vdot_lane_za16_mf8_vg1x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/vdotb_lane_za32_mf8_vg1x4.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/vdott_lane_za32_mf8_vg1x4.c: New test.
+	* gcc.target/aarch64/sve/acle/general-c/dot_half_za_slice_lane_fpm.c: New test.
+
+2025-12-24  Claudio Bantaloukas  <claudio.bantaloukas@arm.com>
+
+	* gcc.target/aarch64/sme/acle-asm/test_sme_acle.h: (TEST_UNIFORM_ZA):
+	Add fpm0 parameter.
+	* gcc.target/aarch64/sve/acle/general-c/binary_za_m_1.c: Add tests for
+	variants accepting fpm.
+	* gcc.target/aarch64/sme2/acle-asm/mopa_za16_mf8.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mopa_za32_mf8.c: Likewise.
+
+2025-12-24  Claudio Bantaloukas  <claudio.bantaloukas@arm.com>
+
+	* gcc.target/aarch64/sme2/acle-asm/test_sme2_acle.h: (TEST_ZA_X1,
+	TEST_ZA_XN, TEST_ZA_SINGLE, TEST_ZA_SINGLE_Z15, TEST_ZA_LANE,
+	TEST_ZA_LANE_Z15): Add fpm0 parameter.
+	* gcc.target/aarch64/sve/acle/general-c/binary_za_slice_lane_1.c: Add
+	tests for variants accepting fpm.
+	* gcc.target/aarch64/sve/acle/general-c/binary_za_slice_opt_single_1.c:
+	Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/mla_lane_za16_mf8_vg2x1.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_lane_za16_mf8_vg2x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_lane_za16_mf8_vg2x4.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_lane_za32_mf8_vg4x1.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_lane_za32_mf8_vg4x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_lane_za32_mf8_vg4x4.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_za16_mf8_vg2x1.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_za16_mf8_vg2x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_za16_mf8_vg2x4.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_za32_mf8_vg4x1.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_za32_mf8_vg4x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/mla_za32_mf8_vg4x4.c: New test.
+
+2025-12-24  Claudio Bantaloukas  <claudio.bantaloukas@arm.com>
+
+	* gcc.target/aarch64/pragma_cpp_predefs_4.c: Add tests checking that
+	sme-f8f16 and sme-f8f32 prefefs are off by default, and checks for
+	feature dependencies.
+	* lib/target-supports.exp: Add check_effective_target support for
+	sme-f8f16 and sme-f8f32.
+
+2025-12-24  Claudio Bantaloukas  <claudio.bantaloukas@arm.com>
+
+	* gcc.target/aarch64/sme2/acle-asm/scale_f16_x2.c: : Added test file.
+	* gcc.target/aarch64/sme2/acle-asm/scale_f16_x4.c: : Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/scale_f32_x2.c: : Added test file.
+	* gcc.target/aarch64/sme2/acle-asm/scale_f32_x4.c: : Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/scale_f64_x2.c: : Added test file.
+	* gcc.target/aarch64/sme2/acle-asm/scale_f64_x4.c: : Likewise.
+
+2025-12-24  Claudio Bantaloukas  <claudio.bantaloukas@arm.com>
+
+	* gcc.target/aarch64/sme2/acle-asm/cvt_mf8_bf16_x2.c: Added test file.
+	* gcc.target/aarch64/sme2/acle-asm/cvt_mf8_f16_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/cvt_mf8_f32_x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/cvtn_mf8_f32_x4.c: Likewise.
+	* gcc.target/aarch64/sve/acle/asm/test_sve_acle.h
+	(TEST_X2_NARROW): Added fpm0 argument for intrinsics.
+	(TEST_X4_NARROW): Likewise.
+
+2025-12-24  Claudio Bantaloukas  <claudio.bantaloukas@arm.com>
+
+	* g++.target/aarch64/sme2/aarch64-sme2-acle-asm.exp: Use tuning flag
+	to reduce churn in testsuites.
+	* gcc.target/aarch64/sme2/aarch64-sme2-acle-asm.exp: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/cvt_mf8_x2.c: Added test file.
+	* gcc.target/aarch64/sme2/acle-asm/cvtl_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sve/acle/asm/test_sve_acle.h (TEST_X2_WIDE): Added
+	fpm0 argument for intrinsics.
+
+2025-12-24  Claudio Bantaloukas  <claudio.bantaloukas@arm.com>
+
+	* gcc.target/aarch64/sme/acle-asm/revd_mf8.c: Added test file.
+	* gcc.target/aarch64/sme2/acle-asm/ld1_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/ld1_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/ldnt1_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/ldnt1_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/readz_ver_za128.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/sel_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/sel_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/st1_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/st1_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/stnt1_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/stnt1_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/uzp_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/uzp_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/uzpq_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/uzpq_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/zip_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/zip_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/zipq_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/zipq_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sve2/acle/asm/ld1_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sve2/acle/asm/ld1_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sve2/acle/asm/ldnt1_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sve2/acle/asm/ldnt1_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sve2/acle/asm/revd_mf8.c: Likewise.
+	* gcc.target/aarch64/sve2/acle/asm/stnt1_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sve2/acle/asm/stnt1_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sme/acle-asm/read_hor_za128.c: Added mf8 tests.
+	* gcc.target/aarch64/sme/acle-asm/read_hor_za8.c: Likewise.
+	* gcc.target/aarch64/sme/acle-asm/read_ver_za128.c: Likewise.
+	* gcc.target/aarch64/sme/acle-asm/read_ver_za8.c: Likewise.
+	* gcc.target/aarch64/sme/acle-asm/write_hor_za128.c: Likewise.
+	* gcc.target/aarch64/sme/acle-asm/write_hor_za8.c: Likewise.
+	* gcc.target/aarch64/sme/acle-asm/write_ver_za128.c: Likewise.
+	* gcc.target/aarch64/sme/acle-asm/write_ver_za8.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/read_hor_za8_vg2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/read_hor_za8_vg4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/read_ver_za8_vg2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/read_ver_za8_vg4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/read_za8_vg1x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/read_za8_vg1x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/readz_hor_za128.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/readz_hor_za8_vg2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/readz_hor_za8_vg4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/readz_hor_za8.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/readz_ver_za8_vg2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/readz_ver_za8_vg4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/readz_ver_za8.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/readz_za8_vg1x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/readz_za8_vg1x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/write_hor_za8_vg2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/write_hor_za8_vg4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/write_ver_za8_vg2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/write_ver_za8_vg4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/write_za8_vg1x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/write_za8_vg1x4.c: Likewise.
+
+2025-12-24  Claudio Bantaloukas  <claudio.bantaloukas@arm.com>
+
+	* gcc.target/aarch64/sme2/acle-asm/luti2_mf8_x2.c: New test.
+	* gcc.target/aarch64/sme2/acle-asm/luti2_mf8_x4.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/luti2_mf8.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/luti4_mf8_x2.c: Likewise.
+	* gcc.target/aarch64/sme2/acle-asm/luti4_mf8.c: Likewise.
+
+2025-12-23  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/122819
+	* g++.dg/modules/tpl-friend-22.C: New test.
+	* g++.dg/template/friend88.C: New test.
+
+2025-12-23  Mohammad-Reza Nabipoor  <mnabipoor@gnu.org>
+
+	* algol68/compile/modules/compile.exp (dg-data): New procedure
+	for writing binary test data to disk.
+	* algol68/compile/modules/program-m68-lp64.a68: New test which
+	embeds binary module data.
+	* algol68/compile/modules/program-m68-llp64.a68: Likewise.
+	* algol68/compile/modules/program-m68-ilp32.a68: Likewise.
+	* algol68/compile/modules/program-m68-lp64-be.a68: Likewise.
+	* algol68/compile/modules/program-m68-llp64-be.a68: Likewise.
+
+2025-12-23  Jeff Law  <jeffrey.law@oss.qualcomm.com>
+
+	PR target/123274
+	* gcc.target/riscv/pr123274.c: New test.
+
+2025-12-23  Jeff Law  <jeffrey.law@oss.qualcomm.com>
+
+	PR target/123278
+	* gcc.target/riscv/pr123278.c: New test.
+
+2025-12-23  Egas Ribeiro  <egas.g.ribeiro@gmail.com>
+
+	PR c++/122550
+	* g++.dg/cpp2a/concepts-friend18.C: New test.
+	* g++.dg/cpp2a/concepts-friend18a.C: New test.
+
+2025-12-23  Egas Ribeiro  <egas.g.ribeiro@gmail.com>
+
+	PR c++/122958
+	* g++.dg/cpp2a/partial-spec-redecl.C: New test.
+
+2025-12-23  lenny.chiadmi-delage  <lenny.chiadmi-delage@epita.fr>
+
+	* rust/compile/issue-4245.rs: New test.
+
+2025-12-23  Lucas Ly Ba  <lucas.ly-ba@outlook.com>
+
+	* rust/compile/unused-mut-identifier_0.rs: New test.
+	* rust/compile/unused-mut-struct-field_0.rs: New test.
+
+2025-12-23  Lucas Ly Ba  <lucas.ly-ba@outlook.com>
+
+	* rust/compile/static_item_0.rs: Modify warning output.
+	* rust/compile/template_function_0.rs: Modify warning output.
+
+2025-12-23  Lucas Ly Ba  <lucas.ly-ba@outlook.com>
+
+	* rust/compile/issue-4260_0.rs: New test.
+
+2025-12-23  Ryutaro Okada  <1015ryu88@gmail.com>
+
+	* rust/compile/static_item_0.rs: New test.
+	* rust/compile/template_function_0.rs: New test.
+
+2025-12-23  Harishankar  <harishankarpp7@gmail.com>
+
+	* rust/compile/issue-3977.rs: New test.
+
+2025-12-23  lenny.chiadmi-delage  <lenny.chiadmi-delage@epita.fr>
+
+	* rust/compile/issue-4148.rs: Test should produce errors.
+
+2025-12-23  Egas Ribeiro  <egas.g.ribeiro@gmail.com>
+
+	PR c++/117518
+	* g++.dg/cpp2a/lambda-targ19.C: New test.
+
+2025-12-23  Andrew Pinski  <andrew.pinski@oss.qualcomm.com>
+
+	PR rtl-optimization/123267
+	* gcc.dg/torture/pr123267-1.c: New test.
+
+2025-12-23  Dhruv Chawla  <dhruvc@nvidia.com>
+
+	* lib/profopt.exp: Bump GCOV version to 3.
+	* gcc.dg/tree-prof/afdo-lto_priv-basic-0.c: New test.
+	* gcc.dg/tree-prof/afdo-lto_priv-basic-1.c: Likewise.
+	* gcc.dg/tree-prof/afdo-lto_priv-header-0.c: Likewise.
+	* gcc.dg/tree-prof/afdo-lto_priv-header-0.h: Likewise.
+	* gcc.dg/tree-prof/afdo-lto_priv-header-1.c: Likewise.
+	* gcc.dg/tree-prof/afdo-lto_priv-header-1.h: Likewise.
+
+2025-12-22  Nathaniel Shead  <nathanieloshead@gmail.com>
+
+	PR c++/122994
+	* g++.dg/modules/internal-17_b.C: Use functions and internal
+	types rather than lambdas.
+	* g++.dg/modules/internal-4_b.C: Correct expected result.
+	* g++.dg/modules/internal-20_a.C: New test.
+	* g++.dg/modules/internal-20_b.C: New test.
+	* g++.dg/modules/internal-20_c.C: New test.
+	* g++.dg/modules/internal-21_a.C: New test.
+	* g++.dg/modules/internal-21_b.C: New test.
+
+2025-12-22  Steve Kargl  <kargl@gcc.gnu.org>
+
+	PR fortran/122957
+	* gfortran.dg/pr122957.f90: New test.
+
+2025-12-22  Harald Anlauf  <anlauf@gmx.de>
+
+	PR fortran/123253
+	* gfortran.dg/associate_76.f90: Extended testcase.
+	* gfortran.dg/associate_77.f90: New test.
+
+2025-12-22  Kugan Vivekanandarajah  <kvivekananda@nvidia.com>
+
+	PR middle-end/123067
+	* gcc.dg/licm-self-write-partial-alias.c: New test.
+
+2025-12-22  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* algol68/execute/modules/Modules20.map (module-bar): Add
+	underscores.
+
+2025-12-22  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/specs/class_wide1.ads: New test.
+
+2025-12-22  Jeff Law  <jlaw@ventanamicro.com>
+
+	* gcc.target/riscv/rvv/base/spill-7.c: Update expected output.
+
+2025-12-22  Yuao Ma  <c8ef@outlook.com>
+
+	PR c++/123261
+	* g++.dg/ext/fimplicit-constexpr2.C: New test.
+
+2025-12-22  Vineet Gupta  <vineetg@rivosinc.com>
+
+	* gcc.target/riscv/zicond_ifcvt_opt.c: Adjust increased czero counts.
+
+2025-12-22  Vineet Gupta  <vineetg@rivosinc.com>
+	    Philipp Tomsich  <philipp.tomsich@vrull.eu>
+
+	PR target/122769
+	* gcc.target/riscv/pr122769.c: New test.
+
+2025-12-22  Jeff Law  <jlaw@ventanamicro.com>
+
+	* gcc.target/riscv/rvv/base/spill-1.c: Update expected output.
+	* gcc.target/riscv/rvv/base/spill-2.c: Likewise.
+	* gcc.target/riscv/rvv/base/spill-3.c: Likewise.
+	* gcc.target/riscv/rvv/base/spill-4.c: Likewise.
+	* gcc.target/riscv/rvv/base/spill-5.c: Likewise.
+	* gcc.target/riscv/rvv/base/spill-6.c: Likewise.
+
+2025-12-22  Stefan Schulze Frielinghaus  <stefansf@gcc.gnu.org>
+
+	* gcc.target/s390/zvector/vec-addc-u128.c: Honor deprecation
+	warning.
+
 2025-12-21  Jerry DeLisle  <jvdelisle@gcc.gnu.org>
 
 	PR fortran/121472
