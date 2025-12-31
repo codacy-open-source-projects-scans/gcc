@@ -3142,10 +3142,10 @@ noce_try_cond_zero_arith (struct noce_if_info *if_info)
 {
   rtx target, a, b, a_op0, a_op1;
   rtx cond = if_info->cond;
+  rtx_code code = GET_CODE (cond);
   rtx_insn *seq;
   rtx_code op;
   machine_mode mode = GET_MODE (if_info->x);
-  bool reverse = false;
 
   /* Scalar integral modes are only supported here.
      Could support scalar floating point but that
@@ -3157,18 +3157,20 @@ noce_try_cond_zero_arith (struct noce_if_info *if_info)
   if (!noce_simple_bbs (if_info))
     return false;
 
-  if (!REG_P (XEXP (cond, 0)) || !rtx_equal_p (XEXP (cond, 1), const0_rtx))
-    return false;
-
   a = copy_rtx (if_info->a);
   b = copy_rtx (if_info->b);
 
   /* Canonicalize x = y : (y op z) to x = (y op z) : y.  */
   if (REG_P (a) && noce_cond_zero_binary_op_supported (b))
     {
-      std::swap (if_info->cond, if_info->rev_cond);
+      if (if_info->rev_cond)
+	{
+	  cond = if_info->rev_cond;
+	  code = GET_CODE (cond);
+	}
+      else
+	code = reversed_comparison_code (cond, if_info->jump);
       std::swap (a, b);
-      reverse = true;
     }
 
   /* Check if x = (y op z) : y is supported by czero based ifcvt.  */
@@ -3198,10 +3200,32 @@ noce_try_cond_zero_arith (struct noce_if_info *if_info)
   target = gen_reg_rtx (GET_MODE (XEXP (a, op != AND)));
 
   /* AND requires !cond, instead we swap ops around.  */
-  target = noce_emit_cmove (if_info, target, GET_CODE (if_info->cond),
-			    XEXP (if_info->cond, 0), XEXP (if_info->cond, 1),
+  target = noce_emit_cmove (if_info, target, code,
+			    XEXP (cond, 0), XEXP (cond, 1),
 			    op != AND ? XEXP (a, 1) : const0_rtx,
 			    op != AND ? const0_rtx : XEXP (a, 0));
+  if (!target)
+    {
+      end_sequence ();
+      rtx tmp = XEXP (a, op != AND);
+      /* If the cmove fails and this was a lowpart subreg,
+	 then try the reg part and then putting back the lowpart
+	 afterwards.  */
+      if (GET_CODE (tmp) != SUBREG  || !subreg_lowpart_p (tmp))
+	return false;
+      start_sequence ();
+
+      tmp = SUBREG_REG (tmp);
+      target = gen_reg_rtx (GET_MODE (tmp));
+      target = noce_emit_cmove (if_info, target, code,
+				XEXP (cond, 0), XEXP (cond, 1),
+				op != AND ? tmp : const0_rtx,
+				op != AND ? const0_rtx : tmp);
+      if (!target)
+	goto end_seq_n_fail;
+      target = rtl_hooks.gen_lowpart_no_emit (GET_MODE (XEXP (a, op != AND)), target);
+      gcc_assert (target);
+    }
   if (!target)
     goto end_seq_n_fail;
 
@@ -3238,8 +3262,6 @@ end_seq_n_fail:
   end_sequence ();
 
 fail:
-  if (reverse)
-    std::swap (if_info->cond, if_info->rev_cond);
 
   return false;
 }
