@@ -1,3 +1,20 @@
+2026-01-03  Martin Uecker  <uecker@tugraz.at>
+
+	PR c/121507
+	* c-decl.cc (start_function): Adapt condition.
+
+2026-01-03  Martin Uecker  <uecker@tugraz.at>
+
+	PR c/121081
+	* c-typeck.cc (composite_type_internal): Properly copy
+	atomic qualifier.
+
+2026-01-03  Martin Uecker  <uecker@tugraz.at>
+
+	PR c/117687
+	* c-typeck.cc (parser_build_binary_op,build_conditional_expr,
+	convert_for_assignment): Adapt conditions.
+
 2025-12-23  Dhruv Chawla  <dhruvc@nvidia.com>
 
 	* Make-lang.in: Bump GCOV version to 3.
@@ -12298,7 +12315,7 @@
 	* c-decl.c: Likewise.  Include gt-c-c-decl.h, not gt-c-decl.h.
 	* c-parser.c: Likewise.  Include gt-c-c-parser.h, not gt-c-parser.h.
 
-Copyright (C) 2012-2025 Free Software Foundation, Inc.
+Copyright (C) 2012-2026 Free Software Foundation, Inc.
 
 Copying and distribution of this file, with or without modification,
 are permitted in any medium without royalty provided the copyright

@@ -1,5 +1,5 @@
 /* Perform type resolution on the various structures.
-   Copyright (C) 2001-2025 Free Software Foundation, Inc.
+   Copyright (C) 2001-2026 Free Software Foundation, Inc.
    Contributed by Andy Vaught
 
 This file is part of GCC.
@@ -7743,6 +7743,9 @@ resolve_typebound_function (gfc_expr* e)
 	 is present.  */
       ts = expr->ts;
       declared = ts.u.derived;
+      if (!resolve_fl_derived (declared))
+	return false;
+
       c = gfc_find_component (declared, "_vptr", true, true, NULL);
       if (c->ts.u.derived == NULL)
 	c->ts.u.derived = gfc_find_derived_vtab (declared);
@@ -9799,10 +9802,9 @@ done_errmsg:
       /* Resolving the expr3 in the loop over all objects to allocate would
 	 execute loop invariant code for each loop item.  Therefore do it just
 	 once here.  */
-      mpz_t nelem;
       if (code->expr3 && code->expr3->mold
 	  && code->expr3->ts.type == BT_DERIVED
-	  && !(code->expr3->ref && gfc_array_size (code->expr3, &nelem)))
+	  && !(code->expr3->ref && code->expr3->ref->type == REF_ARRAY))
 	{
 	  /* Default initialization via MOLD (non-polymorphic).  */
 	  gfc_expr *rhs = gfc_default_initializer (&code->expr3->ts);
@@ -18816,6 +18818,13 @@ skip_interfaces:
 
   if (sym->param_list)
     resolve_pdt (sym);
+}
+
+
+void gfc_resolve_symbol (gfc_symbol *sym)
+{
+  resolve_symbol (sym);
+  return;
 }
 
 

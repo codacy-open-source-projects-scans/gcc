@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # GCC target-specific configuration file.
-# Copyright (C) 1997-2025 Free Software Foundation, Inc.
+# Copyright (C) 1997-2026 Free Software Foundation, Inc.
 
 #This file is part of GCC.
 
@@ -3694,6 +3694,24 @@ case ${target} in
 	;;
 *-linux-uclibc*)
 	tmake_file="${tmake_file} t-uclibc"
+	;;
+esac
+
+# picolibc systems
+case "${target}_${with_picolibc}" in
+*-picolibc-*|*_yes)
+	default_use_cxa_atexit=yes
+	use_gcc_stdint=none
+	# add newlib-stdint.h if not already present
+	case "${tm_file}" in
+	*newlib-stdint.h*)
+		;;
+	*)
+		tm_file="${tm_file} newlib-stdint.h"
+		;;
+	esac
+	tm_file="${tm_file} picolibc-spec.h"
+	extra_options="${extra_options} picolibc.opt"
 	;;
 esac
 

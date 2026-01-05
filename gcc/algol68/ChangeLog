@@ -1,3 +1,17 @@
+2026-01-04  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* a68-lang.cc (a68_post_options): Disable psABI warnings.
+
+2025-12-31  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* a68-exports.cc (a68_asm_output_mode): Do not rely on DIM to
+	count modes in an union mode.
+
+2025-12-31  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* a68-imports.cc (a68_open_packet): Use right tag format in
+	a68_error.
+
 2025-12-30  Jose E. Marchesi  <jose.marchesi@oracle.com>
 
 	* a68-lang.cc (a68_init_options): Add an entry to A68_MODULE_FILES
@@ -478,9 +492,8 @@
 	* a68-exports.cc: Likewise.
 	* ga68-exports.pk: Likewise.
 	* a68-diagnostics.cc: Likewise.
-
 
-Copyright (C) 2025 Free Software Foundation, Inc.
+Copyright (C) 2025-2026 Free Software Foundation, Inc.
 
 Copying and distribution of this file, with or without modification,
 are permitted in any medium without royalty provided the copyright

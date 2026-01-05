@@ -1,6 +1,6 @@
 /* Importing Algol 68 module interfaces.
    Copyright (C) 2025 Jose E. Marchesi.
-   Copyright (C) 2010-2025 Free Software Foundation, Inc.
+   Copyright (C) 2010-2026 Free Software Foundation, Inc.
 
    Written by Jose E. Marchesi.
 
@@ -1405,7 +1405,7 @@ a68_open_packet (const char *module)
       const char *errstr = NULL;
       if (!a68_decode_moifs (exports_data, exports_data_size, &errstr))
 	{
-	  a68_error (NO_NODE, "%s", errstr);
+	  a68_error (NO_NODE, "Y", errstr);
 	  return NULL;
 	}
 

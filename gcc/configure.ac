@@ -1,7 +1,7 @@
 # configure.ac for GCC
 # Process this file with autoconf to generate a configuration script.
 
-# Copyright (C) 1997-2025 Free Software Foundation, Inc.
+# Copyright (C) 1997-2026 Free Software Foundation, Inc.
 
 #This file is part of GCC.
 
@@ -1220,6 +1220,9 @@ AC_ARG_WITH(multilib-generator,
 [AS_HELP_STRING([--with-multilib-generator], [Multi-libs configuration string (RISC-V only)])],
 :,
 with_multilib_generator=default)
+
+AC_ARG_WITH(picolibc,
+[AS_HELP_STRING([--with-picolibc], [Support for picolibc, including command line options and spec rules])])
 
 # -------------------------
 # Checks for other programs
