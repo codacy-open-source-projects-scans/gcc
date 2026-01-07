@@ -10153,6 +10153,10 @@ The latter front end diagnoses
 @samp{f951: Warning: command-line option '-fno-rtti' is valid for C++/D/ObjC++ but not for Fortran},
 which may be disabled with @option{-Wno-complain-wrong-lang}.
 
+This option can also be used to disable warnings like
+@samp{cc1plus: note: CTF debug info requested, but not supported for 'GNU C++20' frontend}
+produced by @option{-gctf} or @option{-gsctf} for unsupported languages.
+
 @opindex Wcompare-distinct-pointer-types
 @item -Wcompare-distinct-pointer-types @r{(C and Objective-C only)}
 Warn if pointers of distinct types are compared without a cast.  This
@@ -17518,6 +17522,10 @@ are evaluated for cloning.
 Percentage penalty functions containing a single call to another
 function will receive when they are evaluated for cloning.
 
+@item ipa-cp-sweeps
+The number of times the interprocedural constant propagation will traverse
+all functions to make cloning decisions.
+
 @item ipa-max-agg-items
 IPA-CP is also capable to propagate a number of scalar values passed
 in an aggregate. @option{ipa-max-agg-items} controls the maximum
@@ -22703,7 +22711,7 @@ single precision and to 32 bits for double precision.
 Enable or disable generation of additional code to track speculative
 execution through conditional branches.  The tracking state can then
 be used by the compiler when expanding calls to
-@code{__builtin_speculation_safe_copy} to permit a more efficient code
+@code{__builtin_speculation_safe_value} to permit a more efficient code
 sequence to be generated.
 
 @opindex moutline-atomics
