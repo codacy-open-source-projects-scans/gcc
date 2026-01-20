@@ -33,6 +33,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "toplev.h"
 #include "intl.h"
 #include "common/common-target.h"
+#include "attribs.h"
 
 static void do_build_copy_assign (tree);
 static void do_build_copy_constructor (tree);
@@ -1898,7 +1899,7 @@ maybe_synthesize_method (tree fndecl)
 /* Build a reference to type TYPE with cv-quals QUALS, which is an
    rvalue if RVALUE is true.  */
 
-static tree
+tree
 build_stub_type (tree type, int quals, bool rvalue)
 {
   tree argtype = cp_build_qualified_type (type, quals);
@@ -3595,6 +3596,9 @@ implicitly_declare_fn (special_function_kind kind, tree type,
       tree inherited_ctor_fn = STRIP_TEMPLATE (inherited_ctor);
       /* Also copy any attributes.  */
       DECL_ATTRIBUTES (fn) = clone_attrs (DECL_ATTRIBUTES (inherited_ctor_fn));
+      /* But remove gnu::gnu_inline attribute.  See PR123526.  */
+      DECL_ATTRIBUTES (fn)
+	= remove_attribute ("gnu", "gnu_inline", DECL_ATTRIBUTES (fn));
       DECL_DISREGARD_INLINE_LIMITS (fn)
 	= DECL_DISREGARD_INLINE_LIMITS (inherited_ctor_fn);
     }

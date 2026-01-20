@@ -42,15 +42,6 @@
 
 #include "a68.h"
 
-/* Set the exit status of the running process, to be returned to the OS upon
-   exit.  */
-
-tree
-a68_posix_setexitstatus (void)
-{
-  return a68_get_libcall (A68_LIBCALL_SET_EXIT_STATUS);
-}
-
 /* Number of command line arguments passed to the program.  */
 
 tree
@@ -342,6 +333,12 @@ a68_posix_errno (void)
 }
 
 tree
+a68_posix_exit (void)
+{
+  return a68_get_libcall (A68_LIBCALL_POSIX_EXIT);
+}
+
+tree
 a68_posix_perror (void)
 {
   static tree perror_fndecl;
@@ -506,7 +503,7 @@ a68_posix_fgets (void)
       tree upper_bound = fold_convert (ssizetype, len);
       tree elems_size = fold_build2 (MULT_EXPR, sizetype,
 				     len, size_in_bytes (a68_char_type));
-      tree body = a68_row_malloc (CTYPE (M_STRING), 1 /* dim */,
+      tree body = a68_row_malloc (M_STRING, 1 /* dim */,
 				  elems, elems_size,
 				  &lower_bound, &upper_bound);
       a68_pop_function_range (body);
@@ -548,7 +545,7 @@ a68_posix_gets (void)
       tree upper_bound = fold_convert (ssizetype, len);
       tree elems_size = fold_build2 (MULT_EXPR, sizetype,
 				     len, size_in_bytes (a68_char_type));
-      tree body = a68_row_malloc (CTYPE (M_STRING), 1 /* dim */,
+      tree body = a68_row_malloc (M_STRING, 1 /* dim */,
 				  elems, elems_size,
 				  &lower_bound, &upper_bound);
       a68_pop_function_range (body);

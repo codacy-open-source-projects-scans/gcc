@@ -59,6 +59,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "case-cfn-macros.h"
 #include "langhooks.h"
 #include "opts.h"
+#include "hierarchical_discriminator.h"
 
 /* Loop Vectorization Pass.
 
@@ -1792,9 +1793,13 @@ vect_analyze_loop_costing (loop_vec_info loop_vinfo,
 	    }
 	}
       /* Reject vectorizing for a single scalar iteration, even if
-	 we could in principle implement that using partial vectors.  */
+	 we could in principle implement that using partial vectors.
+	 But allow such vectorization if VF == 1 in case we do not
+	 need to peel for gaps (if we need, avoid vectorization for
+	 reasons of code footprint).  */
       unsigned peeling_gap = LOOP_VINFO_PEELING_FOR_GAPS (loop_vinfo);
-      if (scalar_niters <= peeling_gap + 1)
+      if (scalar_niters <= peeling_gap + 1
+	  && (assumed_vf > 1 || peeling_gap != 0))
 	{
 	  if (dump_enabled_p ())
 	    dump_printf_loc (MSG_MISSED_OPTIMIZATION, vect_location,
@@ -6000,7 +6005,7 @@ vect_create_epilog_for_reduction (loop_vec_info loop_vinfo,
 	       && (mode1 = targetm.vectorize.split_reduction (mode)) != mode)
 	nunits1 = GET_MODE_NUNITS (mode1).to_constant ();
 
-      tree vectype1 = vectype;
+      tree vectype1 = compute_vectype;
       if (mode1 != mode)
 	{
 	  vectype1 = get_related_vectype_for_scalar_type (TYPE_MODE (vectype),
@@ -6282,8 +6287,17 @@ vect_create_epilog_for_reduction (loop_vec_info loop_vinfo,
           scalar_result = scalar_results[k];
           FOR_EACH_IMM_USE_STMT (use_stmt, imm_iter, orig_name)
 	    {
+	      gphi *use_phi = dyn_cast <gphi *> (use_stmt);
 	      FOR_EACH_IMM_USE_ON_STMT (use_p, imm_iter)
-		SET_USE (use_p, scalar_result);
+		{
+		  if (use_phi
+		      && (phi_arg_edge_from_use (use_p)->flags & EDGE_ABNORMAL))
+		    {
+		      gcc_assert (SSA_NAME_OCCURS_IN_ABNORMAL_PHI (orig_name));
+		      SSA_NAME_OCCURS_IN_ABNORMAL_PHI (scalar_result) = 1;
+		    }
+		  SET_USE (use_p, scalar_result);
+		}
 	      update_stmt (use_stmt);
 	    }
         }
@@ -11206,6 +11220,23 @@ vect_transform_loop (loop_vec_info loop_vinfo, gimple *loop_vectorized_call)
 			      &step_vector, &niters_vector_mult_vf, th,
 			      check_profitability, niters_no_overflow,
 			      &advance);
+
+  /* Assign hierarchical discriminators to the vectorized loop.  */
+  poly_uint64 vf_val = LOOP_VINFO_VECT_FACTOR (loop_vinfo);
+  unsigned int vf_int = constant_lower_bound (vf_val);
+  if (vf_int > DISCR_MULTIPLICITY_MAX)
+    vf_int = DISCR_MULTIPLICITY_MAX;
+
+  /* Assign unique copy_id dynamically instead of using hardcoded constants.
+     Epilogue and main vectorized loops get different copy_ids.  */
+  gimple *loop_last = last_nondebug_stmt (loop->header);
+  location_t loop_loc
+    = loop_last ? gimple_location (loop_last) : UNKNOWN_LOCATION;
+  if (loop_loc != UNKNOWN_LOCATION)
+    {
+      unsigned int copyid = allocate_copyid_base (loop_loc, 1);
+      assign_discriminators_to_loop (loop, vf_int, copyid);
+    }
   if (LOOP_VINFO_SCALAR_LOOP (loop_vinfo)
       && LOOP_VINFO_SCALAR_LOOP_SCALING (loop_vinfo).initialized_p ())
     {

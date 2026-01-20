@@ -4754,52 +4754,6 @@ bar:
       [AC_DEFINE(HAVE_AS_SPARC_GOTDATA_OP, 1,
 		[Define if your assembler and linker support GOTDATA_OP relocs.])])
 
-    gcc_GAS_CHECK_FEATURE([unaligned pcrel relocs],
-      gcc_cv_as_sparc_ua_pcrel,
-      [-K PIC],
-[.text
-foo:
-	nop
-.data
-.align 4
-.byte 0
-.uaword %r_disp32(foo)],
-      [if test x$gcc_cv_ld != x \
-       && $gcc_cv_ld -o conftest conftest.o -G > /dev/null 2>&1; then
-	 gcc_cv_as_sparc_ua_pcrel=yes
-       fi
-       rm -f conftest],
-      [AC_DEFINE(HAVE_AS_SPARC_UA_PCREL, 1,
-		[Define if your assembler and linker support unaligned PC relative relocs.])
-
-      gcc_GAS_CHECK_FEATURE([unaligned pcrel relocs against hidden symbols],
-	gcc_cv_as_sparc_ua_pcrel_hidden,
-	[-K PIC],
-[.data
-.align 4
-.byte 0x31
-.uaword %r_disp32(foo)
-.byte 0x32, 0x33, 0x34
-.global foo
-.hidden foo
-foo:
-.skip 4],
-	[if test x$gcc_cv_ld != x && test x$gcc_cv_objdump != x \
-	 && $gcc_cv_ld -o conftest conftest.o -G > /dev/null 2>&1 \
-	 && $gcc_cv_objdump -s -j .data conftest 2> /dev/null \
-	    | grep ' 31000000 07323334' > /dev/null 2>&1; then
-	    if $gcc_cv_objdump -R conftest 2> /dev/null \
-	       | grep 'DISP32' > /dev/null 2>&1; then
-		:
-	    else
-		gcc_cv_as_sparc_ua_pcrel_hidden=yes
-	    fi
-	 fi
-	 rm -f conftest],
-	 [AC_DEFINE(HAVE_AS_SPARC_UA_PCREL_HIDDEN, 1,
-		   [Define if your assembler and linker support unaligned PC relative relocs against hidden symbols.])])
-    ]) # unaligned pcrel relocs
-
     gcc_GAS_CHECK_FEATURE([offsetable %lo()],
       gcc_cv_as_sparc_offsetable_lo10,
       [-xarch=v9],
@@ -6652,10 +6606,12 @@ gcc_cv_ld_as_needed,
 [gcc_cv_ld_as_needed=no
 gcc_cv_ld_as_needed_option='--as-needed'
 gcc_cv_ld_no_as_needed_option='--no-as-needed'
+gcc_cv_ld_use_as_needed_ldscript=no
 if test $in_tree_ld = yes ; then
   if test "$gcc_cv_gld_major_version" -eq 2 -a "$gcc_cv_gld_minor_version" -ge 16 -o "$gcc_cv_gld_major_version" -gt 2 \
      && test $in_tree_ld_is_elf = yes; then
     gcc_cv_ld_as_needed=yes
+    gcc_cv_ld_use_as_needed_ldscript=yes
     if test "$gcc_cv_gld_major_version" -eq 2 -a "$gcc_cv_gld_minor_version" -ge 28; then
       gcc_cv_ld_as_needed_option='--push-state --as-needed'
       gcc_cv_ld_no_as_needed_option='--pop-state'
@@ -6665,6 +6621,7 @@ elif test x$gcc_cv_ld != x; then
   # Check if linker supports --as-needed and --no-as-needed options
   if $gcc_cv_ld --help 2>&1 | grep as-needed > /dev/null; then
     gcc_cv_ld_as_needed=yes
+    gcc_cv_ld_use_as_needed_ldscript=yes
     if $gcc_cv_ld --help 2>&1 | grep push-state > /dev/null \
        && $gcc_cv_ld --help 2>&1 | grep pop-state > /dev/null \
        && echo "$ld_ver" | grep GNU > /dev/null \
@@ -6683,6 +6640,7 @@ elif test x$gcc_cv_ld != x; then
       gcc_cv_ld_as_needed=yes
       gcc_cv_ld_as_needed_option="-z ignore"
       gcc_cv_ld_no_as_needed_option="-z record"
+      gcc_cv_ld_use_as_needed_ldscript=no
       ;;
   esac
 fi
@@ -6691,6 +6649,7 @@ case "$target" in
     if echo "$ld_ver" | grep GNU > /dev/null; then
       # Doesn't work with gld on Solaris/x86 due to PR ld/12320.
       gcc_cv_ld_as_needed=no
+      gcc_cv_ld_use_as_needed_ldscript=no
     fi
     ;;
 esac
@@ -6702,6 +6661,10 @@ if test x"$gcc_cv_ld_as_needed" = xyes; then
 [Define to the linker option to ignore unused dependencies.])
 	AC_DEFINE_UNQUOTED(LD_NO_AS_NEEDED_OPTION, "$gcc_cv_ld_no_as_needed_option",
 [Define to the linker option to keep unused dependencies.])
+fi
+if test x"$gcc_cv_ld_use_as_needed_ldscript" = xyes; then
+	AC_DEFINE(USE_LD_AS_NEEDED_LDSCRIPT, 1,
+[Define if your linker supports AS_NEEDED in linker scripts.])
 fi
 
 AC_MSG_CHECKING(linker mapfile support for clearing hardware capabilities)

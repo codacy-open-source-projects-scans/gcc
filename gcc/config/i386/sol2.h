@@ -51,21 +51,18 @@ along with GCC; see the file COPYING3.  If not see
 #undef TARGET_SUN_TLS
 #define TARGET_SUN_TLS 1
 
-#undef CPP_SPEC
-#define CPP_SPEC "%(cpp_subtarget)"
-
 #undef CC1_SPEC
 #define CC1_SPEC "%(cc1_cpu) " ASAN_CC1_SPEC SCTF_CC1_SPEC \
   " %{mx32:%e-mx32 is not supported on Solaris}"
 
 /* GNU as understands --32 and --64, but the native Solaris
-   assembler requires -xarch=generic or -xarch=generic64 instead.  */
+   assembler requires -m32 or -m64 instead.  */
 #if HAVE_GNU_AS
 #define ASM_CPU32_DEFAULT_SPEC "--32"
 #define ASM_CPU64_DEFAULT_SPEC "--64"
 #else
-#define ASM_CPU32_DEFAULT_SPEC "-xarch=generic"
-#define ASM_CPU64_DEFAULT_SPEC "-xarch=generic64"
+#define ASM_CPU32_DEFAULT_SPEC "-m32"
+#define ASM_CPU64_DEFAULT_SPEC "-m64"
 #endif
 
 #if !HAVE_GNU_AS
@@ -101,7 +98,6 @@ along with GCC; see the file COPYING3.  If not see
    %{mpc80:crtprec80.o%s}"
 
 #define SUBTARGET_CPU_EXTRA_SPECS \
-  { "cpp_subtarget",	 CPP_SUBTARGET_SPEC },		\
   { "asm_cpu",		 ASM_CPU_SPEC },		\
   { "asm_cpu_default",	 ASM_CPU_DEFAULT_SPEC },	\
 

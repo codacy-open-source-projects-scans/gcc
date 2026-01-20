@@ -1416,6 +1416,7 @@ OBJS = \
 	adjust-alignment.o \
 	alias.o \
 	alloc-pool.o \
+	asm-toplevel.o \
 	auto-inc-dec.o \
 	auto-profile.o \
 	bb-reorder.o \
@@ -1463,6 +1464,7 @@ OBJS = \
 	dce.o \
 	ddg.o \
 	debug.o \
+	hierarchical_discriminator.o \
 	dep-fusion.o \
 	df-core.o \
 	df-problems.o \
@@ -1749,6 +1751,7 @@ OBJS = \
 	tree-data-ref.o \
 	tree-dfa.o \
 	tree-diagnostic.o \
+	tree-diagnostic-cfg.o \
 	tree-diagnostic-client-data-hooks.o \
 	tree-dump.o \
 	tree-eh.o \
@@ -1869,6 +1872,7 @@ OBJS = \
 # Objects in libcommon.a, potentially used by all host binaries and with
 # no target dependencies.
 OBJS-libcommon = \
+	custom-sarif-properties/cfg.o \
 	custom-sarif-properties/digraphs.o \
 	custom-sarif-properties/state-graphs.o \
 	diagnostic-global-context.o \
@@ -1878,6 +1882,8 @@ OBJS-libcommon = \
 	diagnostics/context.o \
 	diagnostics/digraphs.o \
 	diagnostics/dumping.o \
+	diagnostics/digraphs-to-dot.o \
+	diagnostics/digraphs-to-dot-from-cfg.o \
 	diagnostics/file-cache.o \
 	diagnostics/output-spec.o \
 	diagnostics/html-sink.o \
@@ -1899,6 +1905,7 @@ OBJS-libcommon = \
 	graphviz.o pex.o \
 	pretty-print.o intl.o \
 	json.o json-parsing.o \
+	pub-sub.o \
 	xml.o \
 	sbitmap.o \
 	vec.o input.o hash-table.o ggc-none.o memory-block.o \

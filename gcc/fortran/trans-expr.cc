@@ -8191,7 +8191,7 @@ gfc_conv_procedure_call (gfc_se * se, gfc_symbol * sym,
 			&& GFC_CLASS_TYPE_P (TREE_TYPE (tmp)))
 		       || e->ts.type == BT_DERIVED)
 		tmp = gfc_deallocate_alloc_comp (e->ts.u.derived, tmp,
-						 parm_rank);
+						 parm_rank, 0, true);
 	      else if (e->ts.type == BT_CLASS)
 		tmp = gfc_deallocate_alloc_comp (CLASS_DATA (e)->ts.u.derived,
 						 tmp, parm_rank);
@@ -13612,7 +13612,8 @@ copyable_array_p (gfc_expr * expr)
       return false;
 
     case_bt_struct:
-      return !expr->ts.u.derived->attr.alloc_comp;
+      return (!expr->ts.u.derived->attr.alloc_comp
+	      && !expr->ts.u.derived->attr.pdt_type);
 
     default:
       break;

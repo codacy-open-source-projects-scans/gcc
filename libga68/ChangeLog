@@ -1,3 +1,39 @@
+2026-01-20  Pietro Monteiro  <pietro@sociotechnical.xyz>
+
+	* ga68-alloc.c (_libga68_malloc_leaf): New function.
+	* ga68-posix.c (_libga68_posixfgets): Use _libga68_malloc_leaf
+	instead of _libga68_malloc.
+	* ga68-unistr.c (_libga68_u32_to_u8): Likewise.
+	(_libga68_u8_to_u32): Likewise.
+	* ga68.h (_libga68_malloc_leaf): New prototype.
+	* ga68.map: Add _libga68_malloc_leaf to the global map.
+
+2026-01-19  Mohammad-Reza Nabipoor  <mnabipoor@gnu.org>
+
+	* configure.ac (--enable-algol68-gc): Change default value to `auto'.
+	* configure: Re-generate.
+
+2026-01-12  Pietro Monteiro  <pietro@sociotechnical.xyz>
+
+	* configure: Regenerate.
+	* configure.ac: Add --enable-algol68-gc-debug option and
+	define GC_DEBUG accordingly.
+	* ga68-alloc.c (_libga68_realloc): Use the C macro version of
+	the GC function.
+	(_libga68_realloc_unchecked): Likewise.
+	(_libga68_malloc): Likewise.
+
+2026-01-10  Pietro Monteiro  <pietro@sociotechnical.xyz>
+
+	* ga68-posix.c (_libga68_posixexit): New function.
+	* ga68.h (_libga68_posixexit): New prototype.
+	(_libga68_set_exit_status): Delete prototype.
+	* ga68.map: Remove _libga68_set_exit_status from and add
+	_libga68_posixexit to the global map.
+	* libga68.c: include <stdlib.h>.
+	(_libga68_set_exit_status): Delete function.
+	(main): Return EXIT_SUCCESS.
+
 2026-01-02  Jose E. Marchesi  <jose.marchesi@oracle.com>
 
 	* sppp.awk: Avoid conditional expression.

@@ -70,6 +70,7 @@ void _libga68_bounds_mismatch (const char *filename, unsigned int lineno,
 
 void _libga68_init_heap (void) GA68_HIDDEN;
 void *_libga68_malloc (size_t size);
+void *_libga68_malloc_leaf (size_t size);
 void *_libga68_malloc_internal (size_t size) GA68_HIDDEN;
 void *_libga68_realloc (void *ptr, size_t size) GA68_HIDDEN;
 void *_libga68_realloc_unchecked (void *ptr, size_t size) GA68_HIDDEN;
@@ -84,6 +85,7 @@ long double _libga68_longlongrandom (void);
 /* ga68-posix.c  */
 
 int _libga68_posixerrno (void);
+void _libga68_posixexit (int) __attribute__ ((__noreturn__));
 void _libga68_posixperror (uint32_t *s, size_t len, size_t stride);
 uint32_t *_libga68_posixstrerror (int errnum, size_t *len);
 long long int _libga68_posixfsize (int fd);
@@ -124,7 +126,5 @@ uint32_t *_libga68_u8_to_u32 (const uint8_t *s, size_t n,
 
 extern int _libga68_argc;
 extern char **_libga68_argv;
-
-void _libga68_set_exit_status (int status);
 
 #endif /* ! GA68_H */
