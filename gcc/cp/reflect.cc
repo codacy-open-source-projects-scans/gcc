@@ -1780,11 +1780,7 @@ static tree
 eval_is_user_provided (tree r)
 {
   r = maybe_get_first_fn (r);
-  if (TREE_CODE (r) == FUNCTION_DECL
-      && user_provided_p (r)
-      // TODO: user_provided_p is false for non-members defaulted on
-      // first declaration.
-      && (!DECL_NAMESPACE_SCOPE_P (r) || !DECL_DELETED_FN (r)))
+  if (TREE_CODE (r) == FUNCTION_DECL && user_provided_p (r))
     return boolean_true_node;
   else
     return boolean_false_node;
@@ -1853,19 +1849,15 @@ eval_is_enumerator (const_tree r)
     return boolean_false_node;
 }
 
-/* Get the linkage name for T, or NULL_TREE, if N/A.  */
+/* Get the linkage name for T, or NULL_TREE for types with no name
+   or for typedefs.  */
 
 static tree
-type_linkage_name (tree t)
+reflection_type_linkage_name (tree t)
 {
-  if (TYPE_NAME (t) == NULL_TREE
-      || !DECL_P (TYPE_NAME (t))
-      || (!DECL_IMPLICIT_TYPEDEF_P (TYPE_NAME (t))
-	  && TYPE_NAME (t) == TYPE_NAME (TYPE_MAIN_VARIANT (t))
-	  && !TYPE_MAIN_DECL (t)))
-    return NULL_TREE;
-
-  return TYPE_NAME (t);
+  if (OVERLOAD_TYPE_P (t) && !typedef_variant_p (t))
+    return TYPE_NAME (t);
+  return NULL_TREE;
 }
 
 /* Process std::meta::has_internal_linkage.
@@ -1885,7 +1877,7 @@ eval_has_internal_linkage (tree r, reflect_kind kind)
   r = STRIP_TEMPLATE (r);
   if (TYPE_P (r))
     {
-      r = type_linkage_name (r);
+      r = reflection_type_linkage_name (r);
       if (!r)
 	return boolean_false_node;
     }
@@ -1912,7 +1904,7 @@ eval_has_module_linkage (tree r, reflect_kind kind)
   r = STRIP_TEMPLATE (r);
   if (TYPE_P (r))
     {
-      r = type_linkage_name (r);
+      r = reflection_type_linkage_name (r);
       if (!r)
 	return boolean_false_node;
     }
@@ -1942,7 +1934,7 @@ eval_has_external_linkage (tree r, reflect_kind kind)
   r = STRIP_TEMPLATE (r);
   if (TYPE_P (r))
     {
-      r = type_linkage_name (r);
+      r = reflection_type_linkage_name (r);
       if (!r)
 	return boolean_false_node;
     }
@@ -1970,7 +1962,7 @@ eval_has_c_language_linkage (tree r, reflect_kind kind)
   r = STRIP_TEMPLATE (r);
   if (TYPE_P (r))
     {
-      r = type_linkage_name (r);
+      r = reflection_type_linkage_name (r);
       if (!r)
 	return boolean_false_node;
     }
@@ -1997,7 +1989,7 @@ eval_has_linkage (tree r, reflect_kind kind)
   r = STRIP_TEMPLATE (r);
   if (TYPE_P (r))
     {
-      r = type_linkage_name (r);
+      r = reflection_type_linkage_name (r);
       if (!r)
 	return boolean_false_node;
     }
@@ -6629,8 +6621,9 @@ class_members_of (location_t loc, const constexpr_ctx *ctx, tree r,
 				  get_reflection_raw (loc, m));
 	}
     }
-  /* TYPE_DECLs in TYPE_FIELDS come after other decls, so for members_of
-     the declaration order is not preserved.  */
+  /* TYPE_DECLs in TYPE_FIELDS come after other decls due to the "struct
+     stat hack" (see finish_member_declaration), so for members_of the
+     declaration order is not preserved.  */
   if (kind == METAFN_MEMBERS_OF && elts)
     elts->qsort (members_cmp);
   if (kind == METAFN_MEMBERS_OF && !implicitly_declared.is_empty ())
