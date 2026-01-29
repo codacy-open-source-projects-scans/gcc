@@ -46,7 +46,6 @@ static tree verify_stmt_tree_r (tree *, int *, void *);
 
 static tree handle_init_priority_attribute (tree *, tree, tree, int, bool *);
 static tree handle_abi_tag_attribute (tree *, tree, tree, int, bool *);
-static tree handle_contract_attribute (tree *, tree, tree, int, bool *);
 static tree handle_no_dangling_attribute (tree *, tree, tree, int, bool *);
 static tree handle_annotation_attribute (tree *, tree, tree, int, bool *);
 
@@ -1469,6 +1468,27 @@ c_build_qualified_type (tree type, int type_quals, tree /* orig_qual_type */,
 			size_t /* orig_qual_indirect */)
 {
   return cp_build_qualified_type (type, type_quals);
+}
+
+/* Implementation of the build_lang_qualified_type langhook.  */
+tree
+cxx_build_lang_qualified_type (tree type, tree otype, int type_quals)
+{
+  /* Only handle ARRAY_TYPEs using cp_build_qualified_type, so that
+     quals are pushed to the element type.  That is needed for PR101312.
+     For other types just keep using build_qualified_type with
+     cxx_copy_lang_qualifiers if needed, otherwise we can run into
+     issues with FUNCTION_TYPEs with cv-qualifier-seq vs. type-specifier,
+     or REFERENCE_TYPE which will error on certain TYPE_QUALS.  */
+  if (TREE_CODE (type) == ARRAY_TYPE)
+    return cp_build_qualified_type (type, type_quals);
+  else
+    {
+      tree ret = build_qualified_type (type, type_quals);
+      if (otype)
+	ret = cxx_copy_lang_qualifiers (ret, otype);
+      return ret;
+    }
 }
 
 
@@ -4104,50 +4124,6 @@ called_fns_equal (tree t1, tree t2)
     return cp_tree_equal (t1, t2);
 }
 
-bool comparing_override_contracts;
-
-/* In a component reference, return the innermost object of
-   the postfix-expression.  */
-
-static tree
-get_innermost_component (tree t)
-{
-  gcc_assert (TREE_CODE (t) == COMPONENT_REF);
-  while (TREE_CODE (t) == COMPONENT_REF)
-    t = TREE_OPERAND (t, 0);
-  return t;
-}
-
-/* Returns true if T is a possibly converted 'this' or '*this' expression.  */
-
-static bool
-is_this_expression (tree t)
-{
-  t = get_innermost_component (t);
-  /* See through deferences and no-op conversions.  */
-  if (INDIRECT_REF_P (t))
-    t = TREE_OPERAND (t, 0);
-  if (TREE_CODE (t) == NOP_EXPR)
-    t = TREE_OPERAND (t, 0);
-  return is_this_parameter (t);
-}
-
-static bool
-comparing_this_references (tree t1, tree t2)
-{
-  return is_this_expression (t1) && is_this_expression (t2);
-}
-
-static bool
-equivalent_member_references (tree t1, tree t2)
-{
-  if (!comparing_this_references (t1, t2))
-    return false;
-  t1 = TREE_OPERAND (t1, 1);
-  t2 = TREE_OPERAND (t2, 1);
-  return t1 == t2;
-}
-
 /* Return truthvalue of whether T1 is the same tree structure as T2.
    Return 1 if they are the same. Return 0 if they are different.  */
 
@@ -4163,6 +4139,26 @@ cp_tree_equal (tree t1, tree t2)
 
   code1 = TREE_CODE (t1);
   code2 = TREE_CODE (t2);
+
+  if (comparing_contracts)
+    {
+      /* When comparing contracts, one declaration may already be
+	 genericized. Check for invisible references and unravel them
+	 for comparison purposes. Remember that a parameter is an invisible
+	 reference so we can compare the parameter types accordingly.  */
+      if (code1 == VIEW_CONVERT_EXPR
+	  && is_invisiref_parm (TREE_OPERAND(t1, 0)))
+	{
+	  t1 = TREE_OPERAND(t1, 0);
+	  code1 = TREE_CODE(t1);
+	}
+      if (code2 == VIEW_CONVERT_EXPR
+	  && is_invisiref_parm (TREE_OPERAND(t2, 0)))
+	{
+	  t2 = TREE_OPERAND(t2, 0);
+	  code2 = TREE_CODE(t2);
+	}
+    }
 
   if (code1 != code2)
     return false;
@@ -4326,8 +4322,14 @@ cp_tree_equal (tree t1, tree t2)
 	   with parameters with identical contexts.  */
 	return false;
 
-      if (same_type_p (TREE_TYPE (t1), TREE_TYPE (t2)))
+      if (same_type_p (TREE_TYPE (t1), TREE_TYPE (t2)) || comparing_contracts)
 	{
+	  /* When comparing contracts, we already know the declarations match,
+	    and that the arguments have the same type. If one of the declarations
+	    has been genericised, then the type of arguments in that declaration
+	    will be adjusted for an invisible reference and the type comparison
+	    would spuriosly fail. The only thing we care about when comparing
+	    contractsis that we're using the same parameter.  */
 	  if (DECL_ARTIFICIAL (t1) ^ DECL_ARTIFICIAL (t2))
 	    return false;
 	  if (CONSTRAINT_VAR_P (t1) ^ CONSTRAINT_VAR_P (t2))
@@ -4523,13 +4525,6 @@ cp_tree_equal (tree t1, tree t2)
 			  PACK_INDEX_INDEX (t2)))
 	return false;
       return true;
-
-    case COMPONENT_REF:
-      /* If we're comparing contract conditions of overrides, member references
-	 compare equal if they designate the same member.  */
-      if (comparing_override_contracts)
-	return equivalent_member_references (t1, t2);
-      break;
 
     case REFLECT_EXPR:
       if (!cp_tree_equal (REFLECT_EXPR_HANDLE (t1), REFLECT_EXPR_HANDLE (t2))
@@ -5617,10 +5612,6 @@ static const attribute_spec std_attributes[] =
     handle_carries_dependency_attribute, NULL },
   { "indeterminate", 0, 0, true, false, false, false,
     handle_indeterminate_attribute, NULL },
-  { "pre", 0, -1, false, false, false, false,
-    handle_contract_attribute, NULL },
-  { "post", 0, -1, false, false, false, false,
-    handle_contract_attribute, NULL }
 };
 
 const scoped_attribute_specs std_attribute_table =
@@ -5885,17 +5876,6 @@ handle_abi_tag_attribute (tree* node, tree name, tree args,
 
  fail:
   *no_add_attrs = true;
-  return NULL_TREE;
-}
-
-/* Perform checking for contract attributes.  */
-
-tree
-handle_contract_attribute (tree *ARG_UNUSED (node), tree ARG_UNUSED (name),
-			   tree ARG_UNUSED (args), int ARG_UNUSED (flags),
-			   bool *ARG_UNUSED (no_add_attrs))
-{
-  /* TODO: Is there any checking we could do here?  */
   return NULL_TREE;
 }
 

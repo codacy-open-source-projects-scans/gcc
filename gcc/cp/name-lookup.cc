@@ -4747,7 +4747,8 @@ cp_binding_level_descriptor (cp_binding_level *scope)
     "template-explicit-spec-scope",
     "transaction-scope",
     "openmp-scope",
-    "lambda-scope"
+    "lambda-scope",
+    "contract-check-scope"
   };
   static_assert (ARRAY_SIZE (scope_kind_names) == sk_count,
 		 "must keep names aligned with scope_kind enum");
@@ -4838,6 +4839,7 @@ begin_scope (scope_kind kind, tree entity)
     case sk_scoped_enum:
     case sk_transaction:
     case sk_omp:
+    case sk_contract:
     case sk_stmt_expr:
     case sk_lambda:
       scope->keep = keep_next_level_flag;
@@ -7929,7 +7931,17 @@ lookup_name_fuzzy (tree name, enum lookup_name_fuzzy_kind kind, location_t loc)
 {
   gcc_assert (TREE_CODE (name) == IDENTIFIER_NODE);
 
-  /* First, try some well-known names in the C++ standard library, in case
+  /* Look up function-like macros first; maybe misusing them. */
+  auto cpp_node = cpp_lookup (parse_in,
+			      (const unsigned char*)IDENTIFIER_POINTER (name),
+			      IDENTIFIER_LENGTH (name));
+  if (cpp_node && cpp_fun_like_macro_p (cpp_node))
+    return name_hint
+      (nullptr,
+       std::make_unique<macro_like_function_used> (loc,
+						   IDENTIFIER_POINTER (name)));
+
+  /* Then, try some well-known names in the C++ standard library, in case
      the user forgot a #include.  */
   const char *header_hint
     = get_cp_stdlib_header_for_name (IDENTIFIER_POINTER (name));

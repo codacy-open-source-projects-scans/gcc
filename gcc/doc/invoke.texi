@@ -224,13 +224,12 @@ in the following sections.
 -fconcepts  -fconcepts-diagnostics-depth=@var{n}
 -fconstexpr-depth=@var{n}  -fconstexpr-cache-depth=@var{n}
 -fconstexpr-loop-limit=@var{n}  -fconstexpr-ops-limit=@var{n}
--fcontracts  -fcontract-assumption-mode=@r{[}on@r{|}off@r{]}
--fcontract-build-level=@r{[}off@r{|}default@r{|}audit@r{]}
--fcontract-continuation-mode=@r{[}on@r{|}off@r{]}
--fcontract-mode=@r{[}on@r{|}off@r{]}
--fcontract-role=@var{name}:@var{default},@var{audit},@var{axiom}
--fcontract-semantic=@r{[}default@r{|}audit@r{|}axiom@r{]}:@var{semantic}
--fcontract-strict-declarations=@r{[}on@r{|}off@r{]}
+-fcontracts
+-fcontract-evaluation-semantic=@r{[}ignore@r{|}observe@r{|}enforce@r{|}quick_enforce@r{]}
+-fcontracts-conservative-ipa  -fcontract-checks-outlined
+-fcontract-disable-optimized-checks
+-fcontracts-client-check=@r{[}none@r{|}pre@r{|}all@r{]}
+-fcontracts-definition-check=@r{[}on@r{|}off@r{]}
 -fcoroutines  -fdiagnostics-all-candidates
 -fno-elide-constructors
 -fno-enforce-eh-specs
@@ -3321,84 +3320,86 @@ The default is 33554432 (1<<25).
 @opindex fcontracts
 @opindex fno-contracts
 @item -fcontracts
-Enable experimental support for the C++ Contracts feature, as briefly
-added to and then removed from the C++20 working paper (N4820).  The
-implementation also includes proposed enhancements from papers P1290,
-P1332, and P1429.  This functionality is intended mostly for those
-interested in experimentation towards refining the feature to get it
-into shape for a future C++ standard.
+Enable support for the C++ Contracts feature, as specified in the C++26
+working draft (N5003).
 
-On violation of a checked contract, the violation handler is called.
-Users can replace the violation handler by defining
+On violation of an enforced or observed contract (see @option{-fcontract-evaluation-semantic}
+below), a violation handler is called; the standard library provides a default
+handler that emits information about the contract that failed.
+
+Users can replace the default violation handler by defining
 @smallexample
 void
-handle_contract_violation (const std::experimental::contract_violation&);
+handle_contract_violation (const std::contracts::contract_violation&);
 @end smallexample
 
-There are different sets of additional flags that can be used together
-to specify which contracts will be checked and how, for N4820
-contracts, P1332 contracts, or P1429 contracts; these sets cannot be
-used together.
+@opindex fcontract-evaluation-semantic
+@item -fcontract-evaluation-semantic=@var{semantic}
+Set the semantic with which contracts will be evaluated to @var{semantic}.
 
-@table @gcctabopt
-@opindex fcontract-mode
-@item -fcontract-mode=@r{[}on@r{|}off@r{]}
-Control whether any contracts have any semantics at all.  Defaults to on.
+Available values for the evaluation mode are:
 
-@opindex fcontract-assumption-mode
-@item -fcontract-assumption-mode=@r{[}on@r{|}off@r{]}
-[N4820] Control whether contracts with level @samp{axiom}
-should have the assume semantic.  Defaults to on.
+'@code{ignored}' The contract checks will be elided, with no checking added at
+either compile or runtime.
 
-@opindex fcontract-build-level
-@item -fcontract-build-level=@r{[}off@r{|}default@r{|}audit@r{]}
-[N4820] Specify which level of contracts to generate checks
-for.  Defaults to @samp{default}.
+'@code{observed}' The contract checks are performed (at runtime) and, if one
+fails, a handler is called that allows actions such as logging or emitting
+run-time warnings. When the handler returns, the execution of the code will
+continue.  At compile-time the checks are performed for @code{constexpr}
+evaluations, in this case a diagnostic is emitted if the check fails.
 
-@opindex fcontract-continuation-mode
-@item -fcontract-continuation-mode=@r{[}on@r{|}off@r{]}
-[N4820] Control whether to allow the program to continue executing
-after a contract violation.  That is, do checked contracts have the
-@samp{maybe} semantic described below rather than the @samp{never}
-semantic.  Defaults to off.
+'@code{enforce}' The contract checks are performed and the handler is called if
+one fails.  When the handler returns the execution of the code is terminated
+preventing it from continuing past the failed case.  At compile-time the checks
+are applied to @code{constexpr} and, if one fails, the program is ill-formed;
+an error will be emitted.
 
-@opindex fcontract-role
-@item -fcontract-role=@var{name}:@var{default},@var{audit},@var{axiom}
-[P1332] Specify the concrete semantics for each contract level
-of a particular contract role.
+'@code{quick_enforce}' The contract checks are performed (at runtime) and, if one
+fails, the execution is terminated immediately (without calling any handler).
+At compile-time there is no difference in behaviour between this option and
+the @code{enforce} case, since no handler is invoked at compile time.
 
-@opindex fcontract-semantic
-@item -fcontract-semantic=@r{[}default@r{|}audit@r{|}axiom@r{]}:@var{semantic}
-[P1429] Specify the concrete semantic for a particular
-contract level.
+@opindex fcontracts-conservative-ipa
+@opindex fno-contracts-conservative-ipa
+@item -fcontracts-conservative-ipa
+This prevents inter-procedural analysis from taking action when the body
+of an inline function is visible in a given TU.  This allows for the case
+that contract evaluation conditions are permitted to differ between TUs which
+means that such actions would be potentially incorrect.
 
-@opindex fcontract-strict-declarations
-@item -fcontract-strict-declarations=@r{[}on@r{|}off@r{]}
-Control whether to reject adding contracts to a function after its
-first declaration.  Defaults to off.
-@end table
+@opindex fcontract-checks-outlined
+@opindex fno-contract-checks-outlined
+@item -fcontract-checks-outlined
+By default, contract checks for @code{pre} and @code{post} condition checks are
+expanded in-line into function bodies.  This option causes a small function to
+be created instead (containing the checks) that is called in the relevant
+position.  This permits different criteria to be applied to the compilation of
+the checking and the remainder of the function body.
 
-The possible concrete semantics for that can be specified with
-@samp{-fcontract-role} or @samp{-fcontract-semantic} are:
+@opindex fcontract-disable-optimized-checks
+@opindex fno-contract-disable-optimized-checks
+@item -fcontract-disable-optimized-checks
+When @code{pre} and @code{post} condition checks are outlined (using
+@option{-fcontract-checks-outlined}), this option disables the optimisation 
+steps for those functions which can avoid unwanted elision of checking steps.
 
-@table @code
-@item ignore
-This contract has no effect.
+@opindex fcontracts-client-check
+@item -fcontracts-client-check=@var{mode}
+This option enables insertion of checks at call sites (caller-side checking).
 
-@item assume
-This contract is treated like C++23 @code{[[assume]]}.
+The value of @var{mode} determines which contract checks are made:
+'@code{none}' No caller/client side checking (default)
 
-@item check_never_continue
-@itemx never
-@itemx abort
-This contract is checked.  If it fails, the violation handler is
-called.  If the handler returns, @code{std::terminate} is called.
+'@code{pre}' Preconditions are checked at the caller/client side.
 
-@item check_maybe_continue
-@itemx maybe
-This contract is checked.  If it fails, the violation handler is
-called.  If the handler returns, execution continues normally.
-@end table
+'@code{all}' Both pre and post-conditions are checked at the caller/client side.
+
+@opindex fcontracts-definition-check
+@item -fcontracts-definition-check=@var{mode}
+This option introduces the ability to disable callee/definition-side checks,
+which are otherwise enabled by default when the contracts feature is active.
+
+The variable @var{mode} has the values '@code{on}' and '@code{off}'.
 
 @opindex fcoroutines
 @opindex fno-coroutines
@@ -23637,7 +23638,8 @@ Enable the Checked Pointer Arithmetic instructions.
 @item sve-b16b16
 Enable the SVE non-widening brain floating-point (@code{bf16}) extension.
 This only has an effect when @code{sve2} or @code{sme2} are also enabled.
-
+@item sve-bfscale
+Enable the SVE_BFSCALE extension.
 @end table
 
 Feature @option{crypto} implies @option{aes}, @option{sha2}, and @option{simd},
