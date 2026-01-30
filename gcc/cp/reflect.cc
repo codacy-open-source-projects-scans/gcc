@@ -2805,13 +2805,12 @@ static tree
 eval_has_template_arguments (tree r)
 {
   r = MAYBE_BASELINK_FUNCTIONS (r);
-  /* Presumably for
+  /* For
        typedef cls_tmpl<int> TYPE;
-     'has_template_arguments (^^TYPE)' should be false?  */
-  if (TYPE_P (r)
-      && typedef_variant_p (r)
-      && !alias_template_specialization_p (r, nt_opaque))
-    return boolean_false_node;
+     'has_template_arguments (^^TYPE)' should be false.  */
+  if (TYPE_P (r) && typedef_variant_p (r))
+    return (alias_template_specialization_p (r, nt_opaque)
+	    ? boolean_true_node : boolean_false_node);
   if (primary_template_specialization_p (r)
       || variable_template_specialization_p (r))
     return boolean_true_node;
@@ -3768,6 +3767,7 @@ eval_annotations_of (location_t loc, const constexpr_ctx *ctx, tree r,
       type = remove_const (type);
     }
 
+  r = maybe_get_first_fn (r);
   if (kind == REFLECT_BASE)
     {
       gcc_assert (TREE_CODE (r) == TREE_BINFO);
@@ -3919,6 +3919,7 @@ static tree
 eval_type_trait (location_t loc, tree type1, tree type2, cp_trait_kind kind)
 {
   tree r = finish_trait_expr (loc, kind, type1, type2);
+  gcc_checking_assert (r != error_mark_node);
   STRIP_ANY_LOCATION_WRAPPER (r);
   return r;
 }
@@ -6563,7 +6564,7 @@ class_members_of (location_t loc, const constexpr_ctx *ctx, tree r,
     {
       tree m = field;
       if (TREE_CODE (field) == FIELD_DECL && DECL_ARTIFICIAL (field))
-	continue; /* Ignore bases.  */
+	continue; /* Ignore bases and the vptr.  */
       else if (DECL_SELF_REFERENCE_P (field))
 	continue;
       else if (TREE_CODE (field) == TYPE_DECL)
@@ -7991,9 +7992,17 @@ splice (tree refl)
     refl = fold_non_dependent_expr (refl, tf_warning_or_error, true);
   else
     refl = cxx_constant_value (refl);
+  if (refl == error_mark_node)
+    {
+      gcc_checking_assert (seen_error ());
+      return error_mark_node;
+    }
   if (!REFLECT_EXPR_P (refl))
-    /* I don't wanna do your dirty work no more.  */
-    return error_mark_node;
+    {
+      error_at (cp_expr_loc_or_input_loc (refl), "splice argument must be an "
+		"expression of type %qs", "std::meta::info");
+      return error_mark_node;
+    }
 
   /* We are bringing some entity from the unevaluated expressions world
      to possibly outside of that, mark it used.  */
