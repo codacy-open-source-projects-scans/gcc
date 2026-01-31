@@ -5969,7 +5969,7 @@ equate_type_number_to_die (tree type, dw_die_ref type_die)
 static dw_die_ref maybe_create_die_with_external_ref (tree);
 struct GTY(()) sym_off_pair
 {
-  const char * GTY((skip)) sym;
+  const char *sym;
   unsigned HOST_WIDE_INT off;
 };
 static GTY(()) hash_map<tree, sym_off_pair> *external_die_map;
@@ -8545,6 +8545,7 @@ generate_skeleton_bottom_up (skeleton_chain_node *parent)
 	       type unit.  Just move the DIE and its children back to
 	       the skeleton tree (in the main CU).  */
 	    remove_child_with_prev (c, prev);
+	    generate_skeleton_ancestor_tree (parent);
 	    add_child_die (parent->new_die, c);
 	    c = prev;
 	  }
