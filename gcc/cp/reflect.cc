@@ -5704,10 +5704,10 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
 	  memset (namep, 0, l + 1);
 	  l = 0;
 	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (f), k, field, value)
-	    if (field == NULL_TREE)
+	    if (integer_zerop (value))
+	      break;
+	    else if (field == NULL_TREE)
 	      {
-		if (integer_zerop (value))
-		  break;
 		namep[l] = tree_to_shwi (value);
 		++l;
 	      }
@@ -5715,8 +5715,6 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
 	      {
 		tree lo = TREE_OPERAND (field, 0);
 		tree hi = TREE_OPERAND (field, 1);
-		if (integer_zerop (value))
-		  break;
 		unsigned HOST_WIDE_INT m = tree_to_uhwi (hi);
 		for (l = tree_to_uhwi (lo); l <= m; ++l)
 		  namep[l] = tree_to_shwi (value);
@@ -8154,11 +8152,9 @@ check_out_of_consteval_use (tree expr, bool complain/*=true*/)
       if (!consteval_only_p (t))
 	return NULL_TREE;
 
+      /* Already escalated?  */
       if (current_function_decl
-	  /* Already escalated.  */
-	  && (DECL_IMMEDIATE_FUNCTION_P (current_function_decl)
-	      /* These functions are magic.  */
-	      || is_std_allocator_allocate (current_function_decl)))
+	  && DECL_IMMEDIATE_FUNCTION_P (current_function_decl))
 	{
 	  *walk_subtrees = false;
 	  return NULL_TREE;
@@ -8232,6 +8228,9 @@ compare_reflections (tree lhs, tree rhs)
   // ??? Can we do something better?
   lhs = maybe_get_first_fn (lhs);
   rhs = maybe_get_first_fn (rhs);
+
+  /* First handle reflection-specific comparisons, then fall back to
+     cp_tree_equal.  */
   if (lkind == REFLECT_PARM)
     {
       lhs = maybe_update_function_parm (lhs);
@@ -8245,27 +8244,19 @@ compare_reflections (tree lhs, tree rhs)
 	    && tree_int_cst_equal (TREE_VEC_ELT (lhs, 3),
 				   TREE_VEC_ELT (rhs, 3))
 	    && TREE_VEC_ELT (lhs, 4) == TREE_VEC_ELT (rhs, 4));
-
-  if (lhs == rhs)
-    return true;
-
-  /* Some trees are not shared.  */
-  if (TREE_CODE (lhs) == TREE_CODE (rhs))
-    switch (TREE_CODE (lhs))
-      {
-      case ARRAY_REF:
-      case COMPONENT_REF:
-      case REAL_CST:
-	return cp_tree_equal (lhs, rhs);
-      default:
-	break;
-      }
-
-  if (TYPE_P (lhs) && TYPE_P (rhs))
-    if (!typedef_variant_p (lhs) && !typedef_variant_p (rhs))
+  else if (lkind == REFLECT_ANNOTATION)
+    return lhs == rhs;
+  else if (TYPE_P (lhs) && TYPE_P (rhs))
+    {
+      /* Given "using A = int;", "^^int != ^^A" should hold.  */
+      if (typedef_variant_p (lhs) != typedef_variant_p (rhs))
+	return false;
+      /* This is for comparing function types.  E.g.,
+	  auto fn() -> int; type_of(^^fn) == ^^auto()->int;  */
       return same_type_p (lhs, rhs);
+    }
 
-  return false;
+  return cp_tree_equal (lhs, rhs);
 }
 
 /* Return true if T is a valid splice-type-specifier.
@@ -8305,8 +8296,7 @@ check_consteval_only_fn (tree decl)
   if (!DECL_IMMEDIATE_FUNCTION_P (decl)
       && consteval_only_p (decl)
       /* But if the function can be escalated, merrily we roll along.  */
-      && !immediate_escalating_function_p (decl)
-      && !is_std_allocator_allocate (decl))
+      && !immediate_escalating_function_p (decl))
     error_at (DECL_SOURCE_LOCATION (decl),
 	      "function of consteval-only type must be declared %qs",
 	      "consteval");

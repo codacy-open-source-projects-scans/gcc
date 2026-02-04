@@ -10485,6 +10485,40 @@ $as_echo "#define HAVE_INTTYPES_H 1" >>confdefs.h
 
 fi
 
+# Use <afunix.h> only if it exists,
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for afunix.h" >&5
+$as_echo_n "checking for afunix.h... " >&6; }
+if ${gcc_cv_header_afunix_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <winsock2.h>
+#include <afunix.h>
+int
+main ()
+{
+SOCKADDR_UN addr;
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_compile "$LINENO"; then :
+  gcc_cv_header_afunix_h=yes
+else
+  gcc_cv_header_afunix_h=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $gcc_cv_header_afunix_h" >&5
+$as_echo "$gcc_cv_header_afunix_h" >&6; }
+if test $gcc_cv_header_afunix_h = yes; then
+
+$as_echo "#define HAVE_AFUNIX_H 1" >>confdefs.h
+
+fi
+
 # Look for the ZSTD package.
 ZSTD_INCLUDE=
 ZSTD_LIB=
@@ -13096,21 +13130,6 @@ cat >>confdefs.h <<_ACEOF
 #define HAVE_GNU_AS $gnu_as_bool
 _ACEOF
 
-
-case "$target:$gnu_ld" in
-  *-*-solaris2*:no)
-    # While Solaris ld has -m32/-m64 it usually determines the ELF class
-    # from the input objects.
-    ;;
-  i?86-*-solaris2*:yes | x86_64-*-solaris2*:yes)
-    ld_32_opt=-melf_i386_sol2
-    ld_64_opt=-melf_x86_64_sol2
-    ;;
-  i?86-*-*:yes | x86_64-*-*:yes)
-    ld_32_opt=-melf_i386
-    ld_64_opt=-melf_x86_64
-    ;;
-esac
 
 count=a
 for f in $host_xm_file; do
@@ -21954,7 +21973,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 21957 "configure"
+#line 21976 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -22060,7 +22079,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 22063 "configure"
+#line 22082 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -25485,6 +25504,15 @@ case "$ORIGINAL_AS_FOR_TARGET" in
  ;;
 esac
 
+# Check if we are using GNU as if not already set.
+if test -z "$gas_flag"; then
+  if $gcc_cv_as --version 2>/dev/null | grep GNU > /dev/null; then
+    gas_flag=yes
+  else
+    gas_flag=no
+  fi
+fi
+
 if $gcc_cv_as --help 2>&1 | grep -- --fatal-warnings > /dev/null; then
   fw_as_opt=--fatal-warnings
 fi
@@ -25621,6 +25649,30 @@ cat >>confdefs.h <<_ACEOF
 #define PLUGIN_LD_SUFFIX "$PLUGIN_LD_SUFFIX"
 _ACEOF
 
+
+# Check if we are using GNU ld if not already set.
+if test -z "$gnu_ld_flag"; then
+  if $gcc_cv_ld --version 2>/dev/null | grep GNU > /dev/null; then
+    gnu_ld_flag=yes
+  else
+    gnu_ld_flag=no
+  fi
+fi
+
+case "$target:$gnu_ld_flag" in
+  *-*-solaris2*:no)
+    # While Solaris ld has -m32/-m64 it usually determines the ELF class
+    # from the input objects.
+    ;;
+  i?86-*-solaris2*:yes | x86_64-*-solaris2*:yes)
+    ld_32_opt=-melf_i386_sol2
+    ld_64_opt=-melf_x86_64_sol2
+    ;;
+  i?86-*-*:yes | x86_64-*-*:yes)
+    ld_32_opt=-melf_i386
+    ld_64_opt=-melf_x86_64
+    ;;
+esac
 
 # Check to see if we are using gold instead of ld
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether we are using gold" >&5
@@ -26112,6 +26164,28 @@ if ${gcc_cv_as_flags+:} false; then :
   $as_echo_n "(cached) " >&6
 else
    case "$target:$gas_flag" in
+  *-*-darwin*:*)
+                        case "$target" in
+      i?86-*-*)
+	gcc_cv_as_flags="-arch i386"
+	;;
+      powerpc64*-*-*)
+	gcc_cv_as_flags="-arch ppc64"
+	;;
+      powerpc*-*-*)
+	gcc_cv_as_flags="-arch ppc"
+	;;
+      x86_64-*-*)
+	gcc_cv_as_flags="-arch x86_64"
+	;;
+    esac
+    case "$target" in
+      i?86-*-* | x86_64-*-*)
+	as_32_opt="-arch i386"
+	as_64_opt="-arch x86_64"
+	;;
+    esac
+    ;;
   *-*-solaris2*:no)
         case "$target" in
       i?86-*-* | sparc-*-*)
@@ -26138,9 +26212,6 @@ else
     esac
     as_32_opt=--32
     as_64_opt=--64
-    ;;
-  powerpc*-*-darwin*:*)
-        gcc_cv_as_flags="-arch ppc"
     ;;
   amdgcn*:*)
             gcc_cv_as_flags="--filetype=obj -triple=amdgcn--amdhsa"
@@ -26793,7 +26864,7 @@ fi
 	    gcc_cv_initfini_array=yes
 	  fi
 	elif test x"$gcc_cv_as" != x -a x"$gcc_cv_ld" != x -a x"$gcc_cv_objdump" != x ; then
-	  case $target:$gas in
+	  case $target:$gas_flag in
 	    *:yes)
 	      sh_flags='"a"'
 	      sh_type='%progbits'
@@ -26808,7 +26879,7 @@ fi
 	      sh_quote='"'
 	      ;;
 	  esac
-	  case "$target:$gnu_ld" in
+	  case "$target:$gnu_ld_flag" in
 	    *:yes)
 	      cat > conftest.s <<EOF
 .section .dtors,$sh_flags,$sh_type
@@ -28372,7 +28443,7 @@ elif test x$gcc_cv_ld != x; then
 	;;
       # HP-UX ld uses -a flags to select between shared and archive.
       *-*-hpux*)
-	if test x"$gnu_ld" = xno; then
+	if test x"$gnu_ld_flag" = xno; then
 	  gcc_cv_ld_static_dynamic=yes
 	  gcc_cv_ld_static_option="-aarchive_shared"
 	  gcc_cv_ld_dynamic_option="-adefault"
@@ -28407,7 +28478,7 @@ $as_echo "$gcc_cv_ld_static_dynamic" >&6; }
 $as_echo_n "checking linker --version-script option... " >&6; }
 gcc_cv_ld_version_script=no
 ld_version_script_option=''
-if test $in_tree_ld = yes || test x"$gnu_ld" = xyes; then
+if test $in_tree_ld = yes || test x"$gnu_ld_flag" = xyes; then
   gcc_cv_ld_version_script=yes
   ld_version_script_option='--version-script'
 elif test x$gcc_cv_ld != x; then
@@ -28429,7 +28500,7 @@ $as_echo "$gcc_cv_ld_version_script" >&6; }
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking linker soname option" >&5
 $as_echo_n "checking linker soname option... " >&6; }
 gcc_cv_ld_soname=no
-if test $in_tree_ld = yes || test x"$gnu_ld" = xyes; then
+if test $in_tree_ld = yes || test x"$gnu_ld_flag" = xyes; then
   gcc_cv_ld_soname=yes
   ld_soname_option='-soname'
 elif test x$gcc_cv_ld != x; then
@@ -28459,7 +28530,7 @@ $as_echo_n "checking linker --demangle support... " >&6; }
     if test "$gcc_cv_gld_major_version" -eq 2 -a "$gcc_cv_gld_minor_version" -ge 14 -o "$gcc_cv_gld_major_version" -gt 2; then \
       gcc_cv_ld_demangle=yes
     fi
-  elif test x$gcc_cv_ld != x -a x"$gnu_ld" = xyes; then
+  elif test x$gcc_cv_ld != x -a x"$gnu_ld_flag" = xyes; then
     # Check if the GNU linker supports --demangle option
     if $gcc_cv_ld --help 2>&1 | grep no-demangle > /dev/null; then
       gcc_cv_ld_demangle=yes
@@ -33071,7 +33142,7 @@ gcc_cv_ld_ctf=no
 # Check for Solaris ld 1.3315 introduced in Solaris 11.4 SRU 84.  ld -z ctf
 # already went in in SRU 81, but lacked GNU CTF to Solaris CTF conversion.
 if $gcc_cv_ld --help 2>&1 | grep -- '-z ctf' > /dev/null \
-  && test x$gnu_ld = xno && test "$ld_vers_minor" -ge 3315; then
+  && test x$gnu_ld_flag = xno && test "$ld_vers_minor" -ge 3315; then
   gcc_cv_ld_ctf=yes
 
 $as_echo "#define HAVE_LD_CTF 1" >>confdefs.h
@@ -33354,7 +33425,7 @@ elif test x$gcc_cv_ld != x; then
       gcc_cv_ld_no_as_needed_option='--pop-state'
     fi
   fi
-  case "$target:$gnu_ld" in
+  case "$target:$gnu_ld_flag" in
     *-*-solaris2*:no)
       # Solaris 2 ld always supports -z ignore/-z record.  Prefer the native
       # forms.
