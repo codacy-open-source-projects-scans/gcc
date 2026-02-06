@@ -10728,9 +10728,9 @@ riscv_register_move_cost (machine_mode mode,
   if (from == V_REGS)
     {
       if (to_is_gpr)
-	return get_vector_costs ()->regmove->VR2GR;
+	return get_vr2gr_cost ();
       else if (to_is_fpr)
-	return get_vector_costs ()->regmove->VR2FR;
+	return get_vr2fr_cost ();
     }
 
   if (to == V_REGS)
@@ -14213,6 +14213,21 @@ get_gr2vr_cost ()
   return cost;
 }
 
+/* Return the cost of operation that move from vr to gpr.
+   It will take the value of --param=vr2gpr_cost if it is provided.
+   Or the default regmove->VR2GR will be returned.  */
+
+int
+get_vr2gr_cost ()
+{
+  int cost = get_vector_costs ()->regmove->VR2GR;
+
+  if (vr2gpr_cost != VR2GPR_COST_UNPROVIDED)
+    cost = vr2gpr_cost;
+
+  return cost;
+}
+
 /* Return the cost of moving data from floating-point to vector register.
    It will take the value of --param=fpr2vr-cost if it is provided.
    Otherwise the default regmove->FR2VR will be returned.  */
@@ -14224,6 +14239,21 @@ get_fr2vr_cost ()
 
   if (fpr2vr_cost != FPR2VR_COST_UNPROVIDED)
     cost = fpr2vr_cost;
+
+  return cost;
+}
+
+/* Return the cost of moving data from floating-point to vector register.
+   It will take the value of --param=fpr2vr-cost if it is provided.
+   Otherwise the default regmove->FR2VR will be returned.  */
+
+int
+get_vr2fr_cost ()
+{
+  int cost = get_vector_costs ()->regmove->VR2FR;
+
+  if (vr2fpr_cost != VR2FPR_COST_UNPROVIDED)
+    cost = vr2fpr_cost;
 
   return cost;
 }
@@ -14371,8 +14401,6 @@ extract_base_offset_in_addr (rtx mem, rtx *base, rtx *offset)
 static bool
 riscv_vector_mode_supported_any_target_p (machine_mode)
 {
-  if (TARGET_XTHEADVECTOR)
-    return false;
   return true;
 }
 
