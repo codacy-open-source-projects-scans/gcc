@@ -23728,7 +23728,7 @@ aarch64_mangle_type (const_tree type)
      The Windows Arm64 ABI uses just an address of the first variadic
      argument.  */
   if (!TARGET_AARCH64_MS_ABI
-      && lang_hooks.types_compatible_p (CONST_CAST_TREE (type), va_list_type))
+      && lang_hooks.types_compatible_p (const_cast<tree> (type), va_list_type))
     return "St9__va_list";
 
   /* Half-precision floating point types.  */
@@ -25661,7 +25661,8 @@ seq_cost_ignoring_scalar_moves (const rtx_insn *seq, bool speed)
 	  }
 	else
 	  {
-	    int this_cost = insn_cost (CONST_CAST_RTX_INSN (seq), speed);
+	    int this_cost = insn_cost (const_cast<struct rtx_insn *> (seq),
+				       speed);
 	    if (this_cost > 0)
 	      cost += this_cost;
 	    else
