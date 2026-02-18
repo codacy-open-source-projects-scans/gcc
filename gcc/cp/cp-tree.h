@@ -532,6 +532,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
       FNDECL_MANIFESTLY_CONST_EVALUATED (in FUNCTION_DECL)
       TARGET_EXPR_INTERNAL_P (in TARGET_EXPR)
       CONTRACT_CONST (in ASSERTION_, PRECONDITION_, POSTCONDITION_STMT)
+      DECL_HAS_DEFAULT_ARGUMENT_P (in PARM_DECL)
    5: IDENTIFIER_VIRTUAL_P (in IDENTIFIER_NODE)
       FUNCTION_RVALUE_QUALIFIED (in FUNCTION_TYPE, METHOD_TYPE)
       CALL_EXPR_REVERSE_ARGS (in CALL_EXPR, AGGR_INIT_EXPR)
@@ -5329,6 +5330,12 @@ get_vec_init_expr (tree t)
 #define MULTIPLE_NAMES_PARM_P(NODE) \
   TREE_LANG_FLAG_2 (PARM_DECL_CHECK (NODE))
 
+/* Nonzero for PARM_DECL node means that at least one block scope extern
+   for the corresponding FUNCTION_DECL provided default argument for this
+   parameter.  */
+#define DECL_HAS_DEFAULT_ARGUMENT_P(NODE) \
+  TREE_LANG_FLAG_4 (PARM_DECL_CHECK (NODE))
+
 /* Nonzero for a FIELD_DECL who's NSMDI is currently being
    instantiated.  */
 #define DECL_INSTANTIATING_NSDMI_P(NODE) \
@@ -7105,6 +7112,7 @@ enum cp_built_in_function {
   CP_BUILT_IN_SOURCE_LOCATION,
   CP_BUILT_IN_EH_PTR_ADJUST_REF,
   CP_BUILT_IN_IS_STRING_LITERAL,
+  CP_BUILT_IN_CONSTEXPR_DIAG,
   CP_BUILT_IN_LAST
 };
 
@@ -9542,12 +9550,15 @@ struct push_access_scope_guard
 class cexpr_str
 {
 public:
+  cexpr_str () : message (NULL_TREE) {}
   cexpr_str (tree message) : message (message) {}
   cexpr_str (const cexpr_str &) = delete;
   ~cexpr_str () { XDELETEVEC (buf); }
 
-  bool type_check (location_t location);
-  bool extract (location_t location, const char * & msg, int &len);
+  bool type_check (location_t location, bool allow_char8_t = false);
+  bool extract (location_t location, const char * &msg, int &len,
+		const constexpr_ctx * = NULL,  bool * = NULL,
+		bool * = NULL, tree * = NULL);
   bool extract (location_t location, tree &str);
   tree message;
 private:
