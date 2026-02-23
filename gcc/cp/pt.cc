@@ -7690,10 +7690,12 @@ convert_nontype_argument (tree type, tree expr, tsubst_flags_t complain)
 	  /* EXPR may have become value-dependent.  */
 	  val_dep_p = value_dependent_expression_p (expr);
 	}
-      else if (TYPE_PTR_OR_PTRMEM_P (type))
+      else if (TYPE_PTR_OR_PTRMEM_P (type)
+	       || NULLPTR_TYPE_P (type))
 	{
 	  tree folded = maybe_constant_value (expr, NULL_TREE, mce_true);
-	  if (TYPE_PTR_P (type) ? integer_zerop (folded)
+	  if ((TYPE_PTR_P (type) || NULLPTR_TYPE_P (type))
+	      ? integer_zerop (folded)
 	      : null_member_pointer_value_p (folded))
 	    expr = folded;
 	}
@@ -33226,7 +33228,7 @@ finish_expansion_stmt (tree expansion_stmt, tree args,
       iter_type = cp_perform_range_for_lookup (range_temp, &begin_expr,
 					       &end_expr, tf_none);
       if (iter_type != error_mark_node
-	  || (begin_expr != error_mark_node && (end_expr != error_mark_node)))
+	  || (begin_expr != error_mark_node && end_expr != error_mark_node))
 	kind = esk_iterating;
     }
   if (kind == esk_iterating)
