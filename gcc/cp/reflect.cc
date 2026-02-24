@@ -5394,7 +5394,11 @@ eval_substitute (location_t loc, const constexpr_ctx *ctx,
       ret = finish_template_variable (ret, tf_none);
     }
   else
-    ret = lookup_template_function (r, rvec);
+    {
+      if (DECL_FUNCTION_TEMPLATE_P (r))
+	r = ovl_make (r, NULL_TREE);
+      ret = lookup_template_function (r, rvec);
+    }
   return get_reflection_raw (loc, ret);
 }
 
@@ -6473,18 +6477,18 @@ namespace_members_of (location_t loc, tree ns)
   hash_set<tree> *seen = nullptr;
   for (tree o : *DECL_NAMESPACE_BINDINGS (ns))
     {
-      if (TREE_CODE (o) == OVERLOAD && OVL_LOOKUP_P (o))
+      if (STAT_HACK_P (o))
 	{
-	  if (TREE_TYPE (o))
+	  if (STAT_TYPE (o) && !STAT_TYPE_HIDDEN_P (o))
 	    {
-	      tree m = TREE_TYPE (TREE_TYPE (o));
+	      tree m = TREE_TYPE (STAT_TYPE (o));
 	      if (members_of_representable_p (ns, m))
 		CONSTRUCTOR_APPEND_ELT (elts, NULL_TREE,
 					get_reflection_raw (loc, m));
 	    }
-	  if (OVL_DEDUP_P (o) || !OVL_FUNCTION (o))
+	  if (STAT_DECL_HIDDEN_P (o) || !STAT_DECL (o))
 	    continue;
-	  o = OVL_FUNCTION (o);
+	  o = STAT_DECL (o);
 	}
       for (ovl_iterator iter (o); iter; ++iter)
 	{
