@@ -5241,7 +5241,7 @@
 	    (match_operand:V8BF 1 "nonimmediate_operand" "vm")
 	    (parallel [(const_int 0)]))))]
   "TARGET_AVX10_2"
-  "vcomisbf16\t{%1, %0|%0, %1}"
+  "vcomisbf16\t{%1, %0|%0, %w1}"
   [(set_attr "prefix" "evex")
    (set_attr "type" "ssecomi")])
 
@@ -32444,7 +32444,7 @@
 	   (match_operand:VHF_AVX512VL 2 "nonimmediate_operand" "vm")]
 	  UNSPEC_CONVERTFP8_PACK))]
   "TARGET_AVX10_2"
-  "vcvt<convertfp8_pack>\t{%2, %1, %0<mask_operand3>|%0<mask_operand2>, %1, %2}"
+  "vcvt<convertfp8_pack>\t{%2, %1, %0<mask_operand3>|%0<mask_operand3>, %1, %2}"
   [(set_attr "prefix" "evex")])
 
 (define_mode_attr ssebvecmode_2

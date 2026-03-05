@@ -3799,7 +3799,12 @@ eval_annotations_of (location_t loc, const constexpr_ctx *ctx, tree r,
 	  }
     }
   else if (TYPE_P (r))
-    r = TYPE_ATTRIBUTES (r);
+    {
+      if (typedef_variant_p (r))
+	r = DECL_ATTRIBUTES (TYPE_NAME (r));
+      else
+	r = TYPE_ATTRIBUTES (r);
+    }
   else if (DECL_P (r))
     r = DECL_ATTRIBUTES (r);
   else
@@ -4688,12 +4693,16 @@ eval_extent (location_t loc, tree type, tree i)
       --rank;
       type = TREE_TYPE (type);
     }
+  tree r;
   if (rank
       || TREE_CODE (type) != ARRAY_TYPE
       || eval_is_bounded_array_type (loc, type) == boolean_false_node)
-     return size_zero_node;
-  return size_binop (PLUS_EXPR, TYPE_MAX_VALUE (TYPE_DOMAIN (type)),
-		     size_one_node);
+    r = size_zero_node;
+  else
+    r = size_binop (PLUS_EXPR, TYPE_MAX_VALUE (TYPE_DOMAIN (type)),
+		    size_one_node);
+  /* std::meta::extent returns a value of type size_t.  */
+  return cp_fold_convert (size_type_node, r);
 }
 
 /* Process std::meta::is_same_type.  */
