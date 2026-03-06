@@ -18897,9 +18897,9 @@
       tmp = "pternlog";
       ssesuffix = "<ternlogsuffix>";
       if (which_alternative != 4 || TARGET_AVX512VL)
-	ops = "v%s%s\t{$0x44, %%1, %%2, %%0|%%0, %%2, %%1, $0x44}";
+	ops = "v%s%s\t{$0x44, %%1, %%2, %%0|%%0, %%2, %%1, 0x44}";
       else
-	ops = "v%s%s\t{$0x44, %%g1, %%g2, %%g0|%%g0, %%g2, %%g1, $0x44}";
+	ops = "v%s%s\t{$0x44, %%g1, %%g2, %%g0|%%g0, %%g2, %%g1, 0x44}";
       break;
     default:
       gcc_unreachable ();
@@ -32450,6 +32450,9 @@
 (define_mode_attr ssebvecmode_2
   [(V8HF "V16QI") (V16HF "V16QI") (V32HF "V32QI")])
 
+(define_mode_attr iptrssebvec_2
+  [(V8HF "q") (V16HF "") (V32HF "")])
+
 (define_int_iterator UNSPEC_VCVTBIASPH2FP8_PACK
    [UNSPEC_VCVTBIASPH2BF8 UNSPEC_VCVTBIASPH2BF8S
     UNSPEC_VCVTBIASPH2HF8 UNSPEC_VCVTBIASPH2HF8S])
@@ -32626,7 +32629,7 @@
 	  [(match_operand:<ssebvecmode_2> 1 "nonimmediate_operand" "vm")]
 	  UNSPEC_VCVTHF82PH))]
   "TARGET_AVX10_2"
-  "vcvthf82ph\t{%1, %0<mask_operand2>|%0<mask_operand2>, %1}"
+  "vcvthf82ph\t{%1, %0<mask_operand2>|%0<mask_operand2>, %<iptrssebvec_2>1}"
   [(set_attr "prefix" "evex")])
 
 (define_int_iterator VPDPWPROD
