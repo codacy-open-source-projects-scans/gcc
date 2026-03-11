@@ -3800,6 +3800,7 @@ eval_annotations_of (location_t loc, const constexpr_ctx *ctx, tree r,
     }
   else if (TYPE_P (r))
     {
+      complete_type (r);
       if (typedef_variant_p (r))
 	r = DECL_ATTRIBUTES (TYPE_NAME (r));
       else
@@ -8333,7 +8334,7 @@ compare_reflections (tree lhs, tree rhs)
 				   TREE_VEC_ELT (rhs, 3))
 	    && TREE_VEC_ELT (lhs, 4) == TREE_VEC_ELT (rhs, 4));
   else if (lkind == REFLECT_ANNOTATION)
-    return lhs == rhs;
+    return TREE_VALUE (lhs) == TREE_VALUE (rhs);
   else if (TYPE_P (lhs) && TYPE_P (rhs))
     {
       /* Given "using A = int;", "^^int != ^^A" should hold.  */
