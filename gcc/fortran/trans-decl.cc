@@ -2551,6 +2551,8 @@ build_function_decl (gfc_symbol * sym, bool global)
   gcc_assert (current_function_decl == NULL_TREE
 	      || DECL_FILE_SCOPE_P (current_function_decl)
 	      || (TREE_CODE (DECL_CONTEXT (current_function_decl))
+		  == FUNCTION_DECL)
+	      || (TREE_CODE (DECL_CONTEXT (current_function_decl))
 		  == NAMESPACE_DECL));
 
   type = gfc_get_function_type (sym);
@@ -4910,6 +4912,7 @@ gfc_trans_deferred_vars (gfc_symbol * proc_sym, gfc_wrapped_block * block)
 	 && proc_sym != proc_sym->result) ? proc_sym->result : NULL;
 
   if (sym && !sym->attr.allocatable && !sym->attr.pointer
+      && sym->attr.referenced
       && IS_PDT (sym) && !gfc_has_default_initializer (sym->ts.u.derived))
     {
       gfc_init_block (&tmpblock);

@@ -815,7 +815,10 @@ gfc_omp_clause_default_ctor (tree clause, tree decl, tree outer)
       return NULL_TREE;
     }
 
-  gcc_assert (outer != NULL_TREE);
+  gcc_assert (outer != NULL_TREE
+	      || (!GFC_DESCRIPTOR_TYPE_P (type)
+		  && !gfc_has_alloc_comps (type, OMP_CLAUSE_DECL (clause),
+					   false)));
 
   /* Allocatable arrays and scalars in PRIVATE clauses need to be set to
      "not currently allocated" allocation status if outer
@@ -4154,7 +4157,11 @@ gfc_trans_omp_clauses (stmtblock_t *block, gfc_omp_clauses *clauses,
 		{
 		  tree ptr;
 		  gfc_init_se (&se, NULL);
-		  if (n->expr->ref->u.ar.type == AR_ELEMENT)
+		  /* The first ref can be an element selection on the base
+		     object while the full expression still denotes an array,
+		     e.g. x(j)%a.  Pick the lowering path from the overall
+		     expression rank, not from the first REF_ARRAY.  */
+		  if (n->expr->rank == 0)
 		    {
 		      gfc_conv_expr_reference (&se, n->expr);
 		      ptr = se.expr;
@@ -7438,7 +7445,7 @@ gfc_trans_omp_depobj (gfc_code *code)
       else if (n->expr && n->expr->ref->u.ar.type != AR_FULL)
 	{
 	  gfc_init_se (&se, NULL);
-	  if (n->expr->ref->u.ar.type == AR_ELEMENT)
+	  if (n->expr->rank == 0)
 	    {
 	      gfc_conv_expr_reference (&se, n->expr);
 	      var = se.expr;
