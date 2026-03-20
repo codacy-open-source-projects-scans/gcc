@@ -272,11 +272,14 @@ namespace std::chrono
       // If not, indic is unchanged. Callers should set a default first.
       friend istream& operator>>(istream& in, Indicator& indic)
       {
-	auto [val, yes] = at_time::is_indicator(in.peek());
-	if (yes)
+	if (!in.eof())
 	  {
-	    in.ignore(1);
-	    indic = val;
+	    auto [val, yes] = at_time::is_indicator(in.peek());
+	    if (yes)
+	      {
+		in.ignore(1);
+		indic = val;
+	      }
 	  }
 	return in;
       }
@@ -917,7 +920,11 @@ namespace std::chrono
 	  }
 
 	if (active_rule)
-	  letters = active_rule->letters;
+	  {
+	    info.offset = ri.offset() + active_rule->save;
+	    info.save = chrono::duration_cast<minutes>(active_rule->save);
+	    letters = active_rule->letters;
+	  }
 	else if (first_std)
 	  letters = first_std->letters;
       }
@@ -2182,10 +2189,11 @@ namespace std::chrono
     istream& operator>>(istream& in, at_time& at)
     {
       int sign = 1;
-      if (in.peek() == '-')
+      if (ws(in).peek() == '-')
 	{
 	  in.ignore(1);
-	  if (auto [val, yes] = at_time::is_indicator(in.peek()); yes)
+	  if (auto [val, yes] = at_time::is_indicator(in.peek());
+	      in.eof() || yes)
 	    {
 	      in.ignore(1);
 	      at.time = 0s;
@@ -2204,11 +2212,11 @@ namespace std::chrono
 	  in.ignore(1); // discard the colon.
 	  in >> i;
 	  m = minutes{i};
-	  if (in.peek() == ':')
+	  if (!in.eof() && in.peek() == ':')
 	    {
 	      in.ignore(1); // discard the colon.
 	      in >> i;
-	      if (in.peek() == '.')
+	      if (!in.eof() && in.peek() == '.')
 		{
 		  double frac;
 		  in >> frac;
@@ -2285,11 +2293,18 @@ namespace std::chrono
 	  at_time t{};
 	  // XXX DAY should support ON format, e.g. lastSun or Sun>=8
 	  in >> m >> d >> t;
-	  // XXX UNTIL field should be interpreted
-	  // "using the rules in effect just before the transition"
-	  // so might need to store as year_month_day and hh_mm_ss and only
-	  // convert to a sys_time once we know the offset in effect.
 	  inf.m_until = sys_days(year(y)/m.m/day(d)) + seconds(t.time);
+	  if (t.indicator != at_time::Universal)
+	    { // UNTIL uses "the rules in effect just before the transition"
+	      // adjust by STDOFF
+	      inf.m_until -= seconds(inf.m_offset);
+	      if (t.indicator != at_time::Standard)
+		{
+		  if (inf.m_expanded) // Not a named Rule, SAVE is known now.
+		    inf.m_until -= inf.m_save;
+		  // else Named Rule, SAVE is unknown. FIXME: PR 116110
+		}
+	    }
 	}
       else
 	inf.m_until = sys_days(year::max()/December/31);
