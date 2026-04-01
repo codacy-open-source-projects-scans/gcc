@@ -1,6 +1,6 @@
 
 /* Compiler implementation of the D programming language
- * Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * written by Walter Bright
  * https://www.digitalmars.com
  * Distributed under the Boost Software License, Version 1.0.
@@ -671,6 +671,7 @@ class AssertExp final : public UnaExp
 {
 public:
     Expression *msg;
+    Expression* loweredFrom;
 
     AssertExp *syntaxCopy() override;
 

@@ -389,18 +389,25 @@ enum get_range_elts_kind {
    eval_reflect_constant_array.  For GET_INFO_VEC kind, <meta> ensures
    the argument is reference to reflection_range concept and so both
    range_value_t is info and range_refernce_t is cv info or cv info & or
-   cv info &&.  */
+   cv info &&.  If N is negative, CALL is the expression to extract
+   values from rather than N-th argument from CALL.  */
 
 static tree
 get_range_elts (location_t loc, const constexpr_ctx *ctx, tree call, int n,
 		bool *non_constant_p, bool *overflow_p, tree *jump_target,
 		get_range_elts_kind kind, tree fun)
 {
-  gcc_checking_assert (call_expr_nargs (call) > n);
-  tree arg = get_nth_callarg (call, n);
-  tree parm = DECL_ARGUMENTS (cp_get_callee_fndecl_nofold (call));
-  for (int i = 0; i < n; ++i)
-    parm = DECL_CHAIN (parm);
+  tree arg, parm;
+  if (n < 0)
+    arg = parm = call;
+  else
+    {
+      gcc_checking_assert (call_expr_nargs (call) > n);
+      arg = get_nth_callarg (call, n);
+      parm = DECL_ARGUMENTS (cp_get_callee_fndecl_nofold (call));
+      for (int i = 0; i < n; ++i)
+	parm = DECL_CHAIN (parm);
+    }
   tree type = TREE_TYPE (arg);
   gcc_checking_assert (TYPE_REF_P (type));
   arg = cxx_eval_constant_expression (ctx, arg, vc_prvalue, non_constant_p,
@@ -545,7 +552,8 @@ get_range_elts (location_t loc, const constexpr_ctx *ctx, tree call, int n,
     tree call = finish_call_expr (obj, &args, true, false, complain);
     if (call == error_mark_node)
       return call;
-    cp_walk_tree (&call, replace_parm_r, map, NULL);
+    if (n >= 0)
+      cp_walk_tree (&call, replace_parm_r, map, NULL);
     if (complain != tf_none)
       return call;
     call = cxx_eval_constant_expression (ctx, call, vc_prvalue, non_constant_p,
@@ -1859,7 +1867,7 @@ eval_is_explicit (tree r)
 
 /* Process std::meta::is_bit_field.
    Returns: true if r represents a bit-field, or if r represents a data member
-   description (T,N,A,W,NUA) for which W is not _|_.  Otherwise, false.  */
+   description (T,N,A,W,NUA,ANN) for which W is not _|_.  Otherwise, false.  */
 
 static tree
 eval_is_bit_field (const_tree r, reflect_kind kind)
@@ -2524,8 +2532,8 @@ type_of (tree r, reflect_kind kind)
 	 of the enum-specifier as specified in [dcl.enum].
    -- Otherwise, if r represents a direct base class relationship (D,B), then
       a reflection of B.
-   -- Otherwise, for a data member description (T,N,A,W,NUA), a reflection of
-      the type T.  */
+   -- Otherwise, for a data member description (T,N,A,W,NUA,ANN), a reflection
+      of the type T.  */
 
 static tree
 eval_type_of (location_t loc, const constexpr_ctx *ctx, tree r,
@@ -3173,9 +3181,9 @@ eval_offset_of (location_t loc, const constexpr_ctx *ctx, tree r,
 }
 
 /* Process std::meta::size_of.
-   Returns: If r represents
-     -- a non-static data member of type T,
-     -- a data member description (T,N,A,W,NUA), or
+   Returns: If
+     -- r represents a non-static data member of type T or a data member
+	description (T,N,A,W,NUA,ANN) or
      -- dealias(r) represents a type T,
    then sizeof(T) if T is not a reference type and size_of(add_pointer(^^T))
    otherwise.  Otherwise, size_of(type_of(r)).
@@ -3184,7 +3192,7 @@ eval_offset_of (location_t loc, const constexpr_ctx *ctx, tree r,
      -- dealias(r) is a reflection of a type, object, value, variable of
 	non-reference type, non-static data member that is not a bit-field,
 	direct base class relationship, or data member description
-	(T,N,A,W,NUA) where W is not _|_.
+	(T,N,A,W,NUA,ANN) where W is not _|_.
      -- If dealias(r) represents a type, then is_complete_type(r) is true.  */
 
 static tree
@@ -3235,12 +3243,13 @@ eval_size_of (location_t loc, const constexpr_ctx *ctx, tree r,
    -- Otherwise, if r represents a non-static data member M of a class C,
       then the alignment of the direct member subobject corresponding to M of a
       complete object of type C.
-   -- Otherwise, r represents a data member description (T,N,A,W,NUA).
+   -- Otherwise, r represents a data member description (T,N,A,W,NUA,ANN).
       If A is not _|_, then the value A.  Otherwise, alignment_of(^^T).
    Throws: meta::exception unless all of the following conditions are met:
    -- dealias(r) is a reflection of a type, object, variable of non-reference
       type, non-static data member that is not a bit-field, direct base class
-      relationship, or data member description (T,N,A,W,NUA) where W is _|_.
+      relationship, or data member description (T,N,A,W,NUA,ANN) where W is
+      _|_.
    -- If dealias(r) represents a type, then is_complete_type(r) is true.  */
 
 static tree
@@ -3309,7 +3318,7 @@ eval_alignment_of (location_t loc, const constexpr_ctx *ctx, tree r,
    Returns:
      -- If r represents an unnamed bit-field or a non-static data member that
 	is a bit-field with width W, then W.
-     -- Otherwise, if r represents a data member description (T,N,A,W,NUA)
+     -- Otherwise, if r represents a data member description (T,N,A,W,NUA,ANN)
 	and W is not _|_, then W.
      -- Otherwise, CHAR_BIT * size_of(r).
 
@@ -3406,8 +3415,8 @@ eval_bit_size_of (location_t loc, const constexpr_ctx *ctx, tree r,
       namespace, or namespace alias, then true.
    -- Otherwise, if r represents a direct base class relationship, then
       has_identifier(type_of(r)).
-   -- Otherwise, r represents a data member description (T,N,A,W,NUA); true if
-      N is not _|_.  Otherwise, false.  */
+   -- Otherwise, r represents a data member description (T,N,A,W,NUA,ANN);
+      true if N is not _|_.  Otherwise, false.  */
 
 static tree
 eval_has_identifier (tree r, reflect_kind kind)
@@ -3522,7 +3531,7 @@ eval_has_identifier (tree r, reflect_kind kind)
       the declaration of that entity.
    -- Otherwise, if r represents a direct base class relationship, then
       identifier_of(type_of(r)) or u8identifier_of(type_of(r)), respectively.
-   -- Otherwise, r represents a data member description (T,N,A,W,NUA);
+   -- Otherwise, r represents a data member description (T,N,A,W,NUA,ANN);
       a string_view or u8string_view, respectively, containing the identifier
       N.
    Throws: meta::exception unless has_identifier(r) is true and the identifier
@@ -3649,10 +3658,16 @@ eval_display_string_of (location_t loc, const constexpr_ctx *ctx, tree r,
       pp_printf (&pp, "%T: %T", d, BINFO_TYPE (r));
     }
   else if (kind == REFLECT_DATA_MEMBER_SPEC)
-    pp_printf (&pp, "(%T, %E, %E, %E, %s)", TREE_VEC_ELT (r, 0),
-	       TREE_VEC_ELT (r, 1), TREE_VEC_ELT (r, 2), TREE_VEC_ELT (r, 3),
-	       TREE_VEC_ELT (r, 4) == boolean_true_node
-	       ? "true" : "false");
+    {
+      pp_printf (&pp, "(%T, %E, %E, %E, %s, {", TREE_VEC_ELT (r, 0),
+		 TREE_VEC_ELT (r, 1), TREE_VEC_ELT (r, 2), TREE_VEC_ELT (r, 3),
+		 TREE_VEC_ELT (r, 4) == boolean_true_node
+		 ? "true" : "false");
+      for (int i = 5; i < TREE_VEC_LENGTH (r); ++i)
+	pp_printf (&pp, "%s%E", i == 5 ? "" : ", ",
+		   REFLECT_EXPR_HANDLE (TREE_VEC_ELT (r, i)));
+      pp_printf (&pp, "})");
+    }
   else if (eval_is_annotation (r, kind) == boolean_true_node)
     pp_printf (&pp, "[[=%E]]",
 	       tree_strip_any_location_wrapper (TREE_VALUE (TREE_VALUE (r))));
@@ -3768,15 +3783,21 @@ remove_const (tree type)
 }
 
 /* Process std::meta::annotations_of and annotations_of_with_type.
-   Let E be
-   -- the corresponding base-specifier if item represents a direct base class
-      relationship,
-   -- otherwise, the entity represented by item.
+   For a function F, let S(F) be the set of declarations, ignoring any explicit
+   instantiations, that declare either F or a templated function of which F is
+   a specialization.
    Returns: A vector containing all of the reflections R representing each
-   annotation applying to each declaration of E that precedes either some
-   point in the evaluation context or a point immediately following the
-   class-specifier of the outermost class for which such a point is in a
-   complete-class context.
+   annotation applying to:
+   -- if item represents a function parameter P of a function F, then the
+      declaration of P in each declaration of F in S(F),
+   -- otherwise, if item represents a function F, then each declaration of F
+      in S(F),
+   -- otherwise, if item represents a direct base class relationship (D,B),
+      then the corresponding base-specifier in the definition of D,
+   -- otherwise, each declaration of the entity represented by item,
+   such that precedes either some point in the evaluation context or a point
+   immediately following the class-specifier of the outermost class for which
+   such a point is in a complete-class context.
    For any two reflections R1 and R2 in the returned vector, if the annotation
    represented by R1 precedes the annotation represented by R2, then R1
    appears before R2.
@@ -3785,8 +3806,8 @@ remove_const (tree type)
    from T.
 
    Throws: meta::exception unless item represents a type, type alias,
-   variable, function, namespace, enumerator, direct base class relationship,
-   or non-static data member.  */
+   variable, function, function parameter, namespace, enumerator, direct base
+   class relationship, or non-static data member.  */
 
 static tree
 eval_annotations_of (location_t loc, const constexpr_ctx *ctx, tree r,
@@ -5519,15 +5540,17 @@ eval_variant_alternative (location_t loc, const constexpr_ctx *ctx, tree i,
 }
 
 /* Process std::meta::data_member_spec.
-   Returns: A reflection of a data member description (T,N,A,W,NUA) where
+   Returns: A reflection of a data member description (T,N,A,W,NUA,ANN) where
    -- T is the type represented by dealias(type),
    -- N is either the identifier encoded by options.name or _|_ if
       options.name does not contain a value,
    -- A is either the alignment value held by options.alignment or _|_ if
       options.alignment does not contain a value,
    -- W is either the value held by options.bit_width or _|_ if
-      options.bit_width does not contain a value, and
-   -- NUA is the value held by options.no_unique_address.
+      options.bit_width does not contain a value,
+   -- NUA is the value held by options.no_unique_address, and
+   -- ANN is the sequence of values constant_of(r) for each r in
+      options.annotations.
    Throws: meta::exception unless the following conditions are met:
    -- dealias(type) represents either an object type or a reference type;
    -- if options.name contains a value, then:
@@ -5539,15 +5562,18 @@ eval_variant_alternative (location_t loc, const constexpr_ctx *ctx, tree i,
 	 that is not a keyword when interpreted with the ordinary literal
 	 encoding;
    -- if options.name does not contain a value, then options.bit_width
-      contains a value;
+      contains a value and options.annotations is empty;
    -- if options.bit_width contains a value V, then
       -- is_integral_type(type) || is_enum_type(type) is true,
       -- options.alignment does not contain a value,
       -- options.no_unique_address is false,
       -- V is not negative, and
-      -- if V equals 0, then options.name does not contain a value; and
+      -- if V equals 0, then options.name does not contain a value;
    -- if options.alignment contains a value, it is an alignment value not less
-      than alignment_of(type).  */
+      than alignment_of(type); and
+   -- for every reflection r in options.annotations, has-type(r) is true,
+      type_of(r) represents a non-array object type, and evaluation of
+      constant_of(r) does not exit via an exception.  */
 
 static tree
 eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
@@ -5566,27 +5592,32 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
       *non_constant_p = true;
       return NULL_TREE;
     }
-  tree args[5] = { type, NULL_TREE, NULL_TREE, NULL_TREE, NULL_TREE };
+  enum { m_name = 1, m_alignment, m_bit_width, m_no_unique_address,
+	 m_annotations, n_args };
+  tree args[n_args] = { type, NULL_TREE, NULL_TREE, NULL_TREE, NULL_TREE,
+			NULL_TREE };
   for (tree field = next_aggregate_field (TYPE_FIELDS (TREE_TYPE (opts)));
        field; field = next_aggregate_field (DECL_CHAIN (field)))
     if (tree name = DECL_NAME (field))
       {
 	if (id_equal (name, "name"))
-	  args[1] = field;
+	  args[m_name] = field;
 	else if (id_equal (name, "alignment"))
-	  args[2] = field;
+	  args[m_alignment] = field;
 	else if (id_equal (name, "bit_width"))
-	  args[3] = field;
+	  args[m_bit_width] = field;
 	else if (id_equal (name, "no_unique_address"))
-	  args[4] = field;
+	  args[m_no_unique_address] = field;
+	else if (id_equal (name, "annotations"))
+	  args[m_annotations] = field;
       }
-  for (int i = 1; i < 5; ++i)
+  for (int i = m_name; i < n_args; ++i)
     {
       if (args[i] == NULL_TREE)
 	goto fail;
       tree opt = build3 (COMPONENT_REF, TREE_TYPE (args[i]), opts, args[i],
 			 NULL_TREE);
-      if (i == 4)
+      if (i == m_no_unique_address)
 	{
 	  /* The no_unique_address handling is simple.  */
 	  if (TREE_CODE (TREE_TYPE (opt)) != BOOLEAN_TYPE)
@@ -5602,6 +5633,21 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
 	    args[i] = boolean_false_node;
 	  else
 	    args[i] = boolean_true_node;
+	  continue;
+	}
+      if (i == m_annotations)
+	{
+	  /* To handle annotations, read it using input range from
+	     std::vector<info>.  */
+	  tree rtype
+	    = cp_build_reference_type (TREE_TYPE (opt), /*rval*/false);
+	  opt = build_address (opt);
+	  opt = fold_convert (rtype, opt);
+	  opt = get_info_vec (loc, ctx, opt, -1, non_constant_p, overflow_p,
+			      jump_target, fun);
+	  if (*jump_target || *non_constant_p)
+	    return NULL_TREE;
+	  args[i] = opt;
 	  continue;
 	}
       /* Otherwise the member is optional<something>.  */
@@ -5628,7 +5674,7 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
 				 NULL_TREE, tf_warning_or_error);
       if (error_operand_p (deref))
 	goto fail;
-      if (i != 1)
+      if (i != m_name)
 	{
 	  /* For alignment and bit_width otherwise it should be int.  */
 	  if (TYPE_MAIN_VARIANT (TREE_TYPE (deref)) != integer_type_node)
@@ -5646,27 +5692,29 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
       /* Otherwise it is a name.  */
       if (!CLASS_TYPE_P (TREE_TYPE (deref)))
 	goto fail;
-      tree fields[3] = { NULL_TREE, NULL_TREE, NULL_TREE };
+      enum { m_is_u8, m_u8s, m_s, n_fields };
+      tree fields[n_fields] = { NULL_TREE, NULL_TREE, NULL_TREE };
       for (tree field = next_aggregate_field (TYPE_FIELDS (TREE_TYPE (deref)));
 	   field; field = next_aggregate_field (DECL_CHAIN (field)))
 	if (tree name = DECL_NAME (field))
 	  {
 	    if (id_equal (name, "_M_is_u8"))
-	      fields[0] = field;
+	      fields[m_is_u8] = field;
 	    else if (id_equal (name, "_M_u8s"))
-	      fields[1] = field;
+	      fields[m_u8s] = field;
 	    else if (id_equal (name, "_M_s"))
-	      fields[2] = field;
+	      fields[m_s] = field;
 	  }
-      for (int j = 0; j < 3; ++j)
+      for (int j = 0; j < n_fields; ++j)
 	{
 	  if (fields[j] == NULL_TREE)
 	    goto fail;
-	  if (j && j == (fields[0] == boolean_true_node ? 2 : 1))
+	  if (j != m_is_u8
+	      && j == (fields[m_is_u8] == boolean_true_node ? m_s : m_u8s))
 	    continue;
 	  tree f = build3 (COMPONENT_REF, TREE_TYPE (fields[j]), deref,
 			   fields[j], NULL_TREE);
-	  if (j == 0)
+	  if (j == m_is_u8)
 	    {
 	      /* The _M_is_u8 handling is simple.  */
 	      if (TREE_CODE (TREE_TYPE (f)) != BOOLEAN_TYPE)
@@ -5679,9 +5727,9 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
 	      if (TREE_CODE (f) != INTEGER_CST)
 		goto fail;
 	      if (integer_zerop (f))
-		fields[0] = boolean_false_node;
+		fields[m_is_u8] = boolean_false_node;
 	      else
-		fields[0] = boolean_true_node;
+		fields[m_is_u8] = boolean_true_node;
 	      continue;
 	    }
 	  /* _M_u8s/_M_s handling is the same except for encoding.  */
@@ -5713,7 +5761,7 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
 	      || TREE_CODE (TREE_TYPE (f)) != ARRAY_TYPE)
 	    goto fail;
 	  tree eltt = TYPE_MAIN_VARIANT (TREE_TYPE (TREE_TYPE (f)));
-	  if (eltt != (j == 1 ? char8_type_node : char_type_node))
+	  if (eltt != (j == m_u8s ? char8_type_node : char_type_node))
 	    goto fail;
 	  tree field, value;
 	  unsigned k;
@@ -5794,12 +5842,12 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
 	  istr.len = strlen (namep) + 1;
 	  istr.text = (const unsigned char *) namep;
 	  if (!cpp_translate_string (parse_in, &istr, &ostr,
-				     j == 2 ? CPP_STRING : CPP_UTF8STRING,
+				     j == m_s ? CPP_STRING : CPP_UTF8STRING,
 				     true))
 	    {
 	      if (len >= 64)
 		XDELETEVEC (namep);
-	      if (j == 1)
+	      if (j == m_s)
 		return throw_exception (loc, ctx,
 					"conversion from ordinary literal "
 					"encoding to source charset "
@@ -5831,62 +5879,90 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
 	    }
 	}
     }
-  if (args[1] == NULL_TREE && args[3] == NULL_TREE)
+  if (args[m_name] == NULL_TREE && args[m_bit_width] == NULL_TREE)
     return throw_exception (loc, ctx,
 			    "neither name nor bit_width specified",
 			    fun, non_constant_p, jump_target);
-  if (args[3])
+  if (args[m_name] == NULL_TREE && TREE_VEC_LENGTH (args[m_annotations]))
+    return throw_exception (loc, ctx,
+			    "no name and non-empty annotations specified",
+			    fun, non_constant_p, jump_target);
+  if (args[m_bit_width])
     {
       if (!CP_INTEGRAL_TYPE_P (type) && TREE_CODE (type) != ENUMERAL_TYPE)
 	return throw_exception (loc, ctx,
 				"bit_width specified with non-integral "
 				"and non-enumeration type",
 				fun, non_constant_p, jump_target);
-      if (args[2])
+      if (args[m_alignment])
 	return throw_exception (loc, ctx,
 				"both alignment and bit_width specified",
 				fun, non_constant_p, jump_target);
-      if (args[4] == boolean_true_node)
+      if (args[m_no_unique_address] == boolean_true_node)
 	return throw_exception (loc, ctx,
 				"bit_width specified with "
 				"no_unique_address true",
 				fun, non_constant_p, jump_target);
-      if (integer_zerop (args[3]) && args[1])
+      if (integer_zerop (args[m_bit_width]) && args[m_name])
 	return throw_exception (loc, ctx,
 				"bit_width 0 with specified name",
 				fun, non_constant_p, jump_target);
-      if (tree_int_cst_sgn (args[3]) < 0)
+      if (tree_int_cst_sgn (args[m_bit_width]) < 0)
 	return throw_exception (loc, ctx, "bit_width is negative",
 				fun, non_constant_p, jump_target);
     }
-  if (args[2])
+  if (args[m_alignment])
     {
-      if (!integer_pow2p (args[2]))
+      if (!integer_pow2p (args[m_alignment]))
 	return throw_exception (loc, ctx,
 				"alignment is not power of two",
 				fun, non_constant_p, jump_target);
-      if (tree_int_cst_sgn (args[2]) < 0)
+      if (tree_int_cst_sgn (args[m_alignment]) < 0)
 	return throw_exception (loc, ctx, "alignment is negative",
 				fun, non_constant_p, jump_target);
       tree al = cxx_sizeof_or_alignof_type (loc, type, ALIGNOF_EXPR, true,
 					    tf_none);
       if (TREE_CODE (al) == INTEGER_CST
-	  && wi::to_widest (al) > wi::to_widest (args[2]))
+	  && wi::to_widest (al) > wi::to_widest (args[m_alignment]))
 	return throw_exception (loc, ctx,
 				"alignment is smaller than alignment_of",
 				fun, non_constant_p, jump_target);
     }
-  tree ret = make_tree_vec (5);
-  for (int i = 0; i < 5; ++i)
+  for (int i = 0; i < TREE_VEC_LENGTH (args[m_annotations]); ++i)
+    {
+      tree r = REFLECT_EXPR_HANDLE (TREE_VEC_ELT (args[m_annotations], i));
+      reflect_kind kind
+	= REFLECT_EXPR_KIND (TREE_VEC_ELT (args[m_annotations], i));
+      if (!has_type (r, kind))
+	return throw_exception (loc, ctx, "reflection does not have a type",
+				fun, non_constant_p, jump_target);
+      tree type = type_of (r, kind);
+      if (eval_is_array_type (loc, type) == boolean_true_node
+	  || eval_is_object_type (loc, type) == boolean_false_node)
+	return throw_exception (loc, ctx, "reflection does not have "
+					  "non-array object type",
+				fun, non_constant_p, jump_target);
+      tree cst = eval_constant_of (loc, ctx, r, kind, non_constant_p,
+				   overflow_p, jump_target, fun);
+      if (cst == NULL_TREE)
+	return NULL_TREE;
+      TREE_VEC_ELT (args[m_annotations], i) = cst;
+    }
+  tree ret = make_tree_vec (m_annotations
+			    + TREE_VEC_LENGTH (args[m_annotations]));
+  for (int i = 0; i < m_annotations; ++i)
     TREE_VEC_ELT (ret, i) = args[i];
+  for (int i = 0; i < TREE_VEC_LENGTH (args[m_annotations]); ++i)
+    TREE_VEC_ELT (ret, i + m_annotations)
+      = TREE_VEC_ELT (args[m_annotations], i);
   return get_reflection_raw (loc, ret, REFLECT_DATA_MEMBER_SPEC);
 }
 
 /* Process std::meta::define_aggregate.
    Let C be the type represented by class_type and r_K be the Kth reflection
    value in mdescrs.
-   For every r_K in mdescrs, let (T_K,N_K,A_K,W_K,NUA_K) be the corresponding
-   data member description represented by r_K.
+   For every r_K in mdescrs, let (T_K,N_K,A_K,W_K,NUA_K,ANN_K) be the
+   corresponding data member description represented by r_K.
    Constant When:
    -- class_type represents a cv-unqualified class type;
    -- C is incomplete from every point in the evaluation context;
@@ -5917,6 +5993,8 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
 	 Otherwise, M_K is not a bit-field.
       -- If A_K is not _|_, M_K has the alignment-specifier alignas(A_K).
 	 Otherwise, M_K has no alignment-specifier.
+      -- M_K has an annotation whose underlying constant is r for every
+	 reflection r in ANN_K.
    -- For every r_L in mdescrs such that K<L, the declaration corresponding to
       r_K precedes the declaration corresponding to r_L.
    Returns: class_type.
@@ -6168,12 +6246,24 @@ eval_define_aggregate (location_t loc, const constexpr_ctx *ctx,
 			      * BITS_PER_UNIT);
 	  DECL_USER_ALIGN (f) = 1;
 	}
-      if (TREE_VEC_ELT (a, 4) == boolean_true_node)
+      if (TREE_VEC_ELT (a, 4) == boolean_true_node
+	  || TREE_VEC_LENGTH (a) != 5)
 	{
-	  tree attr = build_tree_list (NULL_TREE,
-				       get_identifier ("no_unique_address"));
-	  attr = build_tree_list (attr, NULL_TREE);
-	  cplus_decl_attributes (&f, attr, 0);
+	  tree attrs = NULL_TREE, attr;
+	  if (TREE_VEC_ELT (a, 4) == boolean_true_node)
+	    {
+	      attr = build_tree_list (NULL_TREE,
+				      get_identifier ("no_unique_address"));
+	      attrs = build_tree_list (attr, NULL_TREE);
+	    }
+	  for (int i = TREE_VEC_LENGTH (a) - 1; i >= 5; --i)
+	    {
+	      attr = build_tree_list (internal_identifier,
+				      annotation_identifier);
+	      tree val = REFLECT_EXPR_HANDLE (TREE_VEC_ELT (a, i));
+	      attrs = tree_cons (attr, build_tree_list (NULL_TREE, val), attrs);
+	    }
+	  cplus_decl_attributes (&f, attrs, 0);
 	}
       fields = f;
     }
@@ -6236,11 +6326,11 @@ eval_reflect_constant_array (location_t loc, const constexpr_ctx *ctx,
   return get_reflection_raw (loc, decl);
 }
 
-/* Process std::meta::access_context::current.  */
+/* Return CURRENT-SCOPE(P).  */
 
 static tree
-eval_access_context_current (location_t loc, const constexpr_ctx *ctx,
-			     tree call, bool *non_constant_p)
+reflect_current_scope (location_t loc, const constexpr_ctx *ctx, tree call,
+		       bool *non_constant_p, const char *name)
 {
   tree scope = cxx_constexpr_caller (ctx);
   /* Ignore temporary current_function_decl changes caused by
@@ -6259,13 +6349,16 @@ eval_access_context_current (location_t loc, const constexpr_ctx *ctx,
 	  /* Outside of functions limit this to manifestly constant-evaluation
 	     so that we don't fold it prematurely.  */
 	  if (!cxx_constexpr_quiet_p (ctx))
-	    error_at (loc, "%<access_context::current%> used outside of "
-			   "manifestly constant-evaluation");
+	    error_at (loc, "%qs used outside of manifestly constant-evaluation",
+		      name);
 	  *non_constant_p = true;
 	  return call;
 	}
       if (current_class_type)
 	scope = current_class_type;
+      /* If we have been pushed into a different namespace, use it.  */
+      else if (!vec_safe_is_empty (decl_namespace_list))
+	scope = decl_namespace_list->last ();
       else if (current_namespace)
 	scope = current_namespace;
       else
@@ -6276,6 +6369,63 @@ eval_access_context_current (location_t loc, const constexpr_ctx *ctx,
 	 && (lam = CLASSTYPE_LAMBDA_EXPR (CP_DECL_CONTEXT (scope)))
 	 && LAMBDA_EXPR_CONSTEVAL_BLOCK_P (lam))
     scope = CP_TYPE_CONTEXT (CP_DECL_CONTEXT (scope));
+  return scope;
+}
+
+/* Process std::meta::current_function.  */
+
+static tree
+eval_current_function (location_t loc, const constexpr_ctx *ctx,
+		       tree call, bool *non_constant_p, tree *jump_target,
+		       tree fun)
+{
+  tree scope = reflect_current_scope (loc, ctx, call, non_constant_p,
+				      "std::meta::current_function");
+  if (TREE_CODE (scope) != FUNCTION_DECL)
+    throw_exception (loc, ctx, "current scope does not represent a function",
+		     fun, non_constant_p, jump_target);
+  return get_reflection_raw (loc, scope);
+}
+
+/* Process std::meta::current_class.  */
+
+static tree
+eval_current_class (location_t loc, const constexpr_ctx *ctx,
+		    tree call, bool *non_constant_p, tree *jump_target,
+		    tree fun)
+{
+  tree scope = reflect_current_scope (loc, ctx, call, non_constant_p,
+				      "std::meta::current_class");
+  if (TREE_CODE (scope) == FUNCTION_DECL
+      && DECL_CONTEXT (scope)
+      && TYPE_P (DECL_CONTEXT (scope)))
+    scope = DECL_CONTEXT (scope);
+  if (!CLASS_TYPE_P (scope))
+    throw_exception (loc, ctx, "current scope does not represent a class"
+			       " nor a member function",
+		     fun, non_constant_p, jump_target);
+  return get_reflection_raw (loc, scope);
+}
+
+/* Process std::meta::current_namespace.  */
+
+static tree
+eval_current_namespace (location_t loc, const constexpr_ctx *ctx,
+			tree call, bool *non_constant_p)
+{
+  tree scope = reflect_current_scope (loc, ctx, call, non_constant_p,
+				      "std::meta::current_namespace");
+  return get_reflection_raw (loc, decl_namespace_context (scope));
+}
+
+/* Process std::meta::access_context::current.  */
+
+static tree
+eval_access_context_current (location_t loc, const constexpr_ctx *ctx,
+			     tree call, bool *non_constant_p)
+{
+  tree scope = reflect_current_scope (loc, ctx, call, non_constant_p,
+				      "std::meta::access_context::current");
   tree access_context = TREE_TYPE (call);
   if (TREE_CODE (access_context) != RECORD_TYPE)
     {
@@ -7690,6 +7840,14 @@ process_metafunction (const constexpr_ctx *ctx, tree fun, tree call,
       return eval_has_inaccessible_subobjects (loc, ctx, h, expr, call,
 					       non_constant_p, jump_target,
 					       fun);
+    case METAFN_CURRENT_FUNCTION:
+      return eval_current_function (loc, ctx, call, non_constant_p,
+				    jump_target, fun);
+    case METAFN_CURRENT_CLASS:
+      return eval_current_class (loc, ctx, call, non_constant_p,
+				 jump_target, fun);
+    case METAFN_CURRENT_NAMESPACE:
+      return eval_current_namespace (loc, ctx, call, non_constant_p);
     case METAFN_MEMBERS_OF:
       return eval_members_of (loc, ctx, h, expr, call, non_constant_p,
 			      jump_target, fun);
@@ -8375,13 +8533,24 @@ compare_reflections (tree lhs, tree rhs)
       rhs = maybe_update_function_parm (rhs);
     }
   else if (lkind == REFLECT_DATA_MEMBER_SPEC)
-    return (TREE_VEC_ELT (lhs, 0) == TREE_VEC_ELT (rhs, 0)
-	    && TREE_VEC_ELT (lhs, 1) == TREE_VEC_ELT (rhs, 1)
-	    && tree_int_cst_equal (TREE_VEC_ELT (lhs, 2),
-				   TREE_VEC_ELT (rhs, 2))
-	    && tree_int_cst_equal (TREE_VEC_ELT (lhs, 3),
-				   TREE_VEC_ELT (rhs, 3))
-	    && TREE_VEC_ELT (lhs, 4) == TREE_VEC_ELT (rhs, 4));
+    {
+      if (typedef_variant_p (TREE_VEC_ELT (lhs, 0))
+	  != typedef_variant_p (TREE_VEC_ELT (rhs, 0))
+	  || !same_type_p (TREE_VEC_ELT (lhs, 0), TREE_VEC_ELT (rhs, 0))
+	  || TREE_VEC_ELT (lhs, 1) != TREE_VEC_ELT (rhs, 1)
+	  || !tree_int_cst_equal (TREE_VEC_ELT (lhs, 2),
+				  TREE_VEC_ELT (rhs, 2))
+	  || !tree_int_cst_equal (TREE_VEC_ELT (lhs, 3),
+				  TREE_VEC_ELT (rhs, 3))
+	  || TREE_VEC_ELT (lhs, 4) != TREE_VEC_ELT (rhs, 4)
+	  || TREE_VEC_LENGTH (lhs) != TREE_VEC_LENGTH (rhs))
+	return false;
+      for (int i = 5; i < TREE_VEC_LENGTH (lhs); ++i)
+	if (!compare_reflections (TREE_VEC_ELT (lhs, i),
+				  TREE_VEC_ELT (rhs, i)))
+	  return false;
+      return true;
+    }
   else if (lkind == REFLECT_ANNOTATION)
     return TREE_VALUE (lhs) == TREE_VALUE (rhs);
   else if (TYPE_P (lhs) && TYPE_P (rhs))

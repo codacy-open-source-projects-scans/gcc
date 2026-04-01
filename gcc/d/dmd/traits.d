@@ -3,7 +3,7 @@
  *
  * Specification: $(LINK2 https://dlang.org/spec/traits.html, Traits)
  *
- * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/traits.d, _traits.d)
@@ -2242,8 +2242,8 @@ private bool isSame(RootObject o1, RootObject o2, Scope* sc)
     // https://issues.dlang.org/show_bug.cgi?id=12001, allow isSame, <BasicType>, <BasicType>
     Type t1 = isType(o1);
     Type t2 = isType(o2);
-    if (t1 && t2 && t1.equals(t2))
-        return true;
+    if (t1 && t2)
+        return t1.equals(t2);
 
     auto s1 = getDsymbol(o1);
     auto s2 = getDsymbol(o2);
