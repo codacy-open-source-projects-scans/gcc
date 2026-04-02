@@ -1473,9 +1473,9 @@
 
 #if !defined(__cpp_lib_format)
 # if (__cplusplus >  202302L) && _GLIBCXX_HOSTED
-#  define __glibcxx_format 202311L
+#  define __glibcxx_format 202603L
 #  if defined(__glibcxx_want_all) || defined(__glibcxx_want_format)
-#   define __cpp_lib_format 202311L
+#   define __cpp_lib_format 202603L
 #  endif
 # elif (__cplusplus >= 202002L) && _GLIBCXX_HOSTED
 #  define __glibcxx_format 202304L
@@ -2418,9 +2418,9 @@
 
 #if !defined(__cpp_lib_saturation_arithmetic)
 # if (__cplusplus >  202302L)
-#  define __glibcxx_saturation_arithmetic 202311L
+#  define __glibcxx_saturation_arithmetic 202603L
 #  if defined(__glibcxx_want_all) || defined(__glibcxx_want_saturation_arithmetic)
-#   define __cpp_lib_saturation_arithmetic 202311L
+#   define __cpp_lib_saturation_arithmetic 202603L
 #  endif
 # endif
 #endif /* !defined(__cpp_lib_saturation_arithmetic) */
@@ -2445,6 +2445,16 @@
 # endif
 #endif /* !defined(__cpp_lib_text_encoding) */
 #undef __glibcxx_want_text_encoding
+
+#if !defined(__cpp_lib_ranges_filter)
+# if (__cplusplus >= 202002L)
+#  define __glibcxx_ranges_filter 202603L
+#  if defined(__glibcxx_want_all) || defined(__glibcxx_want_ranges_filter)
+#   define __cpp_lib_ranges_filter 202603L
+#  endif
+# endif
+#endif /* !defined(__cpp_lib_ranges_filter) */
+#undef __glibcxx_want_ranges_filter
 
 #if !defined(__cpp_lib_ranges_to_input)
 # if (__cplusplus >  202302L)

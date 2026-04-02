@@ -1321,8 +1321,9 @@ ftms = {
   // 202305 P2757R3 Type checking format args
   // 202306 P2637R3 Member visit
   // 202311 P2918R2 Runtime format strings II
+  // 202603 P3953R3 Rename std::runtime_format
   values = {
-    v = 202311;
+    v = 202603;
     cxxmin = 26;
     hosted = yes;
   };
@@ -2157,7 +2158,7 @@ ftms = {
 ftms = {
   name = saturation_arithmetic;
   values = {
-    v = 202311;
+    v = 202603;
     cxxmin = 26;
   };
 };
@@ -2177,6 +2178,15 @@ ftms = {
     cxxmin = 26;
     hosted = yes;
     extra_cond = "_GLIBCXX_USE_NL_LANGINFO_L";
+  };
+};
+
+ftms = {
+  name = ranges_filter;
+  values = {
+    // This is P3725R3, a C++26 change, but we treat it as a DR against C++20.
+    v = 202603;
+    cxxmin = 20;
   };
 };
 
