@@ -4352,6 +4352,14 @@ eval_is_consteval_only_type (tree type)
     return boolean_false_node;
 }
 
+/* Process std::meta::is_structural_type.  */
+
+static tree
+eval_is_structural_type (location_t loc, tree type)
+{
+  return eval_type_trait (loc, type, CPTK_IS_STRUCTURAL);
+}
+
 /* Process std::meta::is_signed_type.  */
 
 static tree
@@ -5910,6 +5918,17 @@ eval_data_member_spec (location_t loc, const constexpr_ctx *ctx,
       if (tree_int_cst_sgn (args[m_bit_width]) < 0)
 	return throw_exception (loc, ctx, "bit_width is negative",
 				fun, non_constant_p, jump_target);
+      if (args[m_name] == NULL_TREE)
+	{
+	  if (eval_is_const (type, REFLECT_UNDEF) == boolean_true_node)
+	    return throw_exception (loc, ctx,
+				    "name unspecified and type is const",
+				    fun, non_constant_p, jump_target);
+	  if (eval_is_volatile (type, REFLECT_UNDEF) == boolean_true_node)
+	    return throw_exception (loc, ctx,
+				    "name unspecified and type is volatile",
+				    fun, non_constant_p, jump_target);
+	}
     }
   if (args[m_alignment])
     {
@@ -7978,6 +7997,8 @@ process_metafunction (const constexpr_ctx *ctx, tree fun, tree call,
       return eval_is_aggregate_type (h);
     case METAFN_IS_CONSTEVAL_ONLY_TYPE:
       return eval_is_consteval_only_type (h);
+    case METAFN_IS_STRUCTURAL_TYPE:
+      return eval_is_structural_type (loc, h);
     case METAFN_IS_SIGNED_TYPE:
       return eval_is_signed_type (h);
     case METAFN_IS_UNSIGNED_TYPE:
