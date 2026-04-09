@@ -10155,6 +10155,15 @@ cp_parser_reflect_expression (cp_parser *parser)
 	 ^^B <int> is a type alias though.  */
       if (TYPE_P (t) && !type_alias_p)
 	t = strip_typedefs (t);
+      /* [expr.reflect] If the type-id designates a placeholder type, R is
+	 ill-formed.  This check is here rather than in get_reflection so
+	 that we don't wrongly error for a return-type-requirement which is
+	 represented as a constrained auto.  */
+      if (is_auto (t))
+	{
+	  error_at (loc, "%<^^%> cannot be applied to a placeholder type");
+	  return error_mark_node;
+	}
       return get_reflection (loc, t);
     }
   /* Try an id-expression.  */
@@ -10190,6 +10199,8 @@ cp_parser_reflect_expression (cp_parser *parser)
 	&& variable_template_p (TREE_OPERAND (t, 0))
 	&& !concept_check_p (t))
       t = finish_template_variable (t);
+    else if (is_overloaded_fn (t))
+      t = baselink_for_fns (t);
     if (cp_parser_parse_definitely (parser))
       return get_reflection (loc, t);
   }
@@ -21335,7 +21346,7 @@ cp_parser_template_id (cp_parser *parser,
 	  return error_mark_node;
 	}
       else
-	gcc_assert (false);
+	gcc_unreachable ();
 
       template_id = lookup_template_function (templ, arguments);
       if (TREE_CODE (template_id) == TEMPLATE_ID_EXPR)
@@ -45821,7 +45832,7 @@ cp_parser_omp_clause_proc_bind (cp_parser *parser, tree list,
   return c;
 
  invalid_kind:
-  cp_parser_error (parser, "invalid depend kind");
+  cp_parser_error (parser, "invalid proc_bind kind");
  resync_fail:
   cp_parser_skip_to_closing_parenthesis (parser, /*recovering=*/true,
 					 /*or_comma=*/false,
@@ -45888,7 +45899,7 @@ cp_parser_omp_clause_device_type (cp_parser *parser, tree list,
   return c;
 
  invalid_kind:
-  cp_parser_error (parser, "invalid depend kind");
+  cp_parser_error (parser, "expected %<host%>, %<nohost%> or %<any%>");
  resync_fail:
   cp_parser_skip_to_closing_parenthesis (parser, /*recovering=*/true,
 					 /*or_comma=*/false,
@@ -49521,7 +49532,7 @@ cp_parser_omp_loop_nest (cp_parser *parser, bool *if_p)
 	  TREE_VEC_ELT (omp_for_parse_state->condv, depth) = NULL_TREE;
 	  TREE_VEC_ELT (omp_for_parse_state->incrv, depth) = NULL_TREE;
 	  if (omp_for_parse_state->orig_declv)
-	    TREE_VEC_ELT (omp_for_parse_state->incrv, depth) = NULL_TREE;
+	    TREE_VEC_ELT (omp_for_parse_state->orig_declv, depth) = NULL_TREE;
 	  vec_safe_push (omp_for_parse_state->init_blockv, NULL_TREE);
 	  vec_safe_push (omp_for_parse_state->body_blockv, NULL_TREE);
 	  vec_safe_push (omp_for_parse_state->init_placeholderv, NULL_TREE);

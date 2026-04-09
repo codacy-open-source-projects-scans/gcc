@@ -123,16 +123,9 @@ get_reflection (location_t loc, tree t, reflect_kind kind/*=REFLECT_UNDEF*/)
 {
   STRIP_ANY_LOCATION_WRAPPER (t);
 
-  /* [expr.reflect] If the type-id designates a placeholder type, R is
-     ill-formed.  */
-  if (is_auto (t))
-    {
-      error_at (loc, "%<^^%> cannot be applied to a placeholder type");
-      return error_mark_node;
-    }
   /* Constant template parameters and pack-index-expressions cannot
      appear as operands of the reflection operator.  */
-  else if (PACK_INDEX_P (t))
+  if (PACK_INDEX_P (t))
     {
       error_at (loc, "%<^^%> cannot be applied to a pack index");
       return error_mark_node;
@@ -2912,7 +2905,7 @@ eval_template_of (location_t loc, const constexpr_ctx *ctx, tree r,
   else if (VAR_OR_FUNCTION_DECL_P (r) && DECL_TEMPLATE_INFO (r))
     r = DECL_TI_TEMPLATE (r);
   else
-    gcc_assert (false);
+    gcc_unreachable ();
 
   gcc_assert (TREE_CODE (r) == TEMPLATE_DECL);
   return get_reflection_raw (loc, r);
@@ -3706,13 +3699,14 @@ eval_display_string_of (location_t loc, const constexpr_ctx *ctx, tree r,
   if (str == NULL_TREE)
     {
       if (elt_type == char_type_node)
-	return throw_exception (loc, ctx, "identifier_of not representable"
+	return throw_exception (loc, ctx, "display_string_of not representable"
 					  " in ordinary literal encoding",
 				fun, non_constant_p, jump_target);
       else
-	return throw_exception (loc, ctx, "u8identifier_of not representable"
-					  " in UTF-8", fun, non_constant_p,
-					  jump_target);
+	return throw_exception (loc, ctx,
+				"u8display_string_of not representable"
+				" in UTF-8",
+				fun, non_constant_p, jump_target);
     }
   releasing_vec args (make_tree_vector_single (str));
   tree ret = build_special_member_call (NULL_TREE, complete_ctor_identifier,
@@ -4379,17 +4373,6 @@ static tree
 eval_is_aggregate_type (tree type)
 {
   if (CP_AGGREGATE_TYPE_P (type))
-    return boolean_true_node;
-  else
-    return boolean_false_node;
-}
-
-/* Process std::meta::is_consteval_only_type.  */
-
-static tree
-eval_is_consteval_only_type (tree type)
-{
-  if (consteval_only_p (type))
     return boolean_true_node;
   else
     return boolean_false_node;
@@ -6444,8 +6427,9 @@ eval_current_function (location_t loc, const constexpr_ctx *ctx,
   tree scope = reflect_current_scope (loc, ctx, call, non_constant_p,
 				      "std::meta::current_function");
   if (TREE_CODE (scope) != FUNCTION_DECL)
-    throw_exception (loc, ctx, "current scope does not represent a function",
-		     fun, non_constant_p, jump_target);
+    return throw_exception (loc, ctx,
+			    "current scope does not represent a function",
+			    fun, non_constant_p, jump_target);
   return get_reflection_raw (loc, scope);
 }
 
@@ -6463,9 +6447,10 @@ eval_current_class (location_t loc, const constexpr_ctx *ctx,
       && TYPE_P (DECL_CONTEXT (scope)))
     scope = DECL_CONTEXT (scope);
   if (!CLASS_TYPE_P (scope))
-    throw_exception (loc, ctx, "current scope does not represent a class"
-			       " nor a member function",
-		     fun, non_constant_p, jump_target);
+    return throw_exception (loc, ctx,
+			    "current scope does not represent a class"
+			    " nor a member function",
+			    fun, non_constant_p, jump_target);
   return get_reflection_raw (loc, scope);
 }
 
@@ -8192,8 +8177,6 @@ process_metafunction (const constexpr_ctx *ctx, tree fun, tree call,
       return eval_is_final_type (loc, h);
     case METAFN_IS_AGGREGATE_TYPE:
       return eval_is_aggregate_type (h);
-    case METAFN_IS_CONSTEVAL_ONLY_TYPE:
-      return eval_is_consteval_only_type (h);
     case METAFN_IS_STRUCTURAL_TYPE:
       return eval_is_structural_type (loc, h);
     case METAFN_IS_SIGNED_TYPE:
@@ -8901,6 +8884,15 @@ check_splice_expr (location_t loc, location_t start_loc, tree t,
 		  "through a splice", t);
       return false;
     }
+
+  /* One can't access a class template or alias template with . or ->.  */
+  if (member_access_p && DECL_TYPE_TEMPLATE_P (t))
+    {
+      if (complain_p)
+	error_at (loc, "invalid class member access of type template %qE", t);
+      return false;
+    }
+
   /* [expr.unary.op]/3.1 "If the operand [of unary &] is a qualified-id or
      splice-expression designating a non-static member m, other than an
      explicit object member function, m shall be a direct member of some
