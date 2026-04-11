@@ -2328,9 +2328,9 @@
 
 #if !defined(__cpp_lib_algorithm_default_value_type)
 # if (__cplusplus >  202302L)
-#  define __glibcxx_algorithm_default_value_type 202403L
+#  define __glibcxx_algorithm_default_value_type 202603L
 #  if defined(__glibcxx_want_all) || defined(__glibcxx_want_algorithm_default_value_type)
-#   define __cpp_lib_algorithm_default_value_type 202403L
+#   define __cpp_lib_algorithm_default_value_type 202603L
 #  endif
 # endif
 #endif /* !defined(__cpp_lib_algorithm_default_value_type) */
@@ -2426,16 +2426,6 @@
 #endif /* !defined(__cpp_lib_saturation_arithmetic) */
 #undef __glibcxx_want_saturation_arithmetic
 
-#if !defined(__cpp_lib_span_initializer_list)
-# if (__cplusplus >  202302L)
-#  define __glibcxx_span_initializer_list 202311L
-#  if defined(__glibcxx_want_all) || defined(__glibcxx_want_span_initializer_list)
-#   define __cpp_lib_span_initializer_list 202311L
-#  endif
-# endif
-#endif /* !defined(__cpp_lib_span_initializer_list) */
-#undef __glibcxx_want_span_initializer_list
-
 #if !defined(__cpp_lib_text_encoding)
 # if (__cplusplus >  202302L) && _GLIBCXX_HOSTED && (_GLIBCXX_USE_NL_LANGINFO_L)
 #  define __glibcxx_text_encoding 202306L
@@ -2456,15 +2446,15 @@
 #endif /* !defined(__cpp_lib_ranges_filter) */
 #undef __glibcxx_want_ranges_filter
 
-#if !defined(__cpp_lib_ranges_to_input)
+#if !defined(__cpp_lib_ranges_as_input)
 # if (__cplusplus >  202302L)
-#  define __glibcxx_ranges_to_input 202502L
-#  if defined(__glibcxx_want_all) || defined(__glibcxx_want_ranges_to_input)
-#   define __cpp_lib_ranges_to_input 202502L
+#  define __glibcxx_ranges_as_input 202502L
+#  if defined(__glibcxx_want_all) || defined(__glibcxx_want_ranges_as_input)
+#   define __cpp_lib_ranges_as_input 202502L
 #  endif
 # endif
-#endif /* !defined(__cpp_lib_ranges_to_input) */
-#undef __glibcxx_want_ranges_to_input
+#endif /* !defined(__cpp_lib_ranges_as_input) */
+#undef __glibcxx_want_ranges_as_input
 
 #if !defined(__cpp_lib_to_string)
 # if (__cplusplus >  202302L) && _GLIBCXX_HOSTED && (__glibcxx_to_chars)
