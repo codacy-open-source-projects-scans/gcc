@@ -186,7 +186,12 @@
 #undef __glibcxx_want_exchange_function
 
 #if !defined(__cpp_lib_integer_sequence)
-# if (__cplusplus >= 201402L)
+# if (__cplusplus >  202302L) && (__cpp_pack_indexing)
+#  define __glibcxx_integer_sequence 202511L
+#  if defined(__glibcxx_want_all) || defined(__glibcxx_want_integer_sequence)
+#   define __cpp_lib_integer_sequence 202511L
+#  endif
+# elif (__cplusplus >= 201402L)
 #  define __glibcxx_integer_sequence 201304L
 #  if defined(__glibcxx_want_all) || defined(__glibcxx_want_integer_sequence)
 #   define __cpp_lib_integer_sequence 201304L
@@ -442,9 +447,9 @@
 
 #if !defined(__cpp_lib_constant_wrapper)
 # if (__cplusplus >  202302L)
-#  define __glibcxx_constant_wrapper 202506L
+#  define __glibcxx_constant_wrapper 202603L
 #  if defined(__glibcxx_want_all) || defined(__glibcxx_want_constant_wrapper)
-#   define __cpp_lib_constant_wrapper 202506L
+#   define __cpp_lib_constant_wrapper 202603L
 #  endif
 # endif
 #endif /* !defined(__cpp_lib_constant_wrapper) */
@@ -2070,6 +2075,26 @@
 # endif
 #endif /* !defined(__cpp_lib_stdatomic_h) */
 #undef __glibcxx_want_stdatomic_h
+
+#if !defined(__cpp_lib_stdbit_h)
+# if (__cplusplus >  202302L)
+#  define __glibcxx_stdbit_h 202603L
+#  if defined(__glibcxx_want_all) || defined(__glibcxx_want_stdbit_h)
+#   define __cpp_lib_stdbit_h 202603L
+#  endif
+# endif
+#endif /* !defined(__cpp_lib_stdbit_h) */
+#undef __glibcxx_want_stdbit_h
+
+#if !defined(__cpp_lib_stdckdint_h)
+# if (__cplusplus >  202302L)
+#  define __glibcxx_stdckdint_h 202603L
+#  if defined(__glibcxx_want_all) || defined(__glibcxx_want_stdckdint_h)
+#   define __cpp_lib_stdckdint_h 202603L
+#  endif
+# endif
+#endif /* !defined(__cpp_lib_stdckdint_h) */
+#undef __glibcxx_want_stdckdint_h
 
 #if !defined(__cpp_lib_adaptor_iterator_pair_constructor)
 # if (__cplusplus >= 202100L) && _GLIBCXX_HOSTED

@@ -902,7 +902,7 @@ Objective-C and Objective-C++ Dialects}.
 -moverride=@var{string}
 -mstack-protector-guard=@var{guard}  -mstack-protector-guard-reg=@var{sysreg}
 -mstack-protector-guard-offset=@var{offset}  -mtrack-speculation
--moutline-atomics  -mearly-ra  -mearly-ldp-fusion  -mlate-ldp-fusion
+-moutline-atomics  -mearly-ra  -mearly-ldp-fusion  -mlate-ldp-fusion -mnarrow-gp-writes
 -msve-vector-bits=@var{bits}}
 
 @emph{Adapteva Epiphany Options} (@ref{Adapteva Epiphany Options})
@@ -21521,8 +21521,8 @@ performance of the code.  Permissible values for this option are:
 @samp{oryon-1},
 @samp{neoverse-512tvb}, @samp{neoverse-e1}, @samp{neoverse-n1},
 @samp{neoverse-n2}, @samp{neoverse-v1}, @samp{neoverse-v2}, @samp{grace},
-@samp{neoverse-v3}, @samp{neoverse-v3ae}, @samp{neoverse-n3}, @samp{olympus},
-@samp{cortex-a725}, @samp{cortex-x925},
+@samp{neoverse-v3}, @samp{neoverse-v3ae}, @samp{armagicpu}, @samp{neoverse-n3},
+@samp{olympus}, @samp{cortex-a725}, @samp{cortex-x925},
 @samp{qdf24xx}, @samp{saphira}, @samp{phecda}, @samp{xgene1}, @samp{vulcan},
 @samp{octeontx}, @samp{octeontx81},  @samp{octeontx83},
 @samp{octeontx2}, @samp{octeontx2t98}, @samp{octeontx2t96}
@@ -21688,6 +21688,13 @@ register allocation.  Enabled by default at @samp{-O} and above.
 @itemx -mno-late-ldp-fusion
 Enable the copy of the AArch64 load/store pair fusion pass that runs after
 register allocation.  Enabled by default at @samp{-O} and above.
+
+@opindex mnarrow-gp-writes
+@item -mnarrow-gp-writes
+Enable conversion of 64-bit general purpose register writes to equivalent 32-bit
+operations when the upper 32 bits are known to be zero.  This pass can be
+controlled with -mnarrow-gp-writes and is active at -O2 and above, but not
+enabled by default, except for @option{-mcpu=olympus}.
 
 @opindex msve-vector-bits
 @item -msve-vector-bits=@var{bits}
