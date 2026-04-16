@@ -336,7 +336,7 @@ static int const x86_64_ms_abi_int_parameter_registers[4] =
 };
 
 /* Similar as Clang's preserve_none function parameter passing.
-   NB: Use DI_REG and SI_REG, see ix86_function_value_regno_p.  */
+   NB: Use DI_REG and SI_REG, see ix86_function_arg_regno_p.  */
 
 static int const x86_64_preserve_none_int_parameter_registers[6] =
 {
@@ -27719,7 +27719,7 @@ ix86_bitint_type_info (int n, struct bitint_info *info)
     info->limb_mode = DImode;
   info->abi_limb_mode = info->limb_mode;
   info->big_endian = false;
-  info->extended = false;
+  info->extended = bitint_ext_undef;
   return true;
 }
 

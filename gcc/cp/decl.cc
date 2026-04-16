@@ -9649,7 +9649,7 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	      /* [basic.start.main]/3: A program that defines main as deleted
 		 is ill-formed.  */
 	      error ("%<::main%> cannot be deleted");
-	      DECL_INITIAL (decl) = NULL_TREE;
+	      DECL_INITIAL (decl) = error_mark_node;
 	    }
 	  else
 	    {
@@ -9885,8 +9885,7 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	 variable.  */
       if (DECL_FUNCTION_SCOPE_P (decl)
 	  && TREE_STATIC (decl)
-	  && !DECL_ARTIFICIAL (decl)
-	  && !consteval_only_p (decl))
+	  && !DECL_ARTIFICIAL (decl))
 	{
 	  /* The variable holding an anonymous union will have had its
 	     discriminator set in finish_anon_union, after which it's
@@ -9904,9 +9903,10 @@ cp_finish_decl (tree decl, tree init, bool init_const_expr_p,
 	      walk_tree (&init, notice_forced_label_r, NULL, NULL);
 	      add_local_decl (cfun, decl);
 	    }
-	  /* And make sure it's in the symbol table for
-	     c_parse_final_cleanups to find.  */
-	  varpool_node::get_create (decl);
+	  if (!consteval_only_p (decl))
+	    /* And make sure it's in the symbol table for
+	       c_parse_final_cleanups to find.  */
+	    varpool_node::get_create (decl);
 	}
 
       if (flag_openmp
@@ -10671,6 +10671,12 @@ cp_decomp_size (location_t loc, tree type, tsubst_flags_t complain)
 	return -1;
       else if (btype == NULL_TREE)
 	return 0;
+      if (btype != type)
+	{
+	  tree binfo = lookup_base (type, btype, ba_check, NULL, complain);
+	  if (binfo == NULL_TREE || binfo == error_mark_node)
+	    return -1;
+	}
       for (tree field = TYPE_FIELDS (btype); field; field = TREE_CHAIN (field))
 	if (TREE_CODE (field) != FIELD_DECL
 	    || DECL_ARTIFICIAL (field)
