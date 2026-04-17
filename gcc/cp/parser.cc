@@ -6355,16 +6355,7 @@ cp_parser_splice_expression (cp_parser *parser, bool template_p,
     {
       /* Grab the unresolved expression then.  */
       t = unresolved;
-      gcc_assert (TREE_CODE (t) == FIELD_DECL
-		  || VAR_P (t)
-		  || TREE_CODE (t) == CONST_DECL
-		  || TREE_CODE (t) == FUNCTION_DECL
-		  || DECL_FUNCTION_TEMPLATE_P (OVL_FIRST (t))
-		  || variable_template_p (t)
-		  || BASELINK_P (t)
-		  || TREE_CODE (t) == SPLICE_EXPR
-		  || TREE_CODE (t) == TEMPLATE_ID_EXPR
-		  || TREE_CODE (t) == TREE_BINFO);
+      gcc_assert (valid_splice_for_member_access_p (t, /*decls_only_p=*/false));
       /* ??? We're not setting *idk here.  */
     }
   else if (address_p
@@ -13737,6 +13728,27 @@ cp_parser_lambda_body (cp_parser* parser, tree lambda_expr)
        finish_function (which will try to emit the contracts).  */
     cp_parser_late_contracts (parser, fco);
 
+    /* Check that we have not caused captures that only relate to contracts.
+       [expr.prim.lambda.closure] / P10.  */
+    if (flag_contracts)
+      {
+	gcc_checking_assert (current_lambda_expr () == lambda_expr);
+	for (tree le = LAMBDA_EXPR_CAPTURE_LIST (lambda_expr); le;
+	     le = TREE_CHAIN (le))
+	  {
+	    tree cap_fld = TREE_PURPOSE (le);
+	    if (TREE_CODE (cap_fld) == FIELD_DECL
+		&& DECL_CONTRACT_CAPTURE_P (cap_fld))
+	      {
+		auto_diagnostic_group d;
+		tree expr = TREE_VALUE (le);
+		location_t loc = DECL_SOURCE_LOCATION (cap_fld);
+		error_at (loc, "%qE is not implicitly captured by a contract"
+			  " assertion", expr);
+		inform (DECL_SOURCE_LOCATION (expr), "%q#E declared here", expr);
+	      }
+	  }
+      }
     finish_lambda_function (body);
   }
 
@@ -33582,9 +33594,7 @@ cp_parser_late_contract_condition (cp_parser *parser, tree fn, tree contract)
 
   /* If we have a current class object, we need to consider
      it const when processing the contract condition.  */
-  tree current_class_ref_copy = current_class_ref;
-  if (flag_contracts && current_class_ref_copy)
-    current_class_ref = view_as_const (current_class_ref_copy);
+  current_class_ref = view_as_const (current_class_ref);
 
   /* Parse the condition, ensuring that parameters or the return variable
      aren't flagged for use outside the body of a function.  */
@@ -33691,8 +33701,7 @@ cp_parser_contract_assert (cp_parser *parser, cp_token *token)
   /* If we have a current class object, see if we need to consider
      it const when processing the contract condition.  */
   tree current_class_ref_copy = current_class_ref;
-  if (current_class_ref_copy)
-    current_class_ref = view_as_const (current_class_ref_copy);
+  current_class_ref = view_as_const (current_class_ref);
 
   /* Parse the condition.  */
   begin_scope (sk_contract, current_function_decl);
@@ -33857,8 +33866,7 @@ cp_parser_function_contract_specifier (cp_parser *parser)
       /* If we have a current class object, see if we need to consider
        it const when processing the contract condition.  */
       tree current_class_ref_copy = current_class_ref;
-      if (current_class_ref_copy)
-      current_class_ref = view_as_const (current_class_ref_copy);
+      current_class_ref = view_as_const (current_class_ref);
 
       /* Parse the condition, ensuring that parameters or the return variable
        aren't flagged for use outside the body of a function.  */

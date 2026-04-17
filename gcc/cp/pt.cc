@@ -16969,15 +16969,7 @@ tsubst_splice_expr (tree t, tree args, tsubst_flags_t complain, tree in_decl)
      cp_parser_postfix_dot_deref_expression wants to see only
      certain kind of entities.  */
   if (SPLICE_EXPR_MEMBER_ACCESS_P (t))
-    gcc_assert (TREE_CODE (op) == FIELD_DECL
-		|| VAR_P (op)
-		|| TREE_CODE (op) == CONST_DECL
-		|| TREE_CODE (op) == FUNCTION_DECL
-		|| DECL_FUNCTION_TEMPLATE_P (OVL_FIRST (op))
-		|| variable_template_p (op)
-		|| BASELINK_P (op)
-		|| TREE_CODE (op) == TEMPLATE_ID_EXPR
-		|| TREE_CODE (op) == TREE_BINFO);
+    gcc_assert (valid_splice_for_member_access_p (op, /*decls_only_p=*/false));
 
   return op;
 }
@@ -33664,7 +33656,8 @@ finish_expansion_stmt (tree expansion_stmt, tree args,
 	  if (DECL_DECLARED_CONSTEXPR_P (range_decl)
 	      && !TYPE_REF_P (iter_type))
 	    iter_type = cp_build_qualified_type (iter_type, TYPE_QUAL_CONST);
-	  iter = build_decl (loc, VAR_DECL, NULL_TREE, iter_type);
+	  iter = build_decl (loc, VAR_DECL, get_identifier ("__for_iter "),
+			     iter_type);
 	  TREE_USED (iter) = 1;
 	  DECL_ARTIFICIAL (iter) = 1;
 	  if (DECL_DECLARED_CONSTEXPR_P (range_decl))

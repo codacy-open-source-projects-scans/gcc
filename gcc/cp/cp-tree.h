@@ -595,6 +595,7 @@ extern GTY(()) tree cp_global_trees[CPTI_MAX];
       DECL_DECLARED_CONSTINIT_P (in VAR_DECL)
       TYPE_DECL_FOR_LINKAGE_PURPOSES_P (in TYPE_DECL)
    8: DECL_DECLARED_CONSTEXPR_P (in VAR_DECL, FUNCTION_DECL)
+      DECL_CONTRACT_CAPTURE_P (in FIELD_DECL)
 
    Usage of language-independent fields in a language-dependent manner:
 
@@ -5387,6 +5388,13 @@ get_vec_init_expr (tree t)
 #define DECL_NORMAL_CAPTURE_P(NODE) \
   DECL_LANG_FLAG_7 (FIELD_DECL_CHECK (NODE))
 
+/* True when a field decl relates to a lambda capture that has currently been
+   made to satisfy a use within a contract check.  Reset to false when the
+   capture is required outside a contract check.  Used to diagnose cases where
+   a capture is only made within contract checks.  */
+#define DECL_CONTRACT_CAPTURE_P(NODE) \
+  DECL_LANG_FLAG_8 (FIELD_DECL_CHECK (NODE))
+
 /* Nonzero if TYPE is an anonymous union or struct type.  We have to use a
    flag for this because "A union for which objects or pointers are
    declared is not an anonymous union" [class.union].  */
@@ -9436,6 +9444,8 @@ extern bool consteval_only_p (tree) ATTRIBUTE_PURE;
 extern bool compare_reflections (tree, tree) ATTRIBUTE_PURE;
 extern bool valid_splice_type_p (const_tree) ATTRIBUTE_PURE;
 extern bool valid_splice_scope_p (const_tree) ATTRIBUTE_PURE;
+extern bool valid_splice_for_member_access_p (const_tree, bool = true)
+  ATTRIBUTE_PURE;
 extern bool check_splice_expr (location_t, location_t, tree, bool, bool, bool,
 			       bool, bool) ATTRIBUTE_PURE;
 extern tree make_splice_scope (tree, bool);
@@ -9443,6 +9453,7 @@ extern bool dependent_splice_p (const_tree) ATTRIBUTE_PURE;
 extern tree reflection_mangle_prefix (tree, char [3]);
 extern void check_consteval_only_fn (tree);
 extern bool reflection_function_template_p (tree) ATTRIBUTE_PURE;
+extern void dump_data_member_spec (pretty_printer *, tree);
 
 /* Inline bodies.  */
 
