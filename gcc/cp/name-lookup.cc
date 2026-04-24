@@ -3692,15 +3692,13 @@ push_local_extern_decl_alias (tree decl)
 {
   if (flag_reflection)
     {
-      if (lookup_attribute ("internal ", "annotation ",
-			    DECL_ATTRIBUTES (decl)))
+      if (lookup_annotation (DECL_ATTRIBUTES (decl)))
 	error_at (DECL_SOURCE_LOCATION (decl),
 		  "annotation applied to block scope extern %qD",
 		  decl);
       if (TREE_CODE (decl) == FUNCTION_DECL)
 	for (tree arg = DECL_ARGUMENTS (decl); arg; arg = DECL_CHAIN (arg))
-	  if (lookup_attribute ("internal ", "annotation ",
-				DECL_ATTRIBUTES (arg)))
+	  if (lookup_annotation (DECL_ATTRIBUTES (arg)))
 	    error_at (DECL_SOURCE_LOCATION (arg),
 		      "annotation applied to parameter %qD of block scope "
 		      "extern", arg);
@@ -5488,12 +5486,8 @@ check_can_export_using_decl (tree binding)
     not_tmpl = TYPE_NAME (DECL_CONTEXT (not_tmpl));
 
   /* If the using decl is exported, the things it refers to must
-     have external linkage.  decl_linkage returns lk_external for
-     module linkage so also check for attachment.  */
-  if (linkage != lk_external
-      || (DECL_LANG_SPECIFIC (not_tmpl)
-	  && DECL_MODULE_ATTACH_P (not_tmpl)
-	  && !DECL_MODULE_EXPORT_P (not_tmpl)))
+     have external linkage.  */
+  if (linkage != lk_external)
     {
       auto_diagnostic_group d;
       bool diag = true;

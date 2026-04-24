@@ -6124,12 +6124,16 @@ enum special_function_kind {
 	 translation unit.
 
       -- When a name has no linkage, the entity it denotes cannot be
-	 referred to by names from other scopes.  */
+	 referred to by names from other scopes.
+
+      -- When the declaration of the name is attached to a named module
+	 and is not exported, the name has module linkage.  */
 
 enum linkage_kind {
   lk_none,			/* No linkage.  */
   lk_internal,			/* Internal linkage.  */
-  lk_external			/* External linkage.  */
+  lk_external,			/* External linkage.  */
+  lk_module			/* Module linkage.  */
 };
 
 enum duration_kind {
@@ -7444,6 +7448,7 @@ extern bool type_has_virtual_destructor		(tree);
 extern bool type_has_non_deleted_trivial_default_ctor (tree);
 extern bool classtype_has_move_assign_or_move_ctor_p (tree, bool user_declared);
 extern bool classtype_has_non_deleted_move_ctor (tree);
+extern bool classtype_has_non_deleted_copy_or_move_ctor (tree);
 extern tree classtype_has_depr_implicit_copy	(tree);
 extern bool classtype_has_op (tree, tree_code);
 extern tree classtype_has_defaulted_op (tree, tree_code);
@@ -8659,6 +8664,8 @@ extern bool std_layout_type_p			(const_tree);
 extern bool trivial_type_p			(const_tree);
 extern bool implicit_lifetime_type_p		(tree);
 extern bool trivially_copyable_p		(const_tree);
+extern bool has_trivial_abi_attribute		(tree);
+extern void validate_trivial_abi_attribute	(tree);
 extern bool type_has_unique_obj_representations (const_tree, bool = false);
 extern bool scalarish_type_p			(const_tree);
 extern bool structural_type_p			(tree, bool = false);
@@ -8766,6 +8773,7 @@ extern bool is_dummy_object			(const_tree);
 extern bool is_byte_access_type			(tree);
 extern bool is_byte_access_type_not_plain_char	(tree);
 extern const struct scoped_attribute_specs cxx_gnu_attribute_table;
+extern const struct scoped_attribute_specs cxx_clang_attribute_table;
 extern const struct scoped_attribute_specs std_attribute_table;
 extern const struct scoped_attribute_specs internal_attribute_table;
 extern tree make_ptrmem_cst			(tree, tree);
@@ -8800,6 +8808,7 @@ extern tree cxx_copy_lang_qualifiers		(const_tree, const_tree);
 extern void cxx_print_statistics		(void);
 extern bool maybe_warn_zero_as_null_pointer_constant (tree, location_t);
 extern bool annotation_p			(tree) ATTRIBUTE_PURE;
+extern tree lookup_annotation			(tree);
 
 /* in ptree.cc */
 extern void cxx_print_xnode			(FILE *, tree, int);

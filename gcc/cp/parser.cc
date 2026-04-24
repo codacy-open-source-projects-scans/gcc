@@ -18327,7 +18327,7 @@ cp_parser_decomposition_declaration (cp_parser *parser,
 	      attr = NULL_TREE;
 	    if (attr && first_attr == -1)
 	      first_attr = v.length ();
-	    if (lookup_attribute ("internal ", "annotation ", attr))
+	    if (lookup_annotation (attr))
 	      error ("annotation on structured binding");
 	  }
 	v.safe_push (e);
@@ -21993,6 +21993,7 @@ cp_parser_template_argument (cp_parser* parser)
 		{
 		  linkage_kind linkage = decl_linkage (probe);
 		  if (linkage != lk_external
+		      && linkage != lk_module
 		      && (cxx_dialect < cxx11 || linkage != lk_internal))
 		    cp_parser_simulate_error (parser);
 		}
@@ -23919,25 +23920,17 @@ cp_parser_enum_specifier (cp_parser* parser)
   pop_deferring_access_checks ();
 
   /* Check for the `:' that denotes a specified underlying type in C++0x.
-     Note that a ':' could also indicate a bitfield width, however.  */
+     [dcl.enum]/1 says that a `:' following an enum-key is parsed as part
+     of an enum-base, so we can expect a type-specifier-seq rather than a
+     bitfield width.  */
   location_t colon_loc = UNKNOWN_LOCATION;
   if (cp_lexer_next_token_is (parser->lexer, CPP_COLON))
     {
       cp_decl_specifier_seq type_specifiers;
 
-      /* Consume the `:'.  */
-      colon_loc = cp_lexer_peek_token (parser->lexer)->location;
-      cp_lexer_consume_token (parser->lexer);
-
       auto tdf
 	= make_temp_override (parser->type_definition_forbidden_message,
 			      G_("types may not be defined in enum-base"));
-
-      /* Parse the type-specifier-seq.  */
-      cp_parser_type_specifier_seq (parser, CP_PARSER_FLAGS_NONE,
-				    /*is_declaration=*/false,
-				    /*is_trailing_return=*/false,
-                                    &type_specifiers);
 
       /* At this point this is surely not elaborated type specifier.  */
       if (!cp_parser_parse_definitely (parser))
@@ -23946,7 +23939,17 @@ cp_parser_enum_specifier (cp_parser* parser)
       if (cxx_dialect < cxx11)
         maybe_warn_cpp0x (CPP0X_SCOPED_ENUMS);
 
+      /* Consume the `:'.  */
+      colon_loc = cp_lexer_peek_token (parser->lexer)->location;
+      cp_lexer_consume_token (parser->lexer);
+
       has_underlying_type = true;
+
+      /* Parse the type-specifier-seq.  */
+      cp_parser_type_specifier_seq (parser, CP_PARSER_FLAGS_NONE,
+				    /*is_declaration=*/false,
+				    /*is_trailing_return=*/false,
+				    &type_specifiers);
 
       /* If that didn't work, stop.  */
       if (type_specifiers.type != error_mark_node)

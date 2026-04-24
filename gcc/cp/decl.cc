@@ -12232,7 +12232,7 @@ grokfndecl (tree ctype,
 	  && initialized == SD_INITIALIZED
 	  && DECL_ATTRIBUTES (t))
 	for (tree a = DECL_ATTRIBUTES (t);
-	     (a = lookup_attribute ("internal ", "annotation ", a));
+	     (a = lookup_annotation (a));
 	     a = TREE_CHAIN (a))
 	  {
 	    gcc_checking_assert (TREE_CODE (TREE_VALUE (a)) == TREE_LIST);
@@ -15938,10 +15938,9 @@ grokdeclarator (const cp_declarator *declarator,
 	{
 	  if (flag_reflection
 	      && declarator->std_attributes != error_mark_node
-	      && lookup_attribute ("internal ", "annotation ",
-				   declarator->std_attributes)
+	      && lookup_annotation (declarator->std_attributes)
 	      && *attrlist != error_mark_node
-	      && lookup_attribute ("internal ", "annotation ", *attrlist))
+	      && lookup_annotation (*attrlist))
 	    /* If there are annotations in both lists, ensure
 	       declarator->std_attributes go after *attrlist.  See
 	       PR124399.  */
@@ -16663,9 +16662,7 @@ grokdeclarator (const cp_declarator *declarator,
 	  {
 	    if (flag_reflection && !funcdef_flag && decl)
 	      {
-		if (attrlist
-		    && lookup_attribute ("internal ", "annotation ",
-					 *attrlist))
+		if (attrlist && lookup_annotation (*attrlist))
 		  {
 		    /* Remove the annotations to avoid spurious warning
 		       below.  */
@@ -16676,8 +16673,7 @@ grokdeclarator (const cp_declarator *declarator,
 		  }
 		for (tree arg = DECL_ARGUMENTS (decl);
 		     arg; arg = DECL_CHAIN (arg))
-		  if (lookup_attribute ("internal ", "annotation ",
-					DECL_ATTRIBUTES (arg)))
+		  if (lookup_annotation (DECL_ATTRIBUTES (arg)))
 		    error_at (DECL_SOURCE_LOCATION (arg),
 			      "annotation applied to parameter %qD of "
 			      "non-defining friend declaration", arg);
@@ -20272,6 +20268,23 @@ store_parm_decls (tree current_function_parms)
      Put the enumerators in as well, at the front so that
      DECL_ARGUMENTS is not modified.  */
   current_binding_level->names = chainon (nonparms, DECL_ARGUMENTS (fndecl));
+
+  /* Register cleanups for parameters with trivial_abi attribute, the cleanup
+     of which is the callee's responsibility.  */
+  for (tree parm = DECL_ARGUMENTS (fndecl); parm; parm = DECL_CHAIN (parm))
+    {
+      if (TREE_CODE (parm) == PARM_DECL)
+	{
+	  tree parm_type = TREE_TYPE (parm);
+	  if (has_trivial_abi_attribute (parm_type))
+	    {
+	      tree cleanup
+		= cxx_maybe_build_cleanup (parm, tf_warning_or_error);
+	      if (cleanup && cleanup != error_mark_node)
+		finish_decl_cleanup (parm, cleanup);
+	    }
+	}
+    }
 
   if (use_eh_spec_block (current_function_decl))
     current_eh_spec_block = begin_eh_spec_block ();

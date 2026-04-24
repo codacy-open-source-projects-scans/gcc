@@ -2031,10 +2031,7 @@ eval_has_module_linkage (tree r, reflect_kind kind)
       if (!r)
 	return boolean_false_node;
     }
-  if (decl_linkage (r) == lk_external
-      && DECL_LANG_SPECIFIC (r)
-      && DECL_MODULE_ATTACH_P (r)
-      && !DECL_MODULE_EXPORT_P (r))
+  if (decl_linkage (r) == lk_module)
     return boolean_true_node;
   else
     return boolean_false_node;
@@ -2061,10 +2058,7 @@ eval_has_external_linkage (tree r, reflect_kind kind)
       if (!r)
 	return boolean_false_node;
     }
-  if (decl_linkage (r) == lk_external
-      && !(DECL_LANG_SPECIFIC (r)
-	   && DECL_MODULE_ATTACH_P (r)
-	   && !DECL_MODULE_EXPORT_P (r)))
+  if (DECL_EXTERNAL_LINKAGE_P (r))
     return boolean_true_node;
   else
     return boolean_false_node;
@@ -3972,7 +3966,8 @@ eval_annotations_of (location_t loc, const constexpr_ctx *ctx, tree r,
   else
     gcc_unreachable ();
   vec<constructor_elt, va_gc> *elts = nullptr;
-  for (tree a = r; (a = lookup_attribute ("internal ", "annotation ", a));
+  for (tree a = r;
+       (a = lookup_annotation (a));
        a = TREE_CHAIN (a))
     {
       gcc_checking_assert (TREE_CODE (TREE_VALUE (a)) == TREE_LIST);

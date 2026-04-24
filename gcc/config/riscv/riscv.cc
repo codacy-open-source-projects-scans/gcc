@@ -4284,7 +4284,9 @@ riscv_rtx_costs (rtx x, machine_mode mode, int outer_code, int opno ATTRIBUTE_UN
 		been to duplicate the operation than to CSE the constant.
 	     3. TODO: make cost more accurate specially if riscv_const_insns
 		returns > 1.  */
-	  if (outer_code == SET || GET_MODE (x) == VOIDmode)
+	  if (outer_code == COMPARE)
+	    *total = COSTS_N_INSNS (cost);
+	  else if (outer_code == SET || GET_MODE (x) == VOIDmode)
 	    *total = COSTS_N_INSNS (1);
 	}
       else /* The instruction will be fetched from the constant pool.  */
@@ -14026,13 +14028,8 @@ asm_insn_p (rtx_insn *insn)
 static bool
 vxrm_unknown_p (rtx_insn *insn)
 {
-  /* Return true if there is a definition of VXRM.  */
+  /* Return true if VXRM is set or clobbered.  */
   if (reg_set_p (gen_rtx_REG (SImode, VXRM_REGNUM), insn))
-    return true;
-
-  /* A CALL function may contain an instruction that modifies the VXRM,
-     return true in this situation.  */
-  if (CALL_P (insn))
     return true;
 
   /* Return true for all assembly since users may hardcode a assembly
