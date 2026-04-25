@@ -2702,20 +2702,6 @@ again:
 		= STMT_VINFO_DEF_TYPE (stmt_info);
 	    }
 	}
-      for (gimple_stmt_iterator si = gsi_start_bb (bb);
-	   !gsi_end_p (si); gsi_next (&si))
-	{
-	  if (is_gimple_debug (gsi_stmt (si)))
-	    continue;
-	  stmt_vec_info stmt_info = loop_vinfo->lookup_stmt (gsi_stmt (si));
-	  if (STMT_VINFO_IN_PATTERN_P (stmt_info))
-	    {
-	      stmt_vec_info pattern_stmt_info
-		= STMT_VINFO_RELATED_STMT (stmt_info);
-	      if (STMT_VINFO_SLP_VECT_ONLY_PATTERN (pattern_stmt_info))
-		STMT_VINFO_IN_PATTERN_P (stmt_info) = false;
-	    }
-	}
     }
   /* Free optimized alias test DDRS.  */
   LOOP_VINFO_LOWER_BOUNDS (loop_vinfo).truncate (0);
@@ -7891,7 +7877,7 @@ vect_emulate_mixed_dot_prod (loop_vec_info loop_vinfo, stmt_vec_info stmt_info,
     std::swap (vop[0], vop[1]);
 
   /* Convert all inputs to signed types.  */
-  for (int i = 0; i < 3; ++i)
+  for (int i = 1; i < 3; ++i)
     if (TYPE_UNSIGNED (TREE_TYPE (vop[i])))
       {
 	tree tmp = make_ssa_name (signed_type_for (TREE_TYPE (vop[i])));
@@ -7905,17 +7891,25 @@ vect_emulate_mixed_dot_prod (loop_vec_info loop_vinfo, stmt_vec_info stmt_info,
 
   /* Create a vector of -128.  */
   tree min_narrow_elttype = TYPE_MIN_VALUE (narrow_elttype);
-  tree min_narrow = build_vector_from_val (narrow_vectype,
-					   min_narrow_elttype);
+  tree min_narrow = build_vector_from_val (TREE_TYPE (vop[0]),
+					   fold_convert
+					     (TREE_TYPE (TREE_TYPE (vop[0])),
+					      min_narrow_elttype));
 
   /* Create a vector of 64.  */
   auto half_wi = wi::lrshift (wi::to_wide (min_narrow_elttype), 1);
   tree half_narrow = wide_int_to_tree (narrow_elttype, half_wi);
   half_narrow = build_vector_from_val (narrow_vectype, half_narrow);
 
-  /* Emit: SUB_RES = VOP[0] - 128.  */
-  tree sub_res = make_ssa_name (narrow_vectype);
+  /* Emit: SUB_RES = VOP[0] - 128 in an unsigned type.  */
+  tree sub_res = make_ssa_name (TREE_TYPE (vop[0]));
   new_stmt = gimple_build_assign (sub_res, PLUS_EXPR, vop[0], min_narrow);
+  vect_finish_stmt_generation (loop_vinfo, stmt_info, new_stmt, gsi);
+
+  vop[0] = make_ssa_name (narrow_vectype);
+  new_stmt = gimple_build_assign (vop[0], VIEW_CONVERT_EXPR,
+				  build1 (VIEW_CONVERT_EXPR, narrow_vectype,
+					  sub_res));
   vect_finish_stmt_generation (loop_vinfo, stmt_info, new_stmt, gsi);
 
   /* Emit:
@@ -7938,7 +7932,7 @@ vect_emulate_mixed_dot_prod (loop_vec_info loop_vinfo, stmt_vec_info stmt_info,
 
   tree stage3 = make_ssa_name (wide_vectype);
   new_stmt = gimple_build_assign (stage3, DOT_PROD_EXPR,
-				  sub_res, vop[1], stage2);
+				  vop[0], vop[1], stage2);
   vect_finish_stmt_generation (loop_vinfo, stmt_info, new_stmt, gsi);
 
   /* Convert STAGE3 to the reduction type.  */
