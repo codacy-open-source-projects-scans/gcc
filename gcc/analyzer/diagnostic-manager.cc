@@ -41,6 +41,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "analyzer/supergraph.h"
 #include "analyzer/program-state.h"
 #include "analyzer/exploded-graph.h"
+#include "analyzer/exploded-path.h"
 #include "analyzer/trimmed-graph.h"
 #include "analyzer/feasible-graph.h"
 #include "analyzer/checker-path.h"
@@ -2739,19 +2740,19 @@ diagnostic_manager::consolidate_conditions (checker_path *path) const
 		= path->get_checker_event (next_idx - 1);
 	      log ("consolidating CFG edge events %i-%i into %i-%i",
 		   start_idx, next_idx - 1, start_idx, start_idx +1);
-	      start_consolidated_cfg_edges_event *new_start_ev
-		= new start_consolidated_cfg_edges_event
-		(event_loc_info (old_start_ev->get_location (),
-				 old_start_ev->get_fndecl (),
-				 old_start_ev->get_stack_depth ()),
+	      auto new_start_ev
+		= std::make_unique<start_consolidated_cfg_edges_event>
+		    (event_loc_info (old_start_ev->get_location (),
+				     old_start_ev->get_fndecl (),
+				     old_start_ev->get_stack_depth ()),
 		 edge_sense);
-	      checker_event *new_end_ev
-		= new end_consolidated_cfg_edges_event
-		(event_loc_info (old_end_ev->get_location (),
-				 old_end_ev->get_fndecl (),
-				 old_end_ev->get_stack_depth ()));
-	      path->replace_event (start_idx, new_start_ev);
-	      path->replace_event (start_idx + 1, new_end_ev);
+	      auto new_end_ev
+		= std::make_unique<end_consolidated_cfg_edges_event>
+		    (event_loc_info (old_end_ev->get_location (),
+				     old_end_ev->get_fndecl (),
+				     old_end_ev->get_stack_depth ()));
+	      path->replace_event (start_idx, std::move (new_start_ev));
+	      path->replace_event (start_idx + 1, std::move (new_end_ev));
 	      path->delete_events (start_idx + 2, next_idx - (start_idx + 2));
 	    }
 	}

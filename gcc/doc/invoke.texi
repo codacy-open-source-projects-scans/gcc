@@ -526,6 +526,9 @@ Objective-C and Objective-C++ Dialects}.
 -Wno-analyzer-jump-through-null
 -Wno-analyzer-malloc-leak
 -Wno-analyzer-mismatching-deallocation
+-Wno-analyzer-mkostemp-redundant-flags
+-Wno-analyzer-mktemp-missing-placeholder
+-Wno-analyzer-mktemp-of-string-literal
 -Wno-analyzer-null-argument
 -Wno-analyzer-null-dereference
 -Wno-analyzer-out-of-bounds
@@ -11552,6 +11555,7 @@ Enabling this option effectively enables the following warnings:
 @gccoptlist{
 -Wanalyzer-allocation-size
 -Wanalyzer-deref-before-check
+-Wanalyzer-div-by-zero
 -Wanalyzer-double-fclose
 -Wanalyzer-double-free
 -Wanalyzer-exposure-through-output-file
@@ -11571,6 +11575,9 @@ Enabling this option effectively enables the following warnings:
 -Wanalyzer-jump-through-null
 -Wanalyzer-malloc-leak
 -Wanalyzer-mismatching-deallocation
+-Wanalyzer-mkostemp-redundant-flags
+-Wanalyzer-mktemp-missing-placeholder
+-Wanalyzer-mktemp-of-string-literal
 -Wanalyzer-null-argument
 -Wanalyzer-null-dereference
 -Wanalyzer-out-of-bounds
@@ -11639,6 +11646,18 @@ a buffer is assigned to point at a buffer with a size that is not a
 multiple of @code{sizeof (*pointer)}.
 
 See @uref{https://cwe.mitre.org/data/definitions/131.html, CWE-131: Incorrect Calculation of Buffer Size}.
+
+@opindex Wanalyzer-div-by-zero
+@opindex Wno-analyzer-div-by-zero
+@item -Wno-analyzer-div-by-zero
+This warning requires @option{-fanalyzer}, which enables it;
+to disable it, use @option{-Wno-analyzer-div-by-zero}.
+
+This diagnostic warns for paths through the code which attempt
+integer division by zero.  It is analogous to @option{-Wdiv-by-zero}, but
+implemented in a different way.
+
+See @uref{https://cwe.mitre.org/data/definitions/369.html,  CWE-369: Divide By Zero}.
 
 @opindex Wanalyzer-deref-before-check
 @opindex Wno-analyzer-deref-before-check
@@ -11962,6 +11981,44 @@ and vector @code{delete[]}, and those marked as allocator/deallocator
 pairs using attribute @code{malloc}.
 
 See @uref{https://cwe.mitre.org/data/definitions/762.html, CWE-762: Mismatched Memory Management Routines}.
+
+@opindex Wanalyzer-mkostemp-redundant-flags
+@opindex Wno-analyzer-mkostemp-redundant-flags
+@item -Wno-analyzer-mkostemp-redundant-flags
+This warning requires @option{-fanalyzer}, which enables it; use
+@option{-Wno-analyzer-mkostemp-redundant-flags} to disable it.
+
+This diagnostic warns for paths through the code in which
+@code{mkostemp} or @code{mkostemps} is called with flags that include
+@code{O_RDWR}, @code{O_CREAT}, or @code{O_EXCL}.  These flags are
+already implied by the function and specifying them is unnecessary, and
+produces errors on some systems.
+
+@opindex Wanalyzer-mktemp-missing-placeholder
+@opindex Wno-analyzer-mktemp-missing-placeholder
+@item -Wno-analyzer-mktemp-missing-placeholder
+This warning requires @option{-fanalyzer}, which enables it; use
+@option{-Wno-analyzer-mktemp-missing-placeholder} to disable it.
+
+This diagnostic warns for paths through the code in which a function in
+the @code{mktemp} family (@code{mkstemp}, @code{mkostemp},
+@code{mkstemps}, @code{mkostemps}, @code{mkdtemp}, @code{mktemp}) is
+called with a template string that does not contain the placeholder
+@samp{XXXXXX} at the expected position.
+
+@opindex Wanalyzer-mktemp-of-string-literal
+@opindex Wno-analyzer-mktemp-of-string-literal
+@item -Wno-analyzer-mktemp-of-string-literal
+This warning requires @option{-fanalyzer}, which enables it; use
+@option{-Wno-analyzer-mktemp-of-string-literal} to disable it.
+
+This diagnostic warns for paths through the code in which a function in
+the @code{mktemp} family (@code{mkstemp}, @code{mkostemp},
+@code{mkstemps}, @code{mkostemps}, @code{mkdtemp}, @code{mktemp}) is
+called on a string literal.  Since these functions modify their argument
+in place, passing a string literal leads to undefined behavior.
+
+See @uref{https://wiki.sei.cmu.edu/confluence/x/VtYxBQ, STR30-C. Do not attempt to modify string literals}.
 
 @opindex Wanalyzer-out-of-bounds
 @opindex Wno-analyzer-out-of-bounds

@@ -12558,6 +12558,12 @@ riscv_option_override (void)
 		       param_cycle_accurate_model,
 		       0);
 
+  /* Disable fold-mem-offsets when optimizing for size with compressed
+     instructions, as it conflicts with the shorten-memrefs pass.  */
+  if (optimize_size && (TARGET_RVC || TARGET_ZCA))
+    SET_OPTION_IF_UNSET (&global_options, &global_options_set,
+			 flag_fold_mem_offsets, 0);
+
   /* Function to allocate machine-dependent function status.  */
   init_machine_status = &riscv_init_machine_status;
 
@@ -16544,6 +16550,38 @@ riscv_prefetch_offset_address_p (rtx x, machine_mode mode)
   return true;
 }
 
+
+/* Implement TARGET_MEMTAG_CAN_TAG_ADDRESSES.
+ * Enables -fsanitize=hwaddress if true.  */
+
+bool
+riscv_can_tag_addresses ()
+{
+  /* Tagging is possible when a pointer masking extension is available.  */
+  bool target_has_pointer_masking_p = TARGET_SMMPM
+				   || TARGET_SMNPM
+				   || TARGET_SSNPM
+				   || TARGET_SSPM
+				   || TARGET_SUPM;
+  return TARGET_64BIT && target_has_pointer_masking_p;
+}
+
+
+/* libsanitizer expects 8 tag bits.  */
+
+#define RISCV_HWASAN_TAG_SIZE 8
+
+
+/* Implement TARGET_MEMTAG_TAG_BITSIZE.
+ * Communicates how many unused pointer bits are used for tagging.  */
+
+unsigned char
+riscv_memtag_tag_bitsize ()
+{
+  return RISCV_HWASAN_TAG_SIZE;
+}
+
+
 /* Initialize the GCC target structure.  */
 #undef TARGET_ASM_ALIGNED_HI_OP
 #define TARGET_ASM_ALIGNED_HI_OP "\t.half\t"
@@ -16962,6 +17000,12 @@ riscv_prefetch_offset_address_p (rtx x, machine_mode mode)
 #undef TARGET_GET_FUNCTION_VERSIONS_DISPATCHER
 #define TARGET_GET_FUNCTION_VERSIONS_DISPATCHER \
   riscv_get_function_versions_dispatcher
+
+#undef TARGET_MEMTAG_CAN_TAG_ADDRESSES
+#define TARGET_MEMTAG_CAN_TAG_ADDRESSES riscv_can_tag_addresses
+
+#undef TARGET_MEMTAG_TAG_BITSIZE
+#define TARGET_MEMTAG_TAG_BITSIZE riscv_memtag_tag_bitsize
 
 #undef TARGET_DOCUMENTATION_NAME
 #define TARGET_DOCUMENTATION_NAME "RISC-V"

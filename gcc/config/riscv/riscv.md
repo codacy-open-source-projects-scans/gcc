@@ -626,13 +626,18 @@
 				      (const_int 12)))
 
 	  ;; Jumps further than +/- 1 MiB require two instructions.
+	  ;; Also, jumps that cross section boundaries (e.g., from hot to cold
+	  ;; section when -freorder-blocks-and-partition is used) require two
+	  ;; instructions because the linker may place the sections far apart.
 	  (eq_attr "type" "jump")
-	  (if_then_else (and (le (minus (match_dup 0) (pc))
-				 (const_int 1048568))
-			     (le (minus (pc) (match_dup 0))
-				 (const_int 1048572)))
-			(const_int 4)
-			(const_int 8))
+	  (if_then_else (match_test "CROSSING_JUMP_P (insn)")
+			(const_int 8)
+			(if_then_else (and (le (minus (match_dup 0) (pc))
+					       (const_int 1048568))
+					   (le (minus (pc) (match_dup 0))
+					       (const_int 1048572)))
+				      (const_int 4)
+				      (const_int 8)))
 
 	  ;; Conservatively assume calls take two instructions (AUIPC + JALR).
 	  ;; The linker will opportunistically relax the sequence to JAL.
@@ -3879,8 +3884,10 @@
   [(set (pc) (label_ref (match_operand 0 "" "")))]
   ""
 {
-  /* Hopefully this does not happen often as this is going
-     to clobber $ra and muck up the return stack predictors.  */
+  /* Use the long form (AUIPC+JALR) if the jump distance exceeds 1 MiB,
+     or if the jump crosses section boundaries (e.g., from hot to cold
+     section when -freorder-blocks-and-partition is used).
+     Note: This clobbers $ra and mucks up the return stack predictors.  */
   if (get_attr_length (insn) == 8)
     return "jump\t%l0,ra";
 
@@ -5122,6 +5129,48 @@
   HOST_WIDE_INT rshift = lshift - INTVAL (operands[2]);
   operands[6] = gen_int_mode (rshift, QImode);
 }")
+
+;; EQ/NE of a sign bit splat against zero is just GE/LT 0, so we can
+;; recognize it directly.  Note there may be a subreg expression buried
+;; in there
+(define_insn "*sign_bit_splat_equality_test"
+  [(set (pc)
+	(if_then_else
+	 (any_eq
+	  (subreg:SI (ashiftrt:DI (match_operand:DI 1 "register_operand" "r")
+				  (const_int 63)) 0)
+	  (const_int 0))
+	 (label_ref (match_operand 0 "" ""))
+	 (pc)))]
+  "TARGET_64BIT"
+{
+  rtx x = PATTERN (insn);
+
+  /* We'll always have a SET, so it's safe to extract the source.  */
+  x = SET_SRC (x);
+
+  /* Get the condition of the IF_THEN_ELSE.  */
+  x = XEXP (x, 0);
+
+  if (GET_CODE (x) == EQ)
+    {
+      if (get_attr_length (insn) == 12)
+	return "blt\t%1,zero,1f; jump\t%l0,ra; 1:";
+      return "bge\t%1,zero,%l0";
+    }
+  else if (GET_CODE (x) == NE)
+    {
+      if (get_attr_length (insn) == 12)
+	return "bge\t%1,zero,1f; jump\t%l0,ra; 1:";
+      return "blt\t%1,zero,%l0";
+    }
+  else
+    gcc_unreachable ();
+}
+  [(set_attr "type" "branch")
+   (set_attr "mode" "none")])
+					
+	
 
 ;; Standard extensions and pattern for optimization
 (include "bitmanip.md")
