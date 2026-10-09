@@ -1217,7 +1217,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     // To support the (forward) evolution of the library's defined
     // clocks, wrap inside inline namespace so that the current
-    // defintions of system_clock, steady_clock, and
+    // definitions of system_clock, steady_clock, and
     // high_resolution_clock types are uniquely mangled. This way, new
     // code can use the latests clocks, while the library can contain
     // compatibility definitions for previous versions.  At some
@@ -1356,7 +1356,7 @@ _GLIBCXX_END_INLINE_ABI_NAMESPACE(_V2)
    * for example `1.5e2ms` might be equivalent to
    * `chrono::duration<long double, chrono::milli>(1.5e2)`.
    *
-   * @since C+14
+   * @since C++14
    * @ingroup chrono
    */
   inline namespace chrono_literals

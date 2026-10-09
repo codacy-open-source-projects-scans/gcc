@@ -42,14 +42,14 @@ translate_visibility (const AST::Visibility &vis)
   switch (vis.get_vis_type ())
     {
     case AST::Visibility::PUB:
-      return Visibility (Visibility::VisType::PUBLIC);
+      return Visibility (Visibility::VisType::Public);
     case AST::Visibility::PRIV:
     case AST::Visibility::PUB_SELF:
-      return Visibility (Visibility::VisType::PRIVATE);
+      return Visibility (Visibility::VisType::Private);
     case AST::Visibility::PUB_CRATE:
     case AST::Visibility::PUB_SUPER:
     case AST::Visibility::PUB_IN_PATH:
-      return Visibility (Visibility::VisType::RESTRICTED,
+      return Visibility (Visibility::VisType::Restricted,
 			 ASTLoweringSimplePath::translate (vis.get_path ()),
 			 vis.get_locus ());
       break;
@@ -117,7 +117,7 @@ ASTLoweringBlock::visit (AST::BlockExpr &expr)
 	  "this point in "
 	  "the pipeline, they should all have been expanded");
 
-      if (block_did_terminate)
+      if (s->get_stmt_kind () != AST::Stmt::Kind::Item && block_did_terminate)
 	rust_warning_at (s->get_locus (), 0, "unreachable statement");
 
       bool terminated = false;

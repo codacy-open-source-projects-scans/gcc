@@ -65,6 +65,11 @@ a68_get_real_skip_tree (MOID_T *m)
       int_type = a68_long_long_int_type;
       real_type = a68_long_long_real_type;
     }
+  else if (m == M_WORD_REAL)
+    {
+      int_type = a68_word_int_type;
+      real_type = a68_word_real_type;
+    }
   else
     gcc_unreachable ();
 
@@ -97,7 +102,7 @@ a68_real_maxval (tree type)
   return build_real (type, max);
 }
 
-/* Given a real type, build the minimum value expressable with that type.  */
+/* Given a real type, build the minimum value expressible with that type.  */
 
 tree
 a68_real_minval (tree type)
@@ -108,7 +113,7 @@ a68_real_minval (tree type)
 }
 
 /* Given a real type, build the smallest value which can be meaningfully added
-   to or substracted from 1.  */
+   to or subtracted from 1.  */
 
 tree
 a68_real_smallval (tree type)
@@ -140,11 +145,11 @@ a68_real_sign (tree val)
   val = save_expr (val);
   return fold_build3 (COND_EXPR,
 		      a68_int_type,
-		      build2 (EQ_EXPR, integer_type_node, val, zero),
+		      build2 (EQ_EXPR, a68_int_type, val, zero),
 		      build_int_cst (a68_int_type, 0),
 		      fold_build3 (COND_EXPR,
 				   a68_int_type,
-				   fold_build2 (GT_EXPR, integer_type_node, val, zero),
+				   fold_build2 (GT_EXPR, a68_int_type, val, zero),
 				   build_int_cst (a68_int_type, 1),
 				   build_int_cst (a68_int_type, -1)));
 }
@@ -376,36 +381,42 @@ a68_real_entier (tree val, MOID_T *to_mode, MOID_T *from_mode)
 {
   tree fn = NULL_TREE;
   tree to_type = CTYPE (to_mode);
+  int from_mode_prec = TYPE_PRECISION (CTYPE (from_mode));
+  int to_mode_prec = TYPE_PRECISION (to_type);
 
-  if (from_mode == M_REAL)
+  const int int_prec = TYPE_PRECISION (integer_type_node);
+  const int long_int_prec = TYPE_PRECISION (long_integer_type_node);
+  const int long_long_int_prec = TYPE_PRECISION (long_long_integer_type_node);
+  
+  if (from_mode_prec == TYPE_PRECISION (CTYPE (M_REAL)))
     {
-      if (to_type == integer_type_node)
+      if (to_mode_prec == int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_IFLOORF);
-      else if (to_type == long_integer_type_node)
+      else if (to_mode_prec == long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LFLOORF);
-      else if (to_type == long_long_integer_type_node)
+      else if (to_mode_prec == long_long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LLFLOORF);
       else
 	gcc_unreachable ();
     }
-  else if (from_mode == M_LONG_REAL)
+  else if (from_mode_prec == TYPE_PRECISION (CTYPE (M_LONG_REAL)))
     {
-      if (to_type == integer_type_node)
+      if (to_mode_prec == int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_IFLOOR);
-      else if (to_type == long_integer_type_node)
+      else if (to_mode_prec == long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LFLOOR);
-      else if (to_type == long_long_integer_type_node)
+      else if (to_mode_prec == long_long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LLFLOOR);
       else
 	gcc_unreachable ();
     }
-  else if (from_mode == M_LONG_LONG_REAL)
+  else if (from_mode_prec == TYPE_PRECISION (CTYPE (M_LONG_LONG_REAL)))
     {
-      if (to_type == integer_type_node)
+      if (to_mode_prec == int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_IFLOORL);
-      else if (to_type == long_integer_type_node)
+      else if (to_mode_prec == long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LFLOORL);
-      else if (to_type == long_long_integer_type_node)
+      else if (to_mode_prec == long_long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LLFLOORL);
       else
 	gcc_unreachable ();
@@ -424,36 +435,42 @@ a68_real_round (tree val, MOID_T *to_mode, MOID_T *from_mode)
 {
   tree fn = NULL_TREE;
   tree to_type = CTYPE (to_mode);
+  int from_mode_prec = TYPE_PRECISION (CTYPE (from_mode));
+  int to_mode_prec = TYPE_PRECISION (to_type);
 
-  if (from_mode == M_REAL)
+  const int int_prec = TYPE_PRECISION (integer_type_node);
+  const int long_int_prec = TYPE_PRECISION (long_integer_type_node);
+  const int long_long_int_prec = TYPE_PRECISION (long_long_integer_type_node);
+  
+  if (from_mode_prec == TYPE_PRECISION (CTYPE (M_REAL)))
     {
-      if (to_type == integer_type_node)
+      if (to_mode_prec == int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_IROUNDF);
-      else if (to_type == long_integer_type_node)
+      else if (to_mode_prec == long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LROUNDF);
-      else if (to_type == long_long_integer_type_node)
+      else if (to_mode_prec == long_long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LLROUNDF);
       else
 	gcc_unreachable ();
     }
-  else if (from_mode == M_LONG_REAL)
+  else if (from_mode_prec == TYPE_PRECISION (CTYPE (M_LONG_REAL)))
     {
-      if (to_type == integer_type_node)
+      if (to_mode_prec == int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_IROUND);
-      else if (to_type == long_integer_type_node)
+      else if (to_mode_prec == long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LROUND);
-      else if (to_type == long_long_integer_type_node)
+      else if (to_mode_prec == long_long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LLROUND);
       else
 	gcc_unreachable ();
     }
-  else if (from_mode == M_LONG_LONG_REAL)
+  else if (from_mode_prec == TYPE_PRECISION (CTYPE (M_LONG_LONG_REAL)))
     {
-      if (to_type == integer_type_node)
+      if (to_mode_prec == int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_IROUNDL);
-      else if (to_type == long_integer_type_node)
+      else if (to_mode_prec == long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LROUNDL);
-      else if (to_type == long_long_integer_type_node)
+      else if (to_mode_prec == long_long_int_prec)
 	fn = builtin_decl_explicit (BUILT_IN_LLROUNDL);
       else
 	gcc_unreachable ();
@@ -507,7 +524,7 @@ a68_real_div (MOID_T *m, tree a, tree b, location_t loc)
 tree
 a68_real_eq (tree a, tree b, location_t loc)
 {
-  return fold_build2_loc (loc, EQ_EXPR, boolean_type_node, a, b);
+  return fold_build2_loc (loc, EQ_EXPR, a68_bool_type, a, b);
 }
 
 /* Given two real values of mode M, build an expression that calculates whether
@@ -516,7 +533,7 @@ a68_real_eq (tree a, tree b, location_t loc)
 tree
 a68_real_ne (tree a, tree b, location_t loc)
 {
-  return fold_build2_loc (loc, NE_EXPR, boolean_type_node, a, b);
+  return fold_build2_loc (loc, NE_EXPR, a68_bool_type, a, b);
 }
 
 /* Given two real values of mode M, build an expression that calculates whether
@@ -525,7 +542,7 @@ a68_real_ne (tree a, tree b, location_t loc)
 tree
 a68_real_lt (tree a, tree b, location_t loc)
 {
-  return fold_build2_loc (loc, LT_EXPR, boolean_type_node, a, b);
+  return fold_build2_loc (loc, LT_EXPR, a68_bool_type, a, b);
 }
 
 /* Given two real values of mode M, build an expression that calculates
@@ -534,7 +551,7 @@ a68_real_lt (tree a, tree b, location_t loc)
 tree
 a68_real_le (tree a, tree b, location_t loc)
 {
-  return fold_build2_loc (loc, LE_EXPR, boolean_type_node, a, b);
+  return fold_build2_loc (loc, LE_EXPR, a68_bool_type, a, b);
 }
 
 /* Given two real values of mode M, build an expression that calculates whether
@@ -543,7 +560,7 @@ a68_real_le (tree a, tree b, location_t loc)
 tree
 a68_real_gt (tree a, tree b, location_t loc)
 {
-  return fold_build2_loc (loc, GT_EXPR, boolean_type_node, a, b);
+  return fold_build2_loc (loc, GT_EXPR, a68_bool_type, a, b);
 }
 
 /* Given two real values of mode M, build an expression that calculates whether
@@ -552,7 +569,7 @@ a68_real_gt (tree a, tree b, location_t loc)
 tree
 a68_real_ge (tree a, tree b, location_t loc)
 {
-  return fold_build2_loc (loc, GE_EXPR, boolean_type_node, a, b);
+  return fold_build2_loc (loc, GE_EXPR, a68_bool_type, a, b);
 }
 
 /* Exponentiation involving real values.
@@ -568,21 +585,32 @@ tree
 a68_real_pow (MOID_T *m, MOID_T *a_mode, MOID_T *b_mode,
 	      tree a, tree b, location_t loc)
 {
+  int m_prec = TYPE_PRECISION (CTYPE (m));
+  int a_mode_prec = TYPE_PRECISION (CTYPE (a_mode));
+  int b_mode_prec = TYPE_PRECISION (CTYPE (b_mode));
+
+  const int real_prec = TYPE_PRECISION (CTYPE (M_REAL));
+  const int long_real_prec = TYPE_PRECISION (CTYPE (M_LONG_REAL));
+  const int long_long_real_prec = TYPE_PRECISION (CTYPE (M_LONG_LONG_REAL));
+  
   enum built_in_function built_in;
-  if (m == M_REAL)
+  if (m_prec == real_prec)
     {
-      gcc_assert (a_mode == M_REAL);
-      built_in = b_mode == M_REAL ? BUILT_IN_POWF : BUILT_IN_POWIF;
+      gcc_assert (a_mode_prec == real_prec);
+      built_in
+	= (b_mode_prec == real_prec) ? BUILT_IN_POWF : BUILT_IN_POWIF;
     }
-  else if (m == M_LONG_REAL)
+  else if (m_prec == long_real_prec)
     {
-      gcc_assert (a_mode == M_LONG_REAL);
-      built_in = b_mode == M_LONG_REAL ? BUILT_IN_POW : BUILT_IN_POWI;
+      gcc_assert (a_mode_prec == long_real_prec);
+      built_in =
+	(b_mode_prec == long_real_prec) ? BUILT_IN_POW : BUILT_IN_POWI;
     }
-  else if (m == M_LONG_LONG_REAL)
+  else if (m_prec == long_long_real_prec)
     {
-      gcc_assert (a_mode == M_LONG_LONG_REAL);
-      built_in = b_mode == M_LONG_LONG_REAL ? BUILT_IN_POWL : BUILT_IN_POWIL;
+      gcc_assert (a_mode_prec == long_long_real_prec);
+      built_in
+	= (b_mode_prec == long_long_real_prec) ? BUILT_IN_POWL : BUILT_IN_POWIL;
     }
   else
     gcc_unreachable ();

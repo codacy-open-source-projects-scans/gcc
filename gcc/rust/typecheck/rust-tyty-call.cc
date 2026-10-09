@@ -18,7 +18,9 @@
 
 #include "rust-tyty-call.h"
 #include "rust-hir-type-check-expr.h"
+#include "rust-hir-type-check.h"
 #include "rust-type-util.h"
+#include "rust-hir-trait-reference.h"
 
 namespace Rust {
 namespace TyTy {
@@ -50,6 +52,43 @@ emit_unexpected_argument_error (location_t loc,
     }
   rust_error_at (loc, ErrorCode::E0061, err_msg.c_str (), expected_arg_count,
 		 unexpected_arg_count);
+}
+
+static bool
+validate_call_argument_associated_impl_bounds (BaseType *param_ty,
+					       BaseType *argument_ty,
+					       location_t locus)
+{
+  auto *context = Resolver::TypeCheckContext::get ();
+
+  // impl bodies are checked generically
+  if (context->have_function_context ()
+      && context->peek_context ().get_type ()
+	   == Resolver::TypeCheckContextItem::IMPL_ITEM)
+    return true;
+
+  auto *resolved_argument_ty = argument_ty->destructure ();
+  if (resolved_argument_ty->get_kind () == TypeKind::PARAM
+      || resolved_argument_ty->get_kind () == TypeKind::INFER
+      || resolved_argument_ty->get_kind () == TypeKind::PROJECTION)
+    return true;
+
+  for (const auto &bound : param_ty->get_specified_bounds ())
+    {
+      bool ambigious = false;
+      auto associated
+	= Resolver::lookup_associated_impl_block (bound, argument_ty,
+						  &ambigious);
+      if (associated == nullptr)
+	continue;
+
+      auto mapping = associated->bind_impl_for_bound (argument_ty, bound, locus,
+						      true /*emit_error*/);
+      if (mapping.is_error ())
+	return false;
+    }
+
+  return true;
 }
 
 void
@@ -135,11 +174,39 @@ TypeCheckCallExpr::visit (FnType &type)
 	}
     }
 
+  // if the surrounding context has pushed an expected type, try unifying it
+  // with the fn's return type before checking arguments. This lets the callee
+  // result constrain inference variables that may appear in parameter
+  // projections.
+
+  auto *ctx = Resolver::TypeCheckContext::get ();
+  TyTy::BaseType *expected = ctx->peek_expected_type ();
+  const TyTy::BaseType *return_infer
+    = type.get_return_type ()->contains_infer ();
+  if (expected != nullptr && return_infer != nullptr)
+    {
+      Resolver::unify_site_and (call.get_mappings ().get_hirid (),
+				TyWithLocation (expected),
+				TyWithLocation (type.get_return_type ()),
+				call.get_locus (), false /*emit_errors*/,
+				true /*commit_if_ok*/,
+				true /*implicit_infer_vars*/, true /*cleanup*/);
+    }
+
   size_t i = 0;
   for (auto &argument : call.get_arguments ())
     {
       location_t arg_locus = argument->get_locus ();
+
+      TyTy::BaseType *param_ty = nullptr;
+      if (i < type.num_params ())
+	param_ty = type.param_at (i).get_type ();
+
+      if (param_ty != nullptr)
+	ctx->push_expected_type (param_ty);
       auto argument_expr_tyty = Resolver::TypeCheckExpr::Resolve (*argument);
+      if (param_ty != nullptr)
+	ctx->pop_expected_type ();
       if (argument_expr_tyty->is<TyTy::ErrorType> ())
 	return;
 
@@ -147,7 +214,6 @@ TypeCheckCallExpr::visit (FnType &type)
       if (i < type.num_params ())
 	{
 	  auto &fnparam = type.param_at (i);
-	  BaseType *param_ty = fnparam.get_type ();
 	  location_t param_locus
 	    = fnparam.has_pattern ()
 		? fnparam.get_pattern ().get_locus ()
@@ -164,6 +230,10 @@ TypeCheckCallExpr::visit (FnType &type)
 	    {
 	      return;
 	    }
+
+	  if (!validate_call_argument_associated_impl_bounds (
+		param_ty, argument_expr_tyty, argument->get_locus ()))
+	    return;
 	}
       else
 	{
@@ -251,7 +321,9 @@ TypeCheckCallExpr::visit (FnType &type)
     }
 
   type.monomorphize ();
-  resolved = type.get_return_type ()->monomorphized_clone ();
+  Resolver::rebind_projection_self_from_fn (type, type.get_return_type ());
+
+  resolved = type.get_return_type ();
 }
 
 void
@@ -389,6 +461,10 @@ TypeCheckMethodCallExpr::check (FnType &type)
 	{
 	  return new ErrorType (type.get_ref ());
 	}
+
+      if (!validate_call_argument_associated_impl_bounds (
+	    param_ty, argument_expr_tyty, argument.get_locus ()))
+	return new ErrorType (type.get_ref ());
 
       i++;
     }

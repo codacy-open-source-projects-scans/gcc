@@ -48,6 +48,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "channels.h"
 #include "value-relation.h"
 #include "range-op.h"
+#include "ipa-utils.h"
+#include "gimple-iterator.h"
+#include "gimple-fold.h"
 
 #include "text-art/tree-widget.h"
 
@@ -69,6 +72,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "analyzer/feasible-graph.h"
 #include "analyzer/record-layout.h"
 #include "analyzer/function-set.h"
+#include "analyzer/state-transition.h"
 
 #if ENABLE_ANALYZER
 
@@ -855,12 +859,57 @@ private:
   const region *m_base_reg_b;
 };
 
+/* Locate the parameter with the given index within FNDECL.
+   ARGNUM is zero based, -1 indicates the `this' argument of a method.
+   Return the location of the FNDECL itself if there are problems.  */
+
+bool
+callsite_expr::maybe_get_param_location (tree fndecl,
+					 location_t *out_loc) const
+{
+  gcc_assert (fndecl);
+
+  if (DECL_ARTIFICIAL (fndecl))
+    return false;
+
+  tree param = get_param_tree (fndecl);
+  if (!param)
+    return false;
+
+  *out_loc = DECL_SOURCE_LOCATION (param);
+  return true;
+}
+
+/* If this callsite_expr refers to a parameter, get the PARM_DECL from
+   FNDECL.
+   Return NULL_TREE on any problems.  */
+
+tree
+callsite_expr::get_param_tree (tree fndecl) const
+{
+  if (!param_p ())
+    return NULL_TREE;
+
+  int i;
+  tree param;
+
+  /* Locate param by index within DECL_ARGUMENTS (fndecl).  */
+  for (i = 1, param = DECL_ARGUMENTS (fndecl);
+       i < param_num () && param;
+       i++, param = TREE_CHAIN (param))
+    ;
+
+  return param;
+}
+
 class div_by_zero_diagnostic
 : public pending_diagnostic_subclass<div_by_zero_diagnostic>
 {
 public:
-  div_by_zero_diagnostic (const gassign *assign)
-  : m_assign (assign)
+  div_by_zero_diagnostic (const gassign *assign,
+			  const region *divisor_reg)
+  : m_assign (assign),
+    m_divisor_reg (divisor_reg)
   {}
 
   const char *get_kind () const final override
@@ -891,8 +940,143 @@ public:
     return true;
   }
 
+  void
+  mark_interesting_stuff (interesting_t *interest) override
+  {
+    interest->add_read_region (m_divisor_reg, "divisor zero value");
+  }
+
+  void
+  add_function_entry_event (const exploded_edge &eedge,
+			    checker_path *emission_path,
+			    const state_transition_at_call *state_trans)
+			    override
+  {
+    class custom_function_entry_event : public function_entry_event
+    {
+    public:
+      custom_function_entry_event (const event_loc_info &loc_info,
+				   const program_state &state,
+				   const state_transition_at_call *state_trans)
+      : function_entry_event (loc_info,
+			      state,
+			      state_trans)
+      {
+      }
+
+      void print_desc (pretty_printer &pp) const override
+      {
+	if (auto state_trans = get_state_transition_at_call ())
+	  {
+	    auto expr = state_trans->get_callsite_expr ();
+	    if (tree parm = expr.get_param_tree (m_effective_fndecl))
+	      {
+		auto src_event_id = state_trans->get_src_event_id ();
+		if (src_event_id.known_p ())
+		  pp_printf (&pp, "entry to %qE with zero from %@ for %qE",
+			     m_effective_fndecl,
+			     &src_event_id,
+			     parm);
+		else
+		  pp_printf (&pp, "entry to %qE with zero for %qE",
+			     m_effective_fndecl, parm);
+		return;
+	      }
+	  }
+	return function_entry_event::print_desc (pp);
+      }
+    };
+
+    const exploded_node *dst_node = eedge.m_dest;
+    const program_point &dst_point = dst_node->get_point ();
+    const program_state &dst_state = dst_node->get_state ();
+    auto loc_info {event_loc_info_for_function_entry (dst_point, state_trans)};
+    emission_path->add_event
+      (std::make_unique<custom_function_entry_event> (loc_info,
+						      dst_state,
+						      state_trans));
+  }
+
+  bool
+  describe_origin_of_state (pretty_printer &pp,
+			    const evdesc::origin_of_state &) final override
+  {
+    pp_printf (&pp, "zero value originates here");
+    return true;
+  }
+
+  bool
+  describe_call_with_state (pretty_printer &pp,
+			    const evdesc::call_with_state &evd) final override
+  {
+    if (evd.m_state_trans)
+      {
+	callsite_expr expr = evd.m_state_trans->get_callsite_expr ();
+	if (expr.param_p ())
+	  {
+	    if (evd.m_src_event_id.known_p ())
+	      pp_printf (&pp, "passing zero from %@ from %qE to %qE via parameter %i",
+			 &evd.m_src_event_id,
+			 evd.m_caller_fndecl,
+			 evd.m_callee_fndecl,
+			 expr.param_num ());
+	    else
+	      pp_printf (&pp, "passing zero from %qE to %qE via parameter %i",
+			 evd.m_caller_fndecl,
+			 evd.m_callee_fndecl,
+			 expr.param_num ());
+	    return true;
+	  }
+      }
+
+    return false;
+  }
+
+  bool
+  describe_return_of_state (pretty_printer &pp,
+			    const evdesc::return_of_state &evd) final override
+  {
+    if (evd.m_src_event_id.known_p ())
+      pp_printf (&pp, "returning zero from %@ from %qE here",
+		 &evd.m_src_event_id,
+		 evd.m_callee_fndecl);
+    else
+      pp_printf (&pp, "returning zero from %qE here",
+	       evd.m_callee_fndecl);
+    return true;
+  }
+
+  bool
+  describe_copy_of_state (pretty_printer &pp,
+			  const evdesc::copy_of_state &evd) final override
+  {
+    if (evd.m_src_event_id.known_p ())
+      pp_printf (&pp, "copying zero value from %@ from %qE to %qE",
+		 &evd.m_src_event_id,
+		 evd.m_src_reg_expr, evd.m_dst_reg_expr);
+    else
+      pp_printf (&pp, "copying zero value from %qE to %qE",
+		 evd.m_src_reg_expr, evd.m_dst_reg_expr);
+    return true;
+  }
+
+  bool
+  describe_use_of_state (pretty_printer &pp,
+			 const evdesc::use_of_state &evd) final override
+  {
+    if (evd.m_src_event_id.known_p ())
+      pp_printf (&pp, "using zero value from %@ from %qE",
+		 &evd.m_src_event_id,
+		 evd.m_src_reg_expr);
+    else
+      pp_printf (&pp, "using zero value from %qE",
+		 evd.m_src_reg_expr);
+    return true;
+  }
+
 private:
   const gassign *m_assign;
+  const region *m_divisor_reg;
 };
 
 /* Check the pointer subtraction SVAL_A - SVAL_B at ASSIGN and add
@@ -1101,15 +1285,26 @@ region_model::get_gassign_result (const gassign *assign,
 		  && INTEGRAL_TYPE_P (TREE_TYPE (rhs1)))
 		{
 		  if (tree_int_cst_sgn (rhs2_cst) < 0)
-		    ctxt->warn
-		      (make_shift_count_negative_diagnostic (assign, rhs2_cst));
+		    {
+		      const region *rhs2_reg
+			= get_lvalue (gimple_assign_rhs2 (assign), nullptr);
+		      ctxt->warn
+			(make_shift_count_negative_diagnostic (assign,
+							       rhs2_cst,
+							       rhs2_reg));
+		    }
 		  else if (compare_tree_int (rhs2_cst,
 					     TYPE_PRECISION (TREE_TYPE (rhs1)))
 			   >= 0)
-		    ctxt->warn (make_shift_count_overflow_diagnostic
-				(assign,
-				 int (TYPE_PRECISION (TREE_TYPE (rhs1))),
-				 rhs2_cst));
+		    {
+		      const region *rhs2_reg
+			= get_lvalue (gimple_assign_rhs2 (assign), nullptr);
+		      ctxt->warn (make_shift_count_overflow_diagnostic
+				  (assign,
+				   int (TYPE_PRECISION (TREE_TYPE (rhs1))),
+				   rhs2_cst,
+				   rhs2_reg));
+		    }
 		}
 	  }
 
@@ -1130,8 +1325,11 @@ region_model::get_gassign_result (const gassign *assign,
 		{
 		  if (ctxt)
 		    {
+		      const region *rhs2_reg
+			= get_lvalue (gimple_assign_rhs2 (assign), nullptr);
 		      ctxt->warn
-			(std::make_unique<div_by_zero_diagnostic> (assign));
+			(std::make_unique<div_by_zero_diagnostic> (assign,
+								   rhs2_reg));
 		      ctxt->terminate_path ();
 		    }
 		  return nullptr;
@@ -1486,7 +1684,8 @@ region_model::on_assignment (const gassign *assign, region_model_context *ctxt)
 	/* e.g. "struct s2 x = {{'A', 'B', 'C', 'D'}};".  */
 	const svalue *rhs_sval = get_rvalue (rhs1, ctxt);
 	m_store.set_value (m_mgr->get_store_manager(), lhs_reg, rhs_sval,
-			   ctxt ? ctxt->get_uncertainty () : nullptr);
+			   ctxt ? ctxt->get_uncertainty () : nullptr,
+			   *this);
       }
       break;
     }
@@ -1935,7 +2134,8 @@ public:
   void
   add_events_to_path (checker_path *emission_path,
 		      const exploded_edge &eedge,
-		      pending_diagnostic &) const final override
+		      pending_diagnostic &,
+		      const state_transition *) const final override
   {
     const exploded_node *dst_node = eedge.m_dest;
     const program_point &dst_point = dst_node->get_point ();
@@ -2014,6 +2214,14 @@ can_throw_p (const gcall &call, tree fndecl)
 
   if (fndecl)
     {
+      /* If we are checking a thunk, we want to verify whether or not the
+	 underlying function is nothrow.  */
+      if (cgraph_node *n = cgraph_node::get (fndecl))
+	fndecl = n->function_symbol ()->decl;
+
+      if (TREE_NOTHROW (fndecl))
+	return false;
+
       const function_set fs = get_fns_assumed_not_to_throw ();
       if (fs.contains_decl_p (fndecl))
 	return false;
@@ -2426,7 +2634,7 @@ check_one_function_attr_null_terminated_string_arg (const gcall &call,
 }
 
 /* Check CALL a call to external function CALLEE_FNDECL for any uses
-   of __attribute__ ((null_terminated_string_arg)), compaining
+   of __attribute__ ((null_terminated_string_arg)), complaining
    to CTXT about any issues.
 
    Use RDWR_IDX for tracking uses of __attribute__ ((access, ....).  */
@@ -3131,7 +3339,7 @@ region_model::deref_rvalue (const svalue *ptr_sval, tree ptr_tree,
 	  {
 	  case POINTER_PLUS_EXPR:
 	    {
-	      /* If we have a symbolic value expressing pointer arithmentic,
+	      /* If we have a symbolic value expressing pointer arithmetic,
 		 try to convert it to a suitable region.  */
 	      const region *parent_region
 		= deref_rvalue (binop_sval->get_arg0 (), NULL_TREE, ctxt);
@@ -3817,7 +4025,8 @@ region_model::set_value (const region *lhs_reg, const svalue *rhs_sval,
   check_region_for_write (lhs_reg, rhs_sval, ctxt);
 
   m_store.set_value (m_mgr->get_store_manager(), lhs_reg, rhs_sval,
-		     ctxt ? ctxt->get_uncertainty () : nullptr);
+		     ctxt ? ctxt->get_uncertainty () : nullptr,
+		     *this);
 }
 
 /* Set the value of the region given by LHS to the value given by RHS.  */
@@ -4460,7 +4669,7 @@ region_model::scan_for_null_terminator (const region *reg,
 
    Complain and return nullptr if:
    - the buffer pointed to isn't null-terminated
-   - the buffer pointed to has any uninitalized bytes before any 0-terminator
+   - the buffer pointed to has any uninitialized bytes before any 0-terminator
    - any of the reads aren't within the bounds of the underlying base region
 
    Otherwise, return a svalue for strlen of the buffer (*not* including
@@ -4488,7 +4697,7 @@ region_model::check_for_null_terminated_string_arg (const call_details &cd,
 
    Complain and return nullptr if:
    - the buffer pointed to isn't null-terminated
-   - the buffer pointed to has any uninitalized bytes before any 0-terminator
+   - the buffer pointed to has any uninitialized bytes before any 0-terminator
    - any of the reads aren't within the bounds of the underlying base region
 
    Otherwise, return a svalue.  This will be the number of bytes read
@@ -4790,7 +4999,8 @@ region_model::eval_condition (const svalue *lhs,
   if (const region_svalue *lhs_ptr = lhs->dyn_cast_region_svalue ())
     if (const region_svalue *rhs_ptr = rhs->dyn_cast_region_svalue ())
       {
-	tristate res = region_svalue::eval_condition (lhs_ptr, op, rhs_ptr);
+	tristate res = region_svalue::eval_condition (lhs_ptr, op, rhs_ptr,
+						      *this);
 	if (res.is_known ())
 	  return res;
 	/* Otherwise, only known through constraints.  */
@@ -4952,7 +5162,7 @@ region_model::eval_condition (const svalue *lhs,
 		  {
 		    if (out.zero_p ())
 		      return tristate::TS_FALSE;
-		    if (out.nonzero_p ())
+		    if (!out.contains_zero_p ())
 		      return tristate::TS_TRUE;
 		  }
 	      }
@@ -6281,6 +6491,106 @@ region_model::can_merge_with_p (const region_model &other_model,
   return true;
 }
 
+/* Recover the vtable OBJ's vptr (for OBJ_TYPE) actually points to, plus the
+   byte offset into it, so callers can recover the most-derived type from the
+   vtable's DECL_CONTEXT and BINFO.
+
+   Only recognizes the shape we model for a vptr store, "vptr_field =
+   &vtable_decl + offset", i.e. a POINTER_PLUS_EXPR binop_svalue of a
+   region_svalue for the _ZTV* decl and a constant offset.  The offset is
+   nonzero when this vptr slot belongs to a non-primary base's own sub-vtable
+   group within the same decl; we return it via OUT for callers that need to
+   index into the vtable (e.g. gimple_get_virt_method_for_vtable).  */
+
+tree
+region_model::get_vtable_from_obj (tree obj, tree obj_type,
+				   region_model_manager *mgr,
+				   region_model_context *ctxt,
+				   unsigned HOST_WIDE_INT *out) const
+{
+  if (!obj_type)
+    return NULL_TREE;
+  tree vfield = TYPE_VFIELD (obj_type);
+  if (!vfield)
+    return NULL_TREE;
+
+  const svalue *obj_sval = get_rvalue (obj, ctxt);
+  const region *obj_reg = deref_rvalue (obj_sval, obj, ctxt);
+  const region *vptr_reg = mgr->get_field_region (obj_reg, vfield);
+
+  const svalue *vptr_sval = get_store_value (vptr_reg, ctxt);
+  while (const svalue *cast = vptr_sval->maybe_undo_cast ())
+    vptr_sval = cast;
+
+  const binop_svalue *b = vptr_sval->dyn_cast_binop_svalue ();
+  if (!b || b->get_op () != POINTER_PLUS_EXPR)
+    return NULL_TREE;
+
+  const svalue *offset_sval = b->get_arg1 ();
+  tree offset_const = offset_sval->maybe_get_constant ();
+  if (!offset_const || TREE_CODE (offset_const) != INTEGER_CST)
+    return NULL_TREE;
+  if (out)
+    *out = tree_to_uhwi (offset_const);
+
+  vptr_sval = b->get_arg0 ();
+  const region_svalue *vptr = vptr_sval->dyn_cast_region_svalue ();
+  /* Give up if we have a conjured vptr.  */
+  if (!vptr)
+    return NULL_TREE;
+
+  tree vtable = vptr->get_pointee ()->maybe_get_decl ();
+  return vtable;
+}
+
+/* Attempt to get the fndecl for a virtual call via OBJ_TYPE_REF, or
+   NULL_TREE if it can't be resolved.
+
+   A virtual call's callee is a GIMPLE OBJ_TYPE_REF:
+     OBJ_TYPE_REF(EXPR; (TYPE)OBJECT->TOKEN)
+   EXPR is the function pointer actually loaded and called; OBJECT, TYPE and
+   TOKEN are devirtualization metadata, not needed to perform the call itself.
+   OBJECT is the "this" pointer, TYPE its static type, TOKEN the vtable slot
+   index.  We ignore EXPR and instead resolve TOKEN against OBJECT's modeled
+   dynamic type rather than its static TYPE.
+
+   Reads the value bound to the object's vptr field (OBJ_TYPE_REF_OBJECT's
+   vfield).
+   If that value has the form "&vtable_decl + constant" (a region_svalue for a
+   _ZTV* decl plus a byte offset), recover the vtable decl and offset and use
+   gimple_get_virt_method_for_vtable, together with OBJ_TYPE_REF_TOKEN, to look
+   up the concrete fndecl in the vtable's initializer.
+
+   Relies on the store having bound the vptr field to the _ZTV* instance, so no
+   separate modeling of the object's dynamic type is needed.  */
+
+tree
+region_model::get_fndecl_for_virtual_call (const_tree obj_type_ref,
+					   region_model_context *ctxt)
+{
+  tree obj = OBJ_TYPE_REF_OBJECT (obj_type_ref);
+  tree obj_type = obj_type_ref_class (obj_type_ref);
+
+  unsigned HOST_WIDE_INT offset;
+  tree vtable = get_vtable_from_obj (obj, obj_type, m_mgr, ctxt, &offset);
+  if (!vtable)
+    return NULL_TREE;
+
+  unsigned HOST_WIDE_INT token
+    = tree_to_uhwi (OBJ_TYPE_REF_TOKEN (obj_type_ref));
+  bool can_refer;
+  tree vptr_fn
+    = gimple_get_virt_method_for_vtable (token, vtable, offset, &can_refer);
+  if (!vptr_fn || !can_refer)
+    return NULL_TREE;
+
+  if (cgraph_node *node = cgraph_node::get_create (vptr_fn))
+    if (const cgraph_node *ultimate = node->ultimate_alias_target ())
+      return ultimate->decl;
+
+  return NULL_TREE;
+}
+
 /* Attempt to get the fndecl used at CALL, if known, or NULL_TREE
    otherwise.  */
 
@@ -6291,6 +6601,12 @@ region_model::get_fndecl_for_call (const gcall &call,
   tree fn_ptr = gimple_call_fn (&call);
   if (fn_ptr == NULL_TREE)
     return NULL_TREE;
+
+  /* Handle OBJ_TYPE_REF so that we can try to find the definition for a virtual
+     call and treat it like any other call.  */
+  if (TREE_CODE (fn_ptr) == OBJ_TYPE_REF)
+    return get_fndecl_for_virtual_call (fn_ptr, ctxt);
+
   const svalue *fn_ptr_sval = get_rvalue (fn_ptr, ctxt);
   if (const region_svalue *fn_ptr_ptr
 	= fn_ptr_sval->dyn_cast_region_svalue ())
@@ -6424,7 +6740,7 @@ public:
   void visit_constant_svalue (const constant_svalue *sval) final override
   {
     /* At the point the analyzer runs, constant integer operands in a floating
-       point expression are already implictly converted to floating-points.
+       point expression are already implicitly converted to floating-points.
        Thus, we do prefer to report non-constants such that the diagnostic
        always reports a floating-point operand.  */
     tree type = sval->get_type ();
@@ -7144,7 +7460,7 @@ model_merger::mergeable_svalue_p (const svalue *sval) const
 {
   if (m_ext_state)
     {
-      /* Reject merging svalues that have non-purgable sm-state,
+      /* Reject merging svalues that have non-purgeable sm-state,
 	 to avoid falsely reporting memory leaks by merging them
 	 with something else.  For example, given a local var "p",
 	 reject the merger of a:
@@ -8362,7 +8678,7 @@ test_canonicalization_4 ()
 
 /* Assert that if we have two region_model instances
    with values VAL_A and VAL_B for EXPR that they are
-   mergable.  Write the merged model to *OUT_MERGED_MODEL,
+   mergeable.  Write the merged model to *OUT_MERGED_MODEL,
    and the merged svalue ptr to *OUT_MERGED_SVALUE.
    If VAL_A or VAL_B are nullptr_TREE, don't populate EXPR
    for that region_model.  */

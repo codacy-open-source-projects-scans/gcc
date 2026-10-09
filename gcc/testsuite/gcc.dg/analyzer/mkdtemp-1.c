@@ -1,7 +1,9 @@
 /* { dg-additional-options "-Wno-analyzer-null-argument" } */
+/* { dg-skip-if "incomplete stdio" { avr-*-* *-*-hpux* } } */
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <errno.h>
 #include "analyzer-decls.h"
 

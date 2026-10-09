@@ -198,4 +198,36 @@ ASTValidation::visit (AST::Module &module)
   AST::ContextualASTVisitor::visit (module);
 }
 
+void
+ASTValidation::visit (AST::SlicePattern &pattern)
+{
+  // TODO: store/use first rest pattern location?
+  //       for nicer errors
+  bool had_rest = false;
+
+  auto note_rest = [&] (location_t locus) {
+    if (had_rest)
+      rust_error_at (locus, "%<..%> can only be used once per slice pattern");
+    had_rest = true;
+  };
+
+  for (auto &pat : pattern.get_patterns ())
+    {
+      if (pat->get_pattern_kind () == AST::Pattern::Kind::Rest)
+	{
+	  note_rest (pat->get_locus ());
+	}
+      else if (pat->get_pattern_kind () == AST::Pattern::Kind::Identifier)
+	{
+	  auto &ident_pat = static_cast<AST::IdentifierPattern &> (*pat);
+	  if (ident_pat.has_subpattern ())
+	    {
+	      auto &ident_sub_pat = ident_pat.get_subpattern ();
+	      if (ident_sub_pat.get_pattern_kind () == AST::Pattern::Kind::Rest)
+		note_rest (ident_sub_pat.get_locus ());
+	    }
+	}
+    }
+}
+
 } // namespace Rust

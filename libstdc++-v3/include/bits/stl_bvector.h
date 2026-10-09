@@ -116,7 +116,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       return *this;
     }
 
-#if __cplusplus > 202002L
+#if __glibcxx_ranges_zip // >= C++23
     constexpr const _Bit_reference&
     operator=(bool __x) const noexcept
     {
@@ -149,6 +149,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     { *_M_p ^= _M_mask; }
 
 #if __cplusplus >= 201103L
+    // _GLIBCXX_RESOLVE_LIB_DEFECTS
+    // 3638. vector<bool>::swap(reference, reference) is useless
+
     _GLIBCXX20_CONSTEXPR
     friend void
     swap(_Bit_reference __x, _Bit_reference __y) noexcept
@@ -1266,6 +1269,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       }
 
       // [23.2.5]/1, third-to-last entry in synopsis listing
+      _GLIBCXX26_DEPRECATED_SUGGEST("swap' invoked via ADL or 'std::ranges::swap")
       _GLIBCXX20_CONSTEXPR
       static void
       swap(reference __x, reference __y) _GLIBCXX_NOEXCEPT
@@ -1759,12 +1763,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       // DR 464. Suggestion for new member functions in standard containers.
       // N.B. DR 464 says nothing about vector<bool> but we need something
       // here due to the using-declaration in __gnu_debug::vector.
-      // vector class.
-#if __cplusplus >= 201103L
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wc++11-extensions"
       void data() = delete;
-#else
-      void data() { }
-#endif
+#pragma GCC diagnostic pop
     };
 
 _GLIBCXX_END_NAMESPACE_CONTAINER

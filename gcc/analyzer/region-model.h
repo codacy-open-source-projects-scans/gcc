@@ -509,6 +509,12 @@ class region_model
 
   tree get_fndecl_for_call (const gcall &call,
 			    region_model_context *ctxt);
+  tree get_fndecl_for_virtual_call (const_tree fn_ptr,
+				    region_model_context *ctxt);
+
+  tree get_vtable_from_obj (tree obj, tree obj_type, region_model_manager *mgr,
+			    region_model_context *ctxt,
+			    unsigned HOST_WIDE_INT *out = nullptr) const;
 
   void get_regions_for_current_frame (auto_vec<const decl_region *> *out) const;
   static void append_regions_cb (const region *base_reg,
@@ -1338,12 +1344,14 @@ make_poisoned_value_diagnostic (tree expr, enum poison_kind pkind,
 
 extern std::unique_ptr<pending_diagnostic>
 make_shift_count_negative_diagnostic (const gassign *assign,
-				      tree count_cst);
+				      tree count_cst,
+				      const region *src_region);
 
 extern std::unique_ptr<pending_diagnostic>
 make_shift_count_overflow_diagnostic (const gassign *assign,
 				      int operand_precision,
-				      tree count_cst);
+				      tree count_cst,
+				      const region *src_region);
 
 extern std::unique_ptr<pending_diagnostic>
 make_write_to_const_diagnostic (const region *dest_reg, tree decl);

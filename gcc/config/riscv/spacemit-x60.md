@@ -24,7 +24,7 @@
 ;; 2*alu + 2*lsu + 1*fpalu + 1*fdivsqrt + 1*vxu
 ;;
 ;; There's actually two VXU units and ops get split across them
-;; to give the illusion of a single wider unit with higher 
+;; to give the illusion of a single wider unit with higher
 ;; performance.  There are a few ops that can only be fed into
 ;; one of the two units.  For the purposes of this scheduling
 ;; model, the VXU is treated as a single unit.
@@ -116,7 +116,7 @@
   (and (eq_attr "tune" "spacemit_x60")
        (eq_attr "type" "unknown,const,arith,shift,slt,multi,auipc,nop,logical,\
 			move,bitmanip,min,max,minu,maxu,clz,ctz,rotate,\
-			condmove,crypto,mvpair,zicond,cpop"))
+			condmove,crypto,mvpair,zicond"))
   "spacemit_x60_alu")
 
 (define_insn_reservation "spacemit_x60_alu2c" 2

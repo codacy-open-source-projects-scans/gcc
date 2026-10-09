@@ -24,9 +24,10 @@
 #include "rust-compile-expr.h"
 #include "rust-hir-map.h"
 #include "rust-hir-trait-resolve.h"
-#include "rust-hir-path-probe.h"
+#include "rust-hir-path-probe-impl-trait.h"
 #include "rust-compile-extern.h"
 #include "rust-constexpr.h"
+#include "rust-rib.h"
 #include "rust-tyty.h"
 
 namespace Rust {
@@ -181,7 +182,7 @@ ResolvePathRef::resolve_with_node_id (
       else if (fntype->get_abi () == ABI::INTRINSIC)
 	{
 	  Intrinsics compile (ctx);
-	  fn = compile.compile (fntype);
+	  fn = compile.compile (fntype, expr_locus);
 	  TREE_USED (fn) = 1;
 	  return address_expression (fn, expr_locus);
 	}
@@ -193,7 +194,9 @@ ResolvePathRef::resolve_with_node_id (
       auto d = lookup->destructure ();
       rust_assert (d->get_kind () == TyTy::TypeKind::CONST);
       auto c = d->as_const_type ();
-      rust_assert (c->const_kind () == TyTy::BaseConstType::ConstKind::Value);
+      if (c->const_kind () != TyTy::BaseConstType::ConstKind::Value)
+	return error_mark_node;
+
       auto val = static_cast<TyTy::ConstValueType *> (c);
       return val->get_value ();
     }
@@ -231,10 +234,11 @@ ResolvePathRef::resolve (const HIR::PathIdentSegment &final_segment,
 
   // this can fail because it might be a Constructor for something
   // in that case the caller should attempt ResolvePathType::Compile
-  auto &nr_ctx
-    = Resolver2_0::ImmutableNameResolutionContext::get ().resolver ();
+  auto &nr_ctx = Resolver2_0::FinalizedNameResolutionContext::get ();
 
-  auto resolved = nr_ctx.lookup (mappings.get_nodeid ());
+  // TODO: Is Values the correct NS here?
+  auto resolved
+    = nr_ctx.lookup (mappings.get_nodeid (), Resolver2_0::Namespace::Values);
 
   if (!resolved)
     return attempt_constructor_expression_lookup (lookup, ctx, mappings,

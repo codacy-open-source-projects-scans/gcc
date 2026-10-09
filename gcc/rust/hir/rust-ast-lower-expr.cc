@@ -192,8 +192,15 @@ ASTLoweringExpr::visit (AST::QualifiedPathInExpression &expr)
 void
 ASTLoweringExpr::visit (AST::BoxExpr &expr)
 {
-  rust_sorry_at (expr.get_locus (),
-		 "box expression syntax is not supported yet");
+  HIR::Expr *box_expr = ASTLoweringExpr::translate (expr.get_boxed_expr ());
+
+  auto crate_num = mappings.get_current_crate ();
+  Analysis::NodeMapping mapping (crate_num, expr.get_node_id (),
+				 mappings.get_next_hir_id (crate_num),
+				 UNKNOWN_LOCAL_DEFID);
+
+  translated = new HIR::BoxExpr (mapping, expr.get_locus (),
+				 std::unique_ptr<HIR::Expr> (box_expr));
 }
 
 void
@@ -789,18 +796,30 @@ void
 ASTLoweringExpr::visit (AST::RangeFromToInclExpr &expr)
 {
   auto crate_num = mappings.get_current_crate ();
-  Analysis::NodeMapping mapping (crate_num, expr.get_node_id (),
-				 mappings.get_next_hir_id (crate_num),
-				 UNKNOWN_LOCAL_DEFID);
+  Analysis::NodeMapping path_mapping (crate_num, mappings.get_next_node_id (),
+				      mappings.get_next_hir_id (crate_num),
+				      UNKNOWN_LOCAL_DEFID);
+  Analysis::NodeMapping call_mapping (crate_num, expr.get_node_id (),
+				      mappings.get_next_hir_id (crate_num),
+				      UNKNOWN_LOCAL_DEFID);
+
+  HIR::Expr *func
+    = new HIR::PathInExpression (path_mapping,
+				 LangItem::Kind::RANGE_INCLUSIVE_NEW,
+				 expr.get_locus (), false);
 
   HIR::Expr *range_from = ASTLoweringExpr::translate (expr.get_from_expr ());
   HIR::Expr *range_to = ASTLoweringExpr::translate (expr.get_to_expr ());
 
+  std::vector<std::unique_ptr<HIR::Expr>> params;
+  params.reserve (2);
+  params.emplace_back (std::unique_ptr<HIR::Expr> (range_from));
+  params.emplace_back (std::unique_ptr<HIR::Expr> (range_to));
+
   translated
-    = new HIR::RangeFromToInclExpr (mapping,
-				    std::unique_ptr<HIR::Expr> (range_from),
-				    std::unique_ptr<HIR::Expr> (range_to),
-				    expr.get_locus ());
+    = new HIR::CallExpr (call_mapping, std::unique_ptr<HIR::Expr> (func),
+			 std::move (params), expr.get_outer_attrs (),
+			 expr.get_locus ());
 }
 
 void
@@ -995,18 +1014,115 @@ ASTLoweringExpr::visit (AST::InlineAsm &expr)
 }
 
 namespace {
-// We're not really supporting llvm_asm, only the bare minimum for libcore's
-// blackbox
-// llvm_asm!("" : : "r"(&mut dummy) : "memory" : "volatile");
-bool
-check_llvm_asm_support (const std::vector<LlvmOperand> &inputs,
-			const std::vector<LlvmOperand> &outputs,
-			const AST::LlvmInlineAsm &expr)
+
+tl::optional<std::string>
+convert_template_str (const std::string &in_template)
 {
-  return outputs.size () == 0 && inputs.size () <= 1
-	 && expr.get_clobbers ().size () <= 1
-	 && expr.get_templates ().size () == 1
-	 && expr.get_templates ()[0].symbol == "";
+  std::string out_template;
+  auto it = in_template.cbegin ();
+
+  while (it != in_template.cend ())
+    {
+      if (*it == '$')
+	{
+	  it++;
+	  if (it == in_template.cend ())
+	    {
+	      return tl::nullopt;
+	    }
+	  else if (*it >= '0' && *it <= '9')
+	    {
+	      out_template.push_back ('%');
+	      out_template.push_back (*it);
+	      it++;
+	    }
+	  else if (*it == '$')
+	    {
+	      out_template.push_back ('$');
+	      it++;
+	    }
+	  else if (*it == '{')
+	    {
+	      it++;
+	      // converting
+	      //     v
+	      //   ${123:abc}
+	      // to
+	      //   %abc123
+	      auto num_it = it;
+	      while (true)
+		{
+		  if (it == in_template.cend ())
+		    return tl::nullopt;
+		  if (*it == ':')
+		    break;
+		  it++;
+		}
+	      auto colon_it = it;
+	      while (true)
+		{
+		  if (it == in_template.cend ())
+		    return tl::nullopt;
+		  if (*it == '}')
+		    break;
+		  it++;
+		}
+	      // output
+	      out_template.push_back ('%');
+	      out_template.append (colon_it + 1, it);
+	      out_template.append (num_it, colon_it);
+	      // increment past '}'
+	      it++;
+	    }
+	  else
+	    {
+	      return tl::nullopt;
+	    }
+	}
+      else if (*it == '%' || *it == '{' || *it == '|' || *it == '}')
+	{
+	  out_template.push_back ('%');
+	  out_template.push_back (*it);
+	  it++;
+	}
+      else
+	{
+	  out_template.push_back (*it);
+	  it++;
+	}
+    }
+
+  return out_template;
+}
+
+// We're not really supporting llvm_asm, only the bare minimum for libcore
+// ex: llvm_asm!("" : : "r"(&mut dummy) : "memory" : "volatile");
+bool
+check_llvm_asm_support (const AST::LlvmInlineAsm &expr)
+{
+  // TODO: more checks/constraint rewriting?
+
+  if (!convert_template_str (expr.get_template ().symbol).has_value ())
+    return false;
+
+  // TODO: check output constraints?
+
+  // prohibit commas
+  // GCC uses them to list multiple options for constraints (?)
+  // while LLVM uses them for inout args (?)
+  for (auto &input : expr.get_inputs ())
+    if (input.constraint.find (',') != std::string::npos)
+      return false;
+
+  // TODO: check clobbers?
+
+  // no alignstack or intel support
+  if (expr.is_stack_aligned ())
+    return false;
+  if (expr.get_dialect () == AST::LlvmInlineAsm::Dialect::Intel)
+    return false;
+
+  return true;
 }
 
 } // namespace
@@ -1014,6 +1130,16 @@ check_llvm_asm_support (const std::vector<LlvmOperand> &inputs,
 void
 ASTLoweringExpr::visit (AST::LlvmInlineAsm &expr)
 {
+  if (!check_llvm_asm_support (expr))
+    {
+      rust_error_at (expr.get_locus (), "unsupported %qs construct",
+		     "llvm_asm");
+      rust_inform (
+	expr.get_locus (),
+	"%<llvm_asm%> has been replaced with %<asm%>, gccrs only supports a "
+	"subset of %<llvm_asm%> to compile libcore");
+    }
+
   auto crate_num = mappings.get_current_crate ();
   Analysis::NodeMapping mapping (crate_num, expr.get_node_id (),
 				 mappings.get_next_hir_id (crate_num),
@@ -1043,19 +1169,18 @@ ASTLoweringExpr::visit (AST::LlvmInlineAsm &expr)
 				      expr.is_stack_aligned (),
 				      expr.get_dialect ()};
 
-  if (!check_llvm_asm_support (inputs, outputs, expr))
-    {
-      rust_error_at (expr.get_locus (), "unsupported %qs construct",
-		     "llvm_asm");
-      rust_inform (
-	expr.get_locus (),
-	"%<llvm_asm%> has been replaced with %<asm%>, gccrs only supports a "
-	"subset of %<llvm_asm%> to compile libcore");
-    }
+  auto new_template = expr.get_template ();
+  new_template.symbol
+    = convert_template_str (new_template.symbol).value_or (std::string ());
+
+  rust_debug_fmt_at (expr.get_locus (),
+		     "converting %<llvm_asm%> template %qs to %qs",
+		     expr.get_template ().symbol.c_str (),
+		     new_template.symbol.c_str ());
 
   translated
     = new HIR::LlvmInlineAsm (expr.get_locus (), inputs, outputs,
-			      expr.get_templates (), expr.get_clobbers (),
+			      std::move (new_template), expr.get_clobbers (),
 			      options, expr.get_outer_attrs (), mapping);
 }
 

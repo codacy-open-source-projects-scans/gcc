@@ -227,6 +227,14 @@ svalue::make_dump_widget (const text_art::dump_widget_info &dwi,
 
   print_dump_widget_label (&pp);
 
+  value_range out;
+  if (maybe_get_value_range (out))
+    {
+      pp_printf (&pp, " value range: {"),
+	out.print (&pp);
+      pp_string (&pp, "}");
+    }
+
   std::unique_ptr<text_art::tree_widget> w
     (text_art::tree_widget::make (dwi, &pp));
 
@@ -329,7 +337,7 @@ svalue::can_merge_p (const svalue *other,
 	return nullptr;
     }
 
-  /* Reject merging svalues that have non-purgable sm-state,
+  /* Reject merging svalues that have non-purgeable sm-state,
      to avoid falsely reporting memory leaks by merging them
      with something else.  */
   if (!merger->mergeable_svalue_p (this))
@@ -990,45 +998,18 @@ region_svalue::implicitly_live_p (const svalue_set *,
 tristate
 region_svalue::eval_condition (const region_svalue *lhs,
 			       enum tree_code op,
-			       const region_svalue *rhs)
+			       const region_svalue *rhs,
+			       const region_model &model)
 {
-  /* See if they point to the same region.  */
+  /* Convert to region_offset representation, and work with that.  */
   const region *lhs_reg = lhs->get_pointee ();
   const region *rhs_reg = rhs->get_pointee ();
-  bool ptr_equality = lhs_reg == rhs_reg;
-  switch (op)
-    {
-    default:
-      gcc_unreachable ();
 
-    case EQ_EXPR:
-      if (ptr_equality)
-	return tristate::TS_TRUE;
-      else
-	return tristate::TS_FALSE;
-      break;
+  region_model_manager *mgr = model.get_manager ();
+  region_offset lhs_offset = lhs_reg->get_offset (mgr);
+  region_offset rhs_offset = rhs_reg->get_offset (mgr);
 
-    case NE_EXPR:
-      if (ptr_equality)
-	return tristate::TS_FALSE;
-      else
-	return tristate::TS_TRUE;
-      break;
-
-    case GE_EXPR:
-    case LE_EXPR:
-      if (ptr_equality)
-	return tristate::TS_TRUE;
-      break;
-
-    case GT_EXPR:
-    case LT_EXPR:
-      if (ptr_equality)
-	return tristate::TS_FALSE;
-      break;
-    }
-
-  return tristate::TS_UNKNOWN;
+  return eval_region_offset_comparison (lhs_offset, op, rhs_offset, model);
 }
 
 /* class constant_svalue : public svalue.  */
@@ -1594,7 +1575,7 @@ unaryop_svalue::maybe_get_value_range_1 (value_range &out) const
 	     a VARYING of the unknown value as the 2nd operand.  */
 	  value_range varying (type);
 	  varying.set_varying (type);
-	  out.set_type (type);
+	  out.set_range_class (type);
 	  if (handler.fold_range (out, type, arg_vr, varying))
 	    return true;
 	}
@@ -1740,9 +1721,10 @@ binop_svalue::maybe_get_value_range_1 (value_range &out) const
     if (m_arg1->maybe_get_value_range (rhs))
       {
 	range_op_handler handler (m_op);
-	if (handler)
+	if (handler
+	    && handler.operand_check_p (type, lhs.type (), rhs.type ()))
 	  {
-	    out.set_type (type);
+	    out.set_range_class (type);
 	    if (handler.fold_range (out, get_type (), lhs, rhs))
 	      return true;
 	  }
@@ -2183,7 +2165,7 @@ widening_svalue::eval_condition_without_cm (enum tree_code op,
 	case LT_EXPR:
 	  {
 	    /* [BASE, +INF) OP RHS:
-	       This is either true or false at +ve ininity,
+	       This is either true or false at +ve infinity,
 	       It can be true for points X where X OP RHS, so we have either
 	       "false", or "unknown".  */
 	    tree base_op_rhs = fold_binary (op, boolean_type_node,

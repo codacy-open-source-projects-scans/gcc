@@ -259,6 +259,9 @@ extern void default_print_patchable_function_entry (FILE *,
 extern bool default_profile_before_prologue (void);
 extern reg_class_t default_preferred_reload_class (rtx, reg_class_t);
 extern reg_class_t default_preferred_output_reload_class (rtx, reg_class_t);
+extern reg_class_t default_base_reg_class (machine_mode, addr_space_t,
+					   enum rtx_code, enum rtx_code,
+					   rtx, rtx_insn *);
 extern reg_class_t default_preferred_rename_class (reg_class_t rclass);
 extern bool default_class_likely_spilled_p (reg_class_t);
 extern unsigned char default_class_max_nregs (reg_class_t, machine_mode);
@@ -320,5 +323,6 @@ extern rtx default_memtag_add_tag (rtx, poly_int64, uint8_t);
 extern rtx default_memtag_set_tag (rtx, rtx, rtx);
 extern rtx default_memtag_extract_tag (rtx, rtx);
 extern rtx default_memtag_untagged_pointer (rtx, rtx);
+extern int default_reassociation_width (tree_code, machine_mode);
 
 #endif /* GCC_TARGHOOKS_H */

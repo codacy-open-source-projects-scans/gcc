@@ -5906,7 +5906,9 @@ $as_echo "$ac_try_echo"; } >&5
   rm -f conftest.er1 conftest.err
   $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
   test $ac_status = 0; }
-A68FLAGS="-g -O2"
+if test -z "$A68FLAGS"; then
+  A68FLAGS="-g -O2"
+fi
 ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
@@ -12833,7 +12835,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 12836 "configure"
+#line 12838 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -12939,7 +12941,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 12942 "configure"
+#line 12944 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -13227,7 +13229,7 @@ CC_FOR_BUILD=${CC_FOR_BUILD:-gcc}
 
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the target supports hidden visibility" >&5
 $as_echo_n "checking whether the target supports hidden visibility... " >&6; }
-if ${libga68_cv_have_attribute_visibility+:} false; then :
+if ${gcc_cv_have_attribute_visibility+:} false; then :
   $as_echo_n "(cached) " >&6
 else
 
@@ -13245,16 +13247,16 @@ main ()
 }
 _ACEOF
 if ac_fn_c_try_compile "$LINENO"; then :
-  libga68_cv_have_attribute_visibility=yes
+  gcc_cv_have_attribute_visibility=yes
 else
-  libga68_cv_have_attribute_visibility=no
+  gcc_cv_have_attribute_visibility=no
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
   CFLAGS="$save_CFLAGS"
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $libga68_cv_have_attribute_visibility" >&5
-$as_echo "$libga68_cv_have_attribute_visibility" >&6; }
-  if test $libga68_cv_have_attribute_visibility = yes; then
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $gcc_cv_have_attribute_visibility" >&5
+$as_echo "$gcc_cv_have_attribute_visibility" >&6; }
+  if test $gcc_cv_have_attribute_visibility = yes; then
 
 $as_echo "#define HAVE_ATTRIBUTE_VISIBILITY 1" >>confdefs.h
 

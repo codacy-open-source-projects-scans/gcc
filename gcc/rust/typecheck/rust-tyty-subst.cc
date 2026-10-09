@@ -156,6 +156,35 @@ SubstitutionParamMapping::fill_param_ty (
     return true;
 
   TyTy::BaseType &type = *arg.get_tyty ();
+  std::pair<HirId, HirId> subst_key (param->get_ref (), type.get_ref ());
+  static std::vector<std::pair<HirId, HirId>> active_substs;
+  bool is_recursive_subst
+    = Resolver::ScopedPush<std::pair<HirId, HirId>>::contains (active_substs,
+							       subst_key);
+  bool skip_recursive_bounds
+    = is_recursive_subst && type.get_kind () == TyTy::TypeKind::INFER;
+  if (skip_recursive_bounds)
+    {
+      type.append_reference (param->get_ref ());
+      type.append_reference (param->get_ty_ref ());
+      for (auto ref : param->get_combined_refs ())
+	type.append_reference (ref);
+      if (param->can_resolve ())
+	{
+	  TyTy::BaseType *resolved = param->resolve ();
+	  type.append_reference (resolved->get_ref ());
+	  type.append_reference (resolved->get_ty_ref ());
+	  for (auto ref : resolved->get_combined_refs ())
+	    type.append_reference (ref);
+	  if (resolved->get_kind () != TyTy::TypeKind::PARAM
+	      && resolved->get_kind () != TyTy::TypeKind::INFER)
+	    return true;
+	}
+    }
+
+  Resolver::ScopedPush<std::pair<HirId, HirId>> guard (active_substs, subst_key,
+						       !is_recursive_subst);
+
   if (type.get_kind () == TyTy::TypeKind::INFER)
     {
       type.inherit_bounds (*param);
@@ -182,18 +211,19 @@ SubstitutionParamMapping::fill_param_ty (
       rust_debug_loc (locus,
 		      "fill_param_ty bounds_compatible: param %s type %s",
 		      param->get_name ().c_str (), type.get_name ().c_str ());
-      if (needs_bounds_check && !p.is_implicit_self_trait ())
+      if (!skip_recursive_bounds && needs_bounds_check
+	  && !p.is_implicit_self_trait ())
 	{
 	  if (!param->bounds_compatible (type, locus, true))
 	    return false;
 	}
 
       // recursively pass this down to all HRTB's
-      for (auto &bound : param->get_specified_bounds ())
-	bound.handle_substitions (subst_mappings);
+      if (!skip_recursive_bounds)
+	for (auto &bound : param->get_specified_bounds ())
+	  bound.handle_substitions (subst_mappings);
 
       param->set_ty_ref (type.get_ref ());
-      subst_mappings.on_param_subst (p, arg);
     }
 
   return true;
@@ -304,18 +334,19 @@ SubstitutionArgumentMappings::get_mut_regions ()
 SubstitutionArgumentMappings::SubstitutionArgumentMappings (
   std::vector<SubstitutionArg> mappings,
   std::map<std::string, BaseType *> binding_args, RegionParamList regions,
-  location_t locus, ParamSubstCb param_subst_cb, bool trait_item_flag,
-  bool error_flag)
+  location_t locus, bool trait_item_flag, bool error_flag,
+  std::map<std::string, BaseType *> constraint_args)
   : mappings (std::move (mappings)), binding_args (binding_args),
-    regions (regions), locus (locus), param_subst_cb (param_subst_cb),
+    constraint_args (constraint_args), regions (regions), locus (locus),
     trait_item_flag (trait_item_flag), error_flag (error_flag)
 {}
 
 SubstitutionArgumentMappings::SubstitutionArgumentMappings (
   const SubstitutionArgumentMappings &other)
   : mappings (other.mappings), binding_args (other.binding_args),
-    regions (other.regions), locus (other.locus), param_subst_cb (nullptr),
-    trait_item_flag (other.trait_item_flag), error_flag (other.error_flag)
+    constraint_args (other.constraint_args), regions (other.regions),
+    locus (other.locus), trait_item_flag (other.trait_item_flag),
+    error_flag (other.error_flag)
 {}
 
 SubstitutionArgumentMappings &
@@ -324,9 +355,9 @@ SubstitutionArgumentMappings::operator= (
 {
   mappings = other.mappings;
   binding_args = other.binding_args;
+  constraint_args = other.constraint_args;
   regions = other.regions;
   locus = other.locus;
-  param_subst_cb = nullptr;
   trait_item_flag = other.trait_item_flag;
   error_flag = other.error_flag;
 
@@ -336,15 +367,14 @@ SubstitutionArgumentMappings::operator= (
 SubstitutionArgumentMappings
 SubstitutionArgumentMappings::error ()
 {
-  return SubstitutionArgumentMappings ({}, {}, 0, UNDEF_LOCATION, nullptr,
-				       false, true);
+  return SubstitutionArgumentMappings ({}, {}, 0, UNDEF_LOCATION, false, true);
 }
 
 SubstitutionArgumentMappings
 SubstitutionArgumentMappings::empty (size_t num_regions)
 {
   return SubstitutionArgumentMappings ({}, {}, num_regions, UNDEF_LOCATION,
-				       nullptr, false, false);
+				       false, false);
 }
 
 bool
@@ -445,6 +475,12 @@ SubstitutionArgumentMappings::get_binding_args () const
   return binding_args;
 }
 
+const std::map<std::string, BaseType *> &
+SubstitutionArgumentMappings::get_constraint_args () const
+{
+  return constraint_args;
+}
+
 std::string
 SubstitutionArgumentMappings::as_string () const
 {
@@ -454,22 +490,6 @@ SubstitutionArgumentMappings::as_string () const
       buffer += mapping.as_string () + ", ";
     }
   return "<" + buffer + ">";
-}
-
-void
-SubstitutionArgumentMappings::on_param_subst (const ParamType &p,
-					      const SubstitutionArg &a) const
-{
-  if (param_subst_cb == nullptr)
-    return;
-
-  param_subst_cb (p, a);
-}
-
-ParamSubstCb
-SubstitutionArgumentMappings::get_subst_cb () const
-{
-  return param_subst_cb;
 }
 
 bool
@@ -654,6 +674,7 @@ SubstitutionRef::get_mappings_from_generic_args (
   HIR::GenericArgs &args, const std::vector<Region> &regions)
 {
   std::map<std::string, BaseType *> binding_arguments;
+  std::map<std::string, BaseType *> constraint_arguments;
   if (args.get_binding_args ().size () > 0)
     {
       if (supports_associated_bindings ())
@@ -690,8 +711,13 @@ SubstitutionRef::get_mappings_from_generic_args (
 		  return SubstitutionArgumentMappings::error ();
 		}
 
-	      binding_arguments[binding.get_identifier ().as_string ()]
-		= resolved;
+	      if (binding.get_kind ()
+		  == HIR::GenericArgsBinding::Kind::Constraint)
+		constraint_arguments[binding.get_identifier ().as_string ()]
+		  = resolved;
+	      else
+		binding_arguments[binding.get_identifier ().as_string ()]
+		  = resolved;
 	    }
 	}
       else
@@ -706,10 +732,17 @@ SubstitutionRef::get_mappings_from_generic_args (
 	}
     }
 
-  // for inherited arguments
-  size_t offs = used_arguments.size ();
+  // check if we need to use inherited arguments or nothing
+  size_t offs = 0;
   size_t total_arguments
-    = args.get_type_args ().size () + args.get_const_args ().size () + offs;
+    = args.get_type_args ().size () + args.get_const_args ().size ();
+  if (total_arguments < substitutions.size ())
+    {
+      offs = used_arguments.get_mappings ().empty () ? get_outer_param_count ()
+						     : used_arguments.size ();
+      total_arguments += offs;
+    }
+
   if (total_arguments > substitutions.size ())
     {
       rich_location r (line_table, args.get_locus ());
@@ -907,10 +940,14 @@ SubstitutionRef::get_mappings_from_generic_args (
 	}
     }
 
-  return {mappings, binding_arguments,
+  return {mappings,
+	  binding_arguments,
 	  RegionParamList::from_subst (used_arguments.get_regions ().size (),
 				       regions),
-	  args.get_locus ()};
+	  args.get_locus (),
+	  false,
+	  false,
+	  constraint_arguments};
 }
 
 BaseType *
@@ -1002,8 +1039,8 @@ SubstitutionRef::adjust_mappings_for_this (
 				       mappings.get_binding_args (),
 				       mappings.get_regions (),
 				       mappings.get_locus (),
-				       mappings.get_subst_cb (),
-				       mappings.trait_item_mode ());
+				       mappings.trait_item_mode (), false,
+				       mappings.get_constraint_args ());
 }
 
 bool
@@ -1063,21 +1100,8 @@ SubstitutionRef::solve_mappings_from_receiver_for_self (
   return SubstitutionArgumentMappings (resolved_mappings,
 				       mappings.get_binding_args (),
 				       mappings.get_regions (),
-				       mappings.get_locus ());
-}
-
-void
-SubstitutionRef::prepare_higher_ranked_bounds ()
-{
-  for (const auto &subst : get_substs ())
-    {
-      const auto pty = subst.get_param_ty ();
-      for (const auto &bound : pty->get_specified_bounds ())
-	{
-	  const auto ref = bound.get ();
-	  ref->clear_associated_type_projections ();
-	}
-    }
+				       mappings.get_locus (), false, false,
+				       mappings.get_constraint_args ());
 }
 
 bool
@@ -1093,6 +1117,19 @@ SubstitutionRef::monomorphize ()
       if (binding->get_kind () == TyTy::TypeKind::PARAM)
 	continue;
 
+      // For each where-clause bound on this fn-substitution param, find the
+      // impl block that satisfies the bound for binding and unify
+      // its signature against binding + bound. This pins inference
+      // variables that should be constrained
+      //
+      //   fn into_iter<I: Iterator> with binding = Range<{integer}>
+      //
+      // the only matching
+      //
+      //   <A: Step> Iterator for Range<A>
+      //
+      // Step for usize impl together force {integer} = usize instead of
+      // letting it default.
       for (const auto &bound : pty->get_specified_bounds ())
 	{
 	  bool ambigious = false;
@@ -1100,7 +1137,7 @@ SubstitutionRef::monomorphize ()
 	    = Resolver::lookup_associated_impl_block (bound, binding,
 						      &ambigious);
 	  if (associated != nullptr)
-	    associated->setup_associated_types (binding, bound);
+	    associated->bind_impl_for_bound (binding, bound, UNKNOWN_LOCATION);
 	}
     }
 

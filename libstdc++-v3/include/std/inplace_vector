@@ -32,6 +32,8 @@
 
 #pragma GCC system_header
 
+#define __glibcxx_want_constexpr_inplace_vector
+#define __glibcxx_want_hardened_inplace_vector
 #define __glibcxx_want_inplace_vector
 #include <bits/version.h>
 
@@ -41,7 +43,7 @@
 #include <optional>
 #include <bits/stdexcept_throw.h>
 #include <bits/range_access.h>
-#include <bits/ranges_base.h> // borrowed_iterator_t, __detail::__container_compatible_range
+#include <bits/ranges_base.h> // borrowed_iterator_t, __detail::__container_compatible_range, __static_sized_range
 #include <bits/ranges_util.h> // subrange
 #include <bits/ranges_uninitialized.h>
 #include <bits/stl_construct.h>
@@ -120,7 +122,14 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	constexpr
 	inplace_vector(from_range_t, _Rg&& __rg)
 	: inplace_vector()
-	{ append_range(__rg); }
+	{
+	  // _GLIBCXX_RESOLVE_LIB_DEFECTS
+	  // 4396. Improve inplace_vector(from_range_t, R&& rg)
+	  if constexpr (ranges::__static_sized_range<_Rg>)
+	    static_assert(ranges::size(__rg) <= _Nm);
+
+	  append_range(__rg);
+	}
 
       constexpr
       inplace_vector(initializer_list<_Tp> __il)
@@ -248,9 +257,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	{
 	  if constexpr (ranges::forward_range<_Rg> || ranges::sized_range<_Rg>)
 	    {
-	      const auto __sz = ranges::distance(__rg);
-	      if (__sz > _Nm)
+	      const auto __len = ranges::distance(__rg);
+	      if (__len > _Nm)
 		__throw_bad_alloc();
+
+	      const size_t __sz = size_t(__len);
 	      if (__sz <= size())
 		{
 		  ranges::copy_n(ranges::begin(__rg), __sz, data());
@@ -523,9 +534,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	{
 	  if constexpr (ranges::forward_range<_Rg> || ranges::sized_range<_Rg>)
 	    {
-	      const auto __sz = ranges::distance(__rg);
-	      if (__sz > (_Nm - size()))
+	      const auto __len = ranges::distance(__rg);
+	      if (__len > (_Nm - size()))
 		__throw_bad_alloc();
+
+	      const size_t __sz = size_t(__len);
 	      // Bounded on output range due PR121143
 	      ranges::uninitialized_copy(
 		ranges::begin(__rg), unreachable_sentinel,
@@ -841,21 +854,25 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       constexpr void
       _M_init()
       {
-	if !consteval
+#if __glibcxx_start_lifetime
+	std::start_lifetime(_M_elems);
+#else
+	if consteval
 	  {
-#if __glibcxx_start_lifetime_as
-	    std::start_lifetime_as_array<_Tp>(data(), _Nm);
-#endif
-	  }
-	else
-	  {
-	    // TODO: use new(_M_elems) _Tp[_Nm]() once PR121068 is fixed
-	    if constexpr (is_trivial_v<_Tp>)
+	    if constexpr (is_trivially_default_constructible_v<_Tp>
+			    && is_trivially_copyable_v<_Tp>)
 	      for (size_t __i = 0; __i < _Nm; ++__i)
 		_M_elems[__i] = _Tp();
 	    else
-	      __builtin_unreachable(); // only trivial types are supported at compile time
+# if __has_builtin(__builtin_constexpr_diag)
+	     __builtin_constexpr_diag(2, "",
+		"std::inplace_vector supports only trivally copyable and "
+		"trivially default constructible types at compile time");
+# else
+	     __builtin_unreachable();
+# endif
 	  }
+#endif
       }
 
       static constexpr void
@@ -930,6 +947,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	constexpr
 	inplace_vector(from_range_t, _Rg&& __rg)
 	{
+	  // _GLIBCXX_RESOLVE_LIB_DEFECTS
+	  // 4396. Improve inplace_vector(from_range_t, R&& rg)
+	  if constexpr (ranges::__static_sized_range<_Rg>)
+	    static_assert(ranges::size(__rg) == 0);
+
 	  if (ranges::begin(__rg) != ranges::end(__rg))
 	    __throw_bad_alloc();
 	}
@@ -1177,7 +1199,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       { __builtin_trap(); }
 
       template<typename... _Args>
-        constexpr optional<_Tp&>
+	constexpr optional<_Tp&>
 	try_emplace_back(_Args&&...)
 	{ return nullopt; }
 

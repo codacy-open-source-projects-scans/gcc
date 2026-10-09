@@ -62,13 +62,13 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   namespace pmr
   {
     template<typename _Tp>
-      using indirect = indirect<_Tp, polymorphic_allocator<_Tp>>;
+      using indirect = std::indirect<_Tp, polymorphic_allocator<_Tp>>;
   }
 #endif
 
   // [indirect], class template indirect
   template<typename _Tp, typename _Alloc>
-    class indirect
+    class _GLIBCXX_NO_SPECIALIZATIONS indirect
     {
       static_assert(is_object_v<_Tp>);
       static_assert(!is_array_v<_Tp>);
@@ -462,12 +462,12 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   namespace pmr
   {
     template<typename _Tp>
-      using polymorphic = polymorphic<_Tp, polymorphic_allocator<_Tp>>;
+      using polymorphic = std::polymorphic<_Tp, polymorphic_allocator<_Tp>>;
   }
 
   // [polymorphic], class template polymorphic
   template<typename _Tp, typename _Alloc>
-    class polymorphic
+    class _GLIBCXX_NO_SPECIALIZATIONS polymorphic
     {
       static_assert(is_object_v<_Tp>);
       static_assert(!is_array_v<_Tp>);

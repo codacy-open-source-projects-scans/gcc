@@ -51,7 +51,15 @@ static bool cfg_altered;
 static bool
 check_loadstore (gimple *stmt, tree op, tree, void *data)
 {
-  if ((TREE_CODE (op) == MEM_REF || TREE_CODE (op) == TARGET_MEM_REF)
+  if ((TREE_CODE (op) == MEM_REF
+       || (TREE_CODE (op) == TARGET_MEM_REF
+	   && !TMR_INDEX2 (op)
+	   && (!TMR_INDEX (op)
+	       || (TMR_STEP (op)
+		   && expr_not_equal_to (TMR_STEP (op),
+					 wi::one (TYPE_PRECISION (TREE_TYPE
+							(TMR_STEP (op)))),
+					 stmt)))))
       && operand_equal_p (TREE_OPERAND (op, 0), (tree)data, 0))
     {
       TREE_THIS_VOLATILE (op) = 1;
@@ -595,7 +603,7 @@ is_addr_local (gimple *return_stmt, tree exp, locmap_t *plocmap,
    and argument ARG and PHI edge E in basic block BB.  Add an entry for
    each use to LOCMAP, setting its NARGS member to the NARGS argument
    (the number of PHI operands) plus the number of arguments in binary
-   expressions refereced by ARG.  Call isolate_path for each returned
+   expressions referenced by ARG.  Call isolate_path for each returned
    address and set *ISOLATED to true if called.
    Return either DUPLICATE or the most recent result of isolate_path.  */
 
@@ -859,7 +867,7 @@ warn_return_addr_local (basic_block bb, greturn *return_stmt)
 
   /* Bail if the statement isn't certain to return the address
      of a local (e.g., if it involves a conditional expression
-     that wasn't trasnformed into a PHI or if it involves
+     that wasn't transformed into a PHI or if it involves
      a MAX_EXPR or MIN_EXPR only one of whose operands is a local
      (even though such an expression isn't valid in C or has
      defined semantics in C++).  */

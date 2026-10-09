@@ -150,6 +150,15 @@ public:
     gcc_assert (state.m_valid);
   }
 
+  point_and_state (const point_and_state &other) = default;
+
+  point_and_state (point_and_state &&other)
+  : m_point (other.m_point),
+    m_state (std::move (other.m_state)),
+    m_hash (other.m_hash)
+  {
+  }
+
   hashval_t hash () const
   {
     return m_hash;
@@ -165,6 +174,12 @@ public:
   void set_state (const program_state &state)
   {
     m_state = state;
+    m_hash = m_point.hash () ^ m_state.hash ();
+  }
+
+  void set_state (program_state &&state)
+  {
+    m_state = std::move (state);
     m_hash = m_point.hash () ^ m_state.hash ();
   }
 
@@ -231,6 +246,7 @@ class exploded_node : public dnode<eg_traits>
   static const char * status_to_str (enum status s);
 
   exploded_node (const point_and_state &ps, int index);
+  exploded_node (point_and_state &&ps, int index);
 
   hashval_t hash () const { return m_ps.hash (); }
 
@@ -322,10 +338,6 @@ private:
 public:
   /* The index of this exploded_node.  */
   const int m_index;
-
-  /* The number of stmts that were processed when process_node was
-     called on this enode.  */
-  unsigned m_num_processed_stmts;
 };
 
 /* An edge within the exploded graph.
@@ -381,9 +393,9 @@ private:
 class interprocedural_call : public custom_edge_info
 {
 public:
-  interprocedural_call (const gcall &call_stmt,
+  interprocedural_call (const call_and_return_op &op,
 			function &callee_fun)
-  : m_call_stmt (call_stmt),
+  : m_op (op),
     m_callee_fun (callee_fun)
   {}
 
@@ -402,10 +414,16 @@ public:
 
   void add_events_to_path (checker_path *emission_path,
 			   const exploded_edge &eedge,
-			   pending_diagnostic &pd) const final override;
+			   pending_diagnostic &pd,
+			   const state_transition *state_trans) const final override;
+
+  bool
+  try_to_rewind_data_flow (rewind_context &) const final override;
+
+  const gcall &get_gcall () const;
 
 private:
-  const gcall &m_call_stmt;
+  const call_and_return_op &m_op;
   function &m_callee_fun;
 };
 
@@ -434,7 +452,11 @@ public:
 
   void add_events_to_path (checker_path *emission_path,
 			   const exploded_edge &eedge,
-			   pending_diagnostic &pd) const final override;
+			   pending_diagnostic &pd,
+			   const state_transition *state_trans) const final override;
+
+  bool
+  try_to_rewind_data_flow (rewind_context &) const final override;
 
 private:
   const gcall &m_call_stmt;
@@ -463,7 +485,8 @@ public:
 
   void add_events_to_path (checker_path *emission_path,
 			   const exploded_edge &eedge,
-			   pending_diagnostic &pd) const final override;
+			   pending_diagnostic &pd,
+			   const state_transition *state_trans) const final override;
 
   program_point
   get_point_before_setjmp () const

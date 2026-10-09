@@ -23,8 +23,9 @@
 #include "rust-hir-map.h"
 #include "rust-hir-pattern.h"
 #include "rust-mapping-common.h"
+#include "rust-rib.h"
 #include "rust-system.h"
-#include "rust-immutable-name-resolution-context.h"
+#include "rust-finalized-name-resolution-context.h"
 #include "rust-tyty.h"
 
 namespace Rust {
@@ -63,9 +64,8 @@ ReadonlyChecker::visit (PathInExpression &expr)
   NodeId ast_node_id = expr.get_mappings ().get_nodeid ();
   NodeId def_id;
 
-  auto &nr_ctx
-    = Resolver2_0::ImmutableNameResolutionContext::get ().resolver ();
-  if (auto id = nr_ctx.lookup (ast_node_id))
+  auto &nr_ctx = Resolver2_0::FinalizedNameResolutionContext::get ();
+  if (auto id = nr_ctx.lookup (ast_node_id, Resolver2_0::Namespace::Values))
     def_id = *id;
   else
     return;

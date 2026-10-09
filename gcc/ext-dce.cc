@@ -37,6 +37,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "dbgcnt.h"
 #include "diagnostic-core.h"
 #include "target.h"
+#include "regs.h"
 
 /* These should probably move into a C++ class.  */
 static vec<bitmap_head> livein;
@@ -487,6 +488,52 @@ ext_dce_try_optimize_extension (rtx_insn *insn, rtx set)
   rtx src = SET_SRC (set);
   rtx inner = XEXP (src, 0);
 
+  /* For sign-extending loads from memory, try to replace with a
+     zero-extending load when the upper bits are dead.  E.g. on RISC-V
+     this turns lh+zext.h into just lhu.  */
+  if (MEM_P (inner) && GET_CODE (src) == SIGN_EXTEND)
+    {
+      if (dump_file)
+	{
+	  fprintf (dump_file, "Processing insn:\n");
+	  dump_insn_slim (dump_file, insn);
+	  fprintf (dump_file, "Trying to narrow sign_extend to zero_extend:\n");
+	  print_rtl_single (dump_file, SET_SRC (set));
+	}
+
+      if (!dbg_cnt (::ext_dce))
+	{
+	  if (dump_file)
+	    fprintf (dump_file, "Rejected due to debug counter.\n");
+	  return;
+	}
+
+      rtx new_pattern = gen_rtx_ZERO_EXTEND (GET_MODE (src), inner);
+      int ok = validate_change (insn, &SET_SRC (set), new_pattern, false);
+
+      rtx x = SET_DEST (set);
+      while (SUBREG_P (x) || GET_CODE (x) == ZERO_EXTRACT)
+	x = XEXP (x, 0);
+
+      gcc_assert (REG_P (x));
+      if (ok)
+	{
+	  bitmap_set_bit (changed_pseudos, REGNO (x));
+	  remove_reg_equal_equiv_notes (insn, false);
+	}
+
+      if (dump_file)
+	{
+	  if (ok)
+	    fprintf (dump_file, "Successfully transformed to:\n");
+	  else
+	    fprintf (dump_file, "Failed transformation to:\n");
+	  print_rtl_single (dump_file, new_pattern);
+	  fprintf (dump_file, "\n");
+	}
+      return;
+    }
+
   /* Avoid (subreg (mem)) and other constructs which may be valid RTL, but
      not useful for this optimization.  */
   if (!(REG_P (inner) || (SUBREG_P (inner) && REG_P (SUBREG_REG (inner)))))
@@ -874,7 +921,23 @@ carry_backpropagate (unsigned HOST_WIDE_INT mask, enum rtx_code code, rtx x)
   if (mask == 0)
     return 0;
 
-  enum machine_mode mode = GET_MODE_INNER (GET_MODE (x));
+  /* Consider a vector operation, the bits live are the element bits live
+     broadcasted across the vector.  So there can be holes (consider a
+     logical shift).
+
+     Vector modes aren't likely to represent cases we can optimize with
+     any regularity.  It seems sensible to just punt that case in a
+     conservatively correct way.
+
+     The conservatively corect choice here would be to return the mode
+     mask for the outer mode.  We're already doing that for modes larger
+     than HOST_BITS_PER_WIDE_INT, so it should be safe for larger vectors
+     as well as something like V2HI.  */
+  if (VECTOR_MODE_P (GET_MODE (x)) || COMPLEX_MODE_P (GET_MODE (x)))
+    return GET_MODE_MASK (GET_MODE (x));
+    
+
+  enum machine_mode mode = GET_MODE (x);
   unsigned HOST_WIDE_INT mmask = GET_MODE_MASK (mode);
 
   /* While we don't try to optimize operations on types larger
@@ -948,6 +1011,11 @@ carry_backpropagate (unsigned HOST_WIDE_INT mask, enum rtx_code code, rtx x)
 	  || !GET_MODE_BITSIZE (GET_MODE (XEXP (x, 0))).is_constant ())
 	return -1;
 
+      /* See note about vector modes near the start of this function.  */
+      if (VECTOR_MODE_P (GET_MODE (XEXP (x, 0)))
+	  || COMPLEX_MODE_P (GET_MODE (XEXP (x, 0))))
+	return GET_MODE_MASK (GET_MODE (XEXP (x, 0)));
+
       /* We want the mode of the inner object.  We need to ensure its
 	 sign bit is on in MASK.  */
       mode = GET_MODE_INNER (GET_MODE (XEXP (x, 0)));
@@ -965,6 +1033,19 @@ carry_backpropagate (unsigned HOST_WIDE_INT mask, enum rtx_code code, rtx x)
 
       /* Recurse into the operand.  */
       return carry_backpropagate (mask, GET_CODE (XEXP (x, 0)), XEXP (x, 0));
+
+    /* If an AND/IOR unconditionally clears/sets bits in the output, then
+       we do not care about the liveness of those bits in the inputs.
+
+       So AND MASK with the constant for AND and with the complemented constant
+       for IOR.  */
+    case AND:
+    case IOR:
+      if (CONST_INT_P (XEXP (x, 1)))
+	mask &= (code == AND
+		 ? UINTVAL (XEXP (x, 1))
+		 : ~UINTVAL (XEXP (x, 1)));
+      return mask;
 
     /* We propagate for the shifted operand, but not the shift
        count.  The count is handled specially.  */
@@ -1083,7 +1164,7 @@ ext_dce_process_uses (rtx_insn *insn, rtx obj,
 		{
 		  rtx inner = XEXP (src, 0);
 		  unsigned HOST_WIDE_INT src_mask
-		    = GET_MODE_MASK (GET_MODE_INNER (GET_MODE (inner)));
+		    = GET_MODE_MASK (GET_MODE (inner));
 
 		  /* DST_MASK could be zero if we had something in the SET
 		     that we couldn't handle.  */
@@ -1153,7 +1234,7 @@ ext_dce_process_uses (rtx_insn *insn, rtx obj,
 		  && GET_MODE_BITSIZE (outer_mode) <= HOST_BITS_PER_WIDE_INT)
 		{
 		  /* So we have a right shift that could correspond to
-		     the second in a pair impementing QI, HI or SI -> DI
+		     the second in a pair implementing QI, HI or SI -> DI
 		     extension.  See if we can find the left shift.  For
 		     now, just look one real instruction back.  */
 		  rtx_insn *prev_insn = prev_nonnote_nondebug_insn_bb (insn);
@@ -1276,8 +1357,7 @@ ext_dce_process_uses (rtx_insn *insn, rtx obj,
 			 propagate destination liveness through, then just
 			 set the mask to the mode's mask.  */
 		      if (!safe_for_live_propagation (code))
-			tmp_mask
-			  = GET_MODE_MASK (GET_MODE_INNER (GET_MODE (y)));
+			tmp_mask = GET_MODE_MASK (GET_MODE (y));
 
 		      if (tmp_mask & 0xff)
 			bitmap_set_bit (livenow, rn);
@@ -1340,14 +1420,23 @@ ext_dce_process_uses (rtx_insn *insn, rtx obj,
 	    bitmap_set_bit (livenow, rn + 1);
 	  if (size > 16)
 	    bitmap_set_bit (livenow, rn + 2);
-	  if (size >= 32)
+	  if (size > 32)
 	    bitmap_set_bit (livenow, rn + 3);
 	  iter.skip_subrtxes ();
 	}
       /* If we have a register reference that is not otherwise handled,
 	 just assume all the chunks are live.  */
       else if (REG_P (x))
-	bitmap_set_range (livenow, REGNO (x) * 4, group_limit (x));
+	{
+	  if (HARD_REGISTER_P (x))
+	    {
+	      unsigned int end = end_hard_regno (GET_MODE (x), REGNO (x));
+	      for (unsigned int r = REGNO (x); r < end; r++)
+		bitmap_set_range (livenow, r * 4, 4);
+	    }
+	  else
+	    bitmap_set_range (livenow, REGNO (x) * 4, group_limit (x));
+	}
     }
 }
 
@@ -1399,7 +1488,7 @@ ext_dce_process_bb (basic_block bb)
 	  if (!FAKE_CALL_P (insn))
 	    bitmap_set_range (livenow, STACK_POINTER_REGNUM * 4, 4);
 
-	  /* If this is not a call to a const fucntion, then assume it
+	  /* If this is not a call to a const function, then assume it
 	     can read any global register.  */
 	  if (!RTL_CONST_CALL_P (insn))
 	    for (unsigned i = 0; i < FIRST_PSEUDO_REGISTER; i++)
@@ -1664,7 +1753,7 @@ ext_dce_rd_transfer_n (int bb_index)
 /* Dummy function for the df_simple_dataflow API.  */
 static bool ext_dce_rd_confluence_n (edge) { return true; }
 
-/* Use lifetime analyis to identify extensions that set bits that
+/* Use lifetime analysis to identify extensions that set bits that
    are never read.  Turn such extensions into SUBREGs instead which
    can often be propagated away.  */
 

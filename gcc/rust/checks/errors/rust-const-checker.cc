@@ -21,14 +21,15 @@
 #include "rust-hir-expr.h"
 #include "rust-hir-stmt.h"
 #include "rust-hir-item.h"
+#include "rust-rib.h"
 #include "rust-system.h"
-#include "rust-immutable-name-resolution-context.h"
+#include "rust-finalized-name-resolution-context.h"
 
 namespace Rust {
 namespace HIR {
 
 ConstChecker::ConstChecker ()
-  : resolver (Resolver2_0::ImmutableNameResolutionContext::get ().resolver ()),
+  : resolver (Resolver2_0::FinalizedNameResolutionContext::get ()),
     mappings (Analysis::Mappings::get ())
 {}
 
@@ -355,7 +356,7 @@ ConstChecker::visit (CallExpr &expr)
   NodeId ast_node_id = expr.get_fnexpr ().get_mappings ().get_nodeid ();
   NodeId ref_node_id;
 
-  if (auto id = resolver.lookup (ast_node_id))
+  if (auto id = resolver.lookup (ast_node_id, Resolver2_0::Namespace::Values))
     ref_node_id = *id;
   else
     return;
@@ -459,16 +460,15 @@ ConstChecker::visit (RangeFullExpr &)
 {}
 
 void
-ConstChecker::visit (RangeFromToInclExpr &expr)
-{
-  expr.get_from_expr ().accept_vis (*this);
-  expr.get_to_expr ().accept_vis (*this);
-}
-
-void
 ConstChecker::visit (RangeToInclExpr &)
 {
   // FIXME: Visit to_expr
+}
+
+void
+ConstChecker::visit (BoxExpr &expr)
+{
+  expr.get_expr ().accept_vis (*this);
 }
 
 void

@@ -1,4 +1,4 @@
-/* Name mangling for the 3.0 -*- C++ -*- ABI.
+/* Name mangling for the 3.0 C++ ABI.
    Copyright (C) 2000-2026 Free Software Foundation, Inc.
    Written by Alex Samuel <samuel@codesourcery.com>
 
@@ -888,14 +888,14 @@ write_tparms_constraints (tree constraints)
     {
       tree probe = constraints;
       while (probe
-	     && !EXPR_LOCATION (probe)
+	     && !cp_expr_location (probe)
 	     && TREE_CODE (probe) == TRUTH_ANDIF_EXPR)
 	{
 	  tree op1 = TREE_OPERAND (probe, 1);
-	  probe = (EXPR_LOCATION (op1) ? op1
+	  probe = (cp_expr_location (op1) ? op1
 		   : TREE_OPERAND (probe, 0));
 	}
-      if (probe && EXPR_LOCATION (probe))
+      if (probe && cp_expr_location (probe))
 	{
 	  write_char ('Q');
 	  write_constraint_expression (probe);
@@ -1645,7 +1645,7 @@ write_unqualified_name (tree decl)
 
 	  if (!G.need_abi_warning
 	      && abi_warn_or_compat_version_crosses (11)
-	      && !equal_abi_tags (dtags, mtags))
+	      && !equal_abi_tags (dtags, mtags, /*ignore_inherited_p=*/false))
 	    G.need_abi_warning = 1;
 
 	  if (!abi_version_at_least (10))
@@ -1653,7 +1653,7 @@ write_unqualified_name (tree decl)
 	    decl = res;
 	  else if (flag_abi_version == 10)
 	    {
-	      /* In ABI 10, we want explict and implicit tags.  */
+	      /* In ABI 10, we want explicit and implicit tags.  */
 	      write_abi_tags (mtags);
 	      return;
 	    }
@@ -1709,13 +1709,14 @@ tree_string_cmp (const void *p1, const void *p2)
 /* Return the TREE_LIST of TAGS as a sorted VEC.  */
 
 static vec<tree, va_gc> *
-sorted_abi_tags (tree tags)
+sorted_abi_tags (tree tags, bool ignore_inherited_p)
 {
   vec<tree, va_gc> * vec = make_tree_vector();
 
   for (tree t = tags; t; t = TREE_CHAIN (t))
     {
-      if (ABI_TAG_IMPLICIT (t))
+      if (ABI_TAG_NOT_MANGLED (t)
+	  || (ignore_inherited_p && ABI_TAG_INHERITED (t)))
 	continue;
       tree str = TREE_VALUE (t);
       vec_safe_push (vec, str);
@@ -1735,7 +1736,7 @@ write_abi_tags (tree tags)
   if (tags == NULL_TREE)
     return;
 
-  vec<tree, va_gc> * vec = sorted_abi_tags (tags);
+  vec<tree, va_gc> * vec = sorted_abi_tags (tags, /*ignore_inherited_p=*/false);
 
   unsigned i; tree str;
   FOR_EACH_VEC_ELT (*vec, i, str)
@@ -1751,10 +1752,10 @@ write_abi_tags (tree tags)
 /* True iff the TREE_LISTS T1 and T2 of ABI tags are equivalent.  */
 
 bool
-equal_abi_tags (tree t1, tree t2)
+equal_abi_tags (tree t1, tree t2, bool ignore_inherited_p)
 {
-  releasing_vec v1 = sorted_abi_tags (t1);
-  releasing_vec v2 = sorted_abi_tags (t2);
+  releasing_vec v1 = sorted_abi_tags (t1, ignore_inherited_p);
+  releasing_vec v2 = sorted_abi_tags (t2, ignore_inherited_p);
 
   unsigned len1 = v1->length();
   if (len1 != v2->length())
@@ -2738,11 +2739,6 @@ write_type (tree type)
 		++is_builtin_type;
 	      break;
 
-	    case META_TYPE:
-	      write_string ("Dm");
-	      ++is_builtin_type;
-	      break;
-
 	    case SPLICE_SCOPE:
 	      write_splice (type);
 	      break;
@@ -2775,6 +2771,12 @@ write_type (tree type)
 	      break;
 
 	    case LANG_TYPE:
+	      if (REFLECTION_TYPE_P (type))
+		{
+		  write_string ("Dm");
+		  ++is_builtin_type;
+		  break;
+		}
 	      /* fall through.  */
 
 	    default:
@@ -3213,15 +3215,23 @@ write_requirement (tree req)
   switch (tree_code code = TREE_CODE (req))
     {
       /* # simple-requirement or compound-requirement
-	 <requirement> ::= X <expression> [ N ] [ R <type-constraint> ] */
+	 <requirement> ::= X <expression> [ N ] [ R <type-constraint> ]
+			   X <expression> C <expression>
+			     [ R <type-constraint> ]  */
     case SIMPLE_REQ:
     case COMPOUND_REQ:
       write_char ('X');
       write_expression (op);
       if (code == SIMPLE_REQ)
 	break;
-      if (COMPOUND_REQ_NOEXCEPT_P (req))
+      if (operand_equal_p (TREE_OPERAND (req, 2), boolean_true_node))
 	write_char ('N');
+      else if (TREE_OPERAND (req, 2) != error_mark_node
+	       && !operand_equal_p (TREE_OPERAND (req, 2), boolean_false_node))
+	{
+	  write_char ('C');
+	  write_expression (TREE_OPERAND (req, 2));
+	}
       if (tree constr = TREE_OPERAND (req, 1))
 	{
 	  write_char ('R');
@@ -3887,8 +3897,14 @@ write_expression (tree expr)
 				if (field == ce->index)
 				  break;
 				if (abi_check (21))
-				  write_expression (build_zero_cst
-						    (TREE_TYPE (field)));
+				  {
+				    tree type = TREE_TYPE (field), expr;
+				    if (REFLECTION_TYPE_P (type))
+				      expr = get_null_reflection ();
+				    else
+				      expr = build_zero_cst (type);
+				    write_expression (expr);
+				  }
 				field = DECL_CHAIN (field);
 			      }
 			  }
@@ -4062,6 +4078,10 @@ write_expression (tree expr)
 		     "use library traits instead", expr);
 	      break;
 
+	    case ERROR_MARK:
+	      if (seen_error ())
+		break;
+	      /* FALLTHROUGH */
 	    default:
 	      sorry ("mangling %C", code);
 	      break;
@@ -4074,20 +4094,35 @@ write_expression (tree expr)
       switch (code)
 	{
 	case CALL_EXPR:
-	  {
-	    tree fn = CALL_EXPR_FN (expr);
+	  if (tree fn = CALL_EXPR_FN (expr))
+	    {
+	      if (TREE_CODE (fn) == ADDR_EXPR)
+		fn = TREE_OPERAND (fn, 0);
 
-	    if (TREE_CODE (fn) == ADDR_EXPR)
-	      fn = TREE_OPERAND (fn, 0);
+	      /* Mangle a dependent name as the name, not whatever happens to
+		 be the first function in the overload set.  */
+	      if (OVL_P (fn)
+		  && type_dependent_expression_p_push (expr))
+		fn = OVL_NAME (fn);
 
-	    /* Mangle a dependent name as the name, not whatever happens to
-	       be the first function in the overload set.  */
-	    if (OVL_P (fn)
-		&& type_dependent_expression_p_push (expr))
-	      fn = OVL_NAME (fn);
-
-	    write_expression (fn);
-	  }
+	      write_expression (fn);
+	    }
+	  else
+	    switch (CALL_EXPR_IFN (expr))
+	      {
+	      /* Calls to __builtin_bswapg/__builtin_bitreverseg are parsed
+		 as IFN_BSWAP/IFN_BITREVERSE calls because we don't have
+		 those builtins but instead keywords.  Pretend they are
+		 builtin function template.  */
+	      case IFN_BSWAP:
+		write_source_name (get_identifier ("__builtin_bswapg"));
+		break;
+	      case IFN_BITREVERSE:
+		write_source_name (get_identifier ("__builtin_bitreverseg"));
+		break;
+	      default:
+		gcc_unreachable ();
+	      }
 
 	  for (i = 0; i < call_expr_nargs (expr); ++i)
 	    write_expression (CALL_EXPR_ARG (expr, i));
@@ -4185,6 +4220,8 @@ write_expression (tree expr)
 		      [ <alias template-args> ] _ <type> # type alias
 		  ::= ty <type>				# type
 		  ::= dm <prefix> <unqualified-name>	# ns data member
+		  ::= da <prefix> [ <nonnegative number> ] _ # empty anon union
+							     # data member
 		  ::= un <prefix> [ <nonnegative number> ] _ # unnamed bitfld
 		  ::= ct [ <prefix> ] <unqualified-name> # class template
 		  ::= ft [ <prefix> ] <unqualified-name> # function template
@@ -4206,6 +4243,11 @@ write_reflection (tree refl)
 {
   char prefix[3];
   tree arg = reflection_mangle_prefix (refl, prefix);
+  if (strcmp (prefix, "dm") == 0
+      && DECL_NAME (arg) == NULL_TREE
+      && ANON_AGGR_TYPE_P (TREE_TYPE (arg))
+      && anon_aggr_naming_decl (TREE_TYPE (arg)) == NULL_TREE)
+    strcpy (prefix, "da");
   write_string (prefix);
   /* If there is no argument, nothing further needs to be mangled.  */
   if (arg == NULL_TREE)
@@ -4219,13 +4261,8 @@ write_reflection (tree refl)
   else if (strcmp (prefix, "pa") == 0)
     {
       tree fn = DECL_CONTEXT (arg);
-      tree args = FUNCTION_FIRST_USER_PARM (fn);
-      int idx = 0;
-      while (arg != args)
-	{
-	  args = DECL_CHAIN (args);
-	  ++idx;
-	}
+      /* DECL_PARM_INDEX is 1-based but here we want a 0-based index.  */
+      const int idx = DECL_PARM_INDEX (arg) - 1;
       write_compact_number (idx);
       write_encoding (fn);
     }
@@ -4244,7 +4281,9 @@ write_reflection (tree refl)
 	 write_template_args, it shouldn't be
 	 remembered among substitutions.  */
       write_prefix (decl_mangling_context (arg));
-      write_unqualified_name (arg);
+      if (modules_p ())
+	maybe_write_module (arg);
+      write_source_name (DECL_NAME (arg));
       tree template_info = maybe_template_info (arg);
       if (template_info)
 	write_template_args (TI_ARGS (template_info));
@@ -4260,6 +4299,21 @@ write_reflection (tree refl)
 	ctx = decl_mangling_context (TYPE_NAME (ctx));
       write_prefix (ctx);
       write_unqualified_name (arg);
+    }
+  else if (strcmp (prefix, "da") == 0)
+    {
+      int idx = 0;
+      tree ctx = decl_mangling_context (arg);
+      for (tree f = TYPE_FIELDS (ctx); f; f = DECL_CHAIN (f))
+	if (f == arg)
+	  break;
+	else if (TREE_CODE (f) == FIELD_DECL
+		 && DECL_NAME (f) == NULL_TREE
+		 && ANON_AGGR_TYPE_P (TREE_TYPE (f))
+		 && anon_aggr_naming_decl (TREE_TYPE (f)) == NULL_TREE)
+	  ++idx;
+      write_prefix (ctx);
+      write_compact_number (idx);
     }
   else if (strcmp (prefix, "un") == 0)
     {
@@ -4282,7 +4336,7 @@ write_reflection (tree refl)
 	   || strcmp (prefix, "ns") == 0)
     {
       write_prefix (decl_mangling_context (arg));
-      write_unqualified_name (arg);
+      write_unqualified_name (STRIP_TEMPLATE (arg));
     }
   else if (strcmp (prefix, "ba") == 0)
     {
@@ -5135,7 +5189,7 @@ mangle_decomp (const tree decl, vec<tree> &decls)
 
    We use the production
 
-    <special-name> ::= CT <type> <offset number> _ <base type>  */
+    <special-name> ::= TC <type> <offset number> _ <base type>  */
 
 tree
 mangle_ctor_vtbl_for_type (const tree type, const tree binfo)

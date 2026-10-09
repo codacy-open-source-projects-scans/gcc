@@ -504,12 +504,6 @@ void
 ASTLoweringBase::visit (AST::GroupedPattern &)
 {}
 void
-ASTLoweringBase::visit (AST::SlicePatternItemsNoRest &)
-{}
-void
-ASTLoweringBase::visit (AST::SlicePatternItemsHasRest &)
-{}
-void
 ASTLoweringBase::visit (AST::SlicePattern &)
 {}
 void
@@ -657,10 +651,19 @@ ASTLoweringBase::lower_path_expr_seg (AST::PathExprSegment &s)
 HIR::GenericArgsBinding
 ASTLoweringBase::lower_binding (AST::GenericArgsBinding &binding)
 {
-  HIR::Type *lowered_type = ASTLoweringType::translate (binding.get_type ());
+  auto impl_trait_allowed
+    = binding.get_kind () == AST::GenericArgsBinding::Kind::Constraint
+	? ASTLoweringType::ImplTrait::Allow
+	: ASTLoweringType::ImplTrait::Forbid;
+  HIR::Type *lowered_type
+    = ASTLoweringType::translate (binding.get_type (), false,
+				  impl_trait_allowed);
+  auto kind = binding.get_kind () == AST::GenericArgsBinding::Kind::Constraint
+		? HIR::GenericArgsBinding::Kind::Constraint
+		: HIR::GenericArgsBinding::Kind::Equality;
   return HIR::GenericArgsBinding (binding.get_identifier (),
 				  std::unique_ptr<HIR::Type> (lowered_type),
-				  binding.get_locus ());
+				  binding.get_locus (), kind);
 }
 
 HIR::GenericArgs
@@ -803,11 +806,18 @@ ASTLoweringBase::handle_outer_attributes (const ItemWrapper &item)
   for (const auto &attr : item.get_outer_attrs ())
     {
       const auto &str_path = attr.get_path ().as_string ();
-      if (!Analysis::Attributes::is_known (str_path))
+      auto known_check = Analysis::Attributes::is_known (str_path);
+      if (known_check == Analysis::Attributes::AttributeKnowledge::Unknown)
 	{
-	  rust_error_at (attr.get_locus (), "unknown attribute");
+	  rust_error_at (attr.get_locus (), "unknown attribute: %qs",
+			 str_path.c_str ());
 	  continue;
 	}
+
+      // If it is a tool attribute, the compiler can ignore it and let the tool
+      // handle it
+      if (known_check == Analysis::Attributes::AttributeKnowledge::Tool)
+	return;
 
       bool is_lang_item = str_path == Values::Attributes::LANG
 			  && attr.has_attr_input ()
@@ -853,6 +863,28 @@ ASTLoweringBase::handle_doc_item_attribute (const ItemWrapper &,
   rust_assert (meta_item);
 }
 
+static void
+warn_if_stub_lang_item (location_t locus, LangItem::Kind kind)
+{
+  switch (kind)
+    {
+    case LangItem::Kind::FUTURE_TRAIT:
+    case LangItem::Kind::POLL:
+    case LangItem::Kind::READY:
+    case LangItem::Kind::PENDING:
+    case LangItem::Kind::GENERATOR:
+    case LangItem::Kind::GENERATOR_STATE:
+    case LangItem::Kind::MAYBE_UNINIT:
+    case LangItem::Kind::BOX_FREE:
+    case LangItem::Kind::DROP_IN_PLACE:
+      rust_warning_at (locus, 0, "%qs is not implemented and has no effect",
+		       LangItem::PrettyString (kind).c_str ());
+      break;
+    default:
+      break;
+    }
+}
+
 void
 ASTLoweringBase::handle_lang_item_attribute (const ItemWrapper &item,
 					     const AST::Attribute &attr)
@@ -863,8 +895,11 @@ ASTLoweringBase::handle_lang_item_attribute (const ItemWrapper &item,
   auto lang_item_type = LangItem::Parse (*lang_item_type_str);
 
   if (lang_item_type)
-    mappings.insert_lang_item (*lang_item_type,
-			       item.get_mappings ().get_defid ());
+    {
+      mappings.insert_lang_item (*lang_item_type,
+				 item.get_mappings ().get_defid ());
+      warn_if_stub_lang_item (attr.get_locus (), *lang_item_type);
+    }
   else
     rust_error_at (attr.get_locus (), "unknown lang item");
 }
@@ -914,41 +949,6 @@ ASTLoweringBase::lower_tuple_pattern_ranged (
 
   return std::unique_ptr<HIR::TuplePatternItems> (
     new HIR::TuplePatternItemsHasRest (std::move (lower_patterns),
-				       std::move (upper_patterns)));
-}
-
-std::unique_ptr<HIR::SlicePatternItems>
-ASTLoweringBase::lower_slice_pattern_no_rest (
-  AST::SlicePatternItemsNoRest &pattern)
-{
-  std::vector<std::unique_ptr<HIR::Pattern>> patterns;
-  patterns.reserve (pattern.get_patterns ().size ());
-  for (auto &p : pattern.get_patterns ())
-    patterns.emplace_back (ASTLoweringPattern::translate (*p));
-
-  return std::unique_ptr<HIR::SlicePatternItems> (
-    new HIR::SlicePatternItemsNoRest (std::move (patterns)));
-}
-
-std::unique_ptr<HIR::SlicePatternItems>
-ASTLoweringBase::lower_slice_pattern_has_rest (
-  AST::SlicePatternItemsHasRest &pattern)
-{
-  std::vector<std::unique_ptr<HIR::Pattern>> lower_patterns;
-  lower_patterns.reserve (pattern.get_lower_patterns ().size ());
-  std::vector<std::unique_ptr<HIR::Pattern>> upper_patterns;
-  upper_patterns.reserve (pattern.get_upper_patterns ().size ());
-
-  for (auto &p : pattern.get_lower_patterns ())
-    lower_patterns.emplace_back (
-      std::unique_ptr<HIR::Pattern> (ASTLoweringPattern::translate (*p)));
-
-  for (auto &p : pattern.get_upper_patterns ())
-    upper_patterns.emplace_back (
-      std::unique_ptr<HIR::Pattern> (ASTLoweringPattern::translate (*p)));
-
-  return std::unique_ptr<HIR::SlicePatternItems> (
-    new HIR::SlicePatternItemsHasRest (std::move (lower_patterns),
 				       std::move (upper_patterns)));
 }
 
@@ -1018,6 +1018,9 @@ ASTLoweringBase::lower_literal (const AST::Literal &literal)
     case AST::Literal::LitType::RAW_STRING:
       type = HIR::Literal::LitType::STRING;
       break;
+    case AST::Literal::LitType::C_STRING:
+      type = HIR::Literal::LitType::C_STRING;
+      break;
     case AST::Literal::LitType::INT:
       type = HIR::Literal::LitType::INT;
       break;
@@ -1068,8 +1071,9 @@ ASTLoweringBase::lower_extern_block (AST::ExternBlock &extern_block)
     }
 
   HIR::ExternBlock *hir_extern_block
-    = new HIR::ExternBlock (mapping, abi, std::move (extern_items),
-			    std::move (vis), extern_block.get_inner_attrs (),
+    = new HIR::ExternBlock (mapping, abi, extern_block.has_abi (),
+			    std::move (extern_items), std::move (vis),
+			    extern_block.get_inner_attrs (),
 			    extern_block.get_outer_attrs (),
 			    extern_block.get_locus ());
 

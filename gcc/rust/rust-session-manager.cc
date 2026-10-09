@@ -24,7 +24,7 @@
 #include "rust-diagnostics.h"
 #include "rust-expression-yeast.h"
 #include "rust-hir-pattern-analysis.h"
-#include "rust-immutable-name-resolution-context.h"
+#include "rust-finalized-name-resolution-context.h"
 #include "rust-location.h"
 #include "rust-unsafe-checker.h"
 #include "rust-lex.h"
@@ -62,6 +62,7 @@
 #include "rust-tyty-variance-analysis.h"
 #include "rust-attribute-checker.h"
 #include "rust-builtin-attribute-checker.h"
+#include "rust-extern-crate-loader.h"
 
 #include "input.h"
 #include "selftest.h"
@@ -287,6 +288,9 @@ Session::handle_option (
       break;
     case OPT_frust_edition_:
       options.set_edition (flag_rust_edition);
+      break;
+    case OPT_frust_compat_version_:
+      options.set_compat_version (flag_rust_compat_version);
       break;
     case OPT_frust_compile_until_:
       options.set_compile_step (flag_rust_compile_until);
@@ -650,7 +654,6 @@ Session::compile_crate (const char *filename)
     {
       options.target_data.dump_target_options ();
     }
-
   if (saw_errors ())
     return;
 
@@ -777,6 +780,10 @@ Session::compile_crate (const char *filename)
   if (last_step == CompileOptions::CompileStep::Lowering)
     return;
 
+  // Name resolution is complete.  Freeze its context before lowering so HIR
+  // construction can register information keyed by resolved definitions.
+  Resolver2_0::FinalizedNameResolutionContext::init (name_resolution_ctx);
+
   // lower AST to HIR
   std::unique_ptr<HIR::Crate> lowered
     = HIR::ASTLowering::Resolve (parsed_crate);
@@ -785,6 +792,7 @@ Session::compile_crate (const char *filename)
 
   // add the mappings to it
   HIR::Crate &hir = mappings.insert_hir_crate (std::move (lowered));
+  mappings.build_impl_indexes ();
   if (options.dump_option_enabled (CompileOptions::HIR_DUMP))
     {
       dump_hir (hir);
@@ -796,9 +804,6 @@ Session::compile_crate (const char *filename)
 
   if (last_step == CompileOptions::CompileStep::TypeCheck)
     return;
-
-  // name resolution is done, we now freeze the name resolver for type checking
-  Resolver2_0::ImmutableNameResolutionContext::init (name_resolution_ctx);
 
   // type resolve
   Compile::Context *ctx = Compile::Context::get ();
@@ -1071,11 +1076,16 @@ Session::expansion (AST::Crate &crate, Resolver2_0::NameResolutionContext &ctx)
 
   while (!fixed_point_reached && iterations < cfg.recursion_limit)
     {
+      std::vector<Session::LoadedCrate> loaded_crates;
       CfgStrip (cfg).go (crate);
       // Errors might happen during cfg strip pass
 
+      ExternCrateLoaderVisitor (loaded_crates).go (crate);
+
       Resolver2_0::Early early (ctx);
       early.go (crate);
+      for (auto &loaded_crate : loaded_crates)
+	ctx.merge (loaded_crate.ctx, loaded_crate.node_id);
       macro_errors = early.get_macro_resolve_errors ();
 
       if (saw_errors ())
@@ -1173,6 +1183,8 @@ Session::dump_ast_pretty_internal (AST::Crate &crate) const
 	       AST::Dump::Configuration::InternalComment::Dump,
 	       AST::Dump::Configuration::NodeDescription::Dump,
 	       AST::Dump::Configuration::Comment::Dump,
+	       AST::Dump::Configuration::Newline::Dump,
+	       AST::Dump::Configuration::Indentation::Space4,
 	     },
 	     str_tmp)
     .go (crate);
@@ -1235,7 +1247,7 @@ Session::dump_hir_pretty (HIR::Crate &crate) const
 
 // imports
 
-NodeId
+tl::expected<Session::LoadedCrate, Session::LoadingError>
 Session::load_extern_crate (const std::string &crate_name, location_t locus)
 {
   // has it already been loaded?
@@ -1244,7 +1256,8 @@ Session::load_extern_crate (const std::string &crate_name, location_t locus)
       auto resolved_node_id = mappings.crate_num_to_nodeid (*crate_num);
       rust_assert (resolved_node_id);
 
-      return *resolved_node_id;
+      return tl::make_unexpected (
+	LoadingError::make_already_loaded (*resolved_node_id));
     }
 
   std::string relative_import_path = "";
@@ -1274,7 +1287,7 @@ Session::load_extern_crate (const std::string &crate_name, location_t locus)
       && proc_macros.empty ()) // no proc macros
     {
       rust_error_at (locus, "failed to locate crate %qs", import_name.c_str ());
-      return UNKNOWN_NODEID;
+      return tl::make_unexpected (LoadingError::make_failed_to_locate ());
     }
 
   auto extern_crate
@@ -1288,7 +1301,7 @@ Session::load_extern_crate (const std::string &crate_name, location_t locus)
       if (!ok)
 	{
 	  rust_error_at (locus, "failed to load crate metadata");
-	  return UNKNOWN_NODEID;
+	  return tl::make_unexpected (LoadingError::make_failed_to_locate ());
 	}
     }
 
@@ -1298,7 +1311,7 @@ Session::load_extern_crate (const std::string &crate_name, location_t locus)
     {
       rust_error_at (locus, "current crate name %qs collides with this",
 		     current_crate_name.c_str ());
-      return UNKNOWN_NODEID;
+      return tl::make_unexpected (LoadingError::make_collision ());
     }
 
   // setup mappings
@@ -1314,6 +1327,13 @@ Session::load_extern_crate (const std::string &crate_name, location_t locus)
 
   AST::Crate &parsed_crate
     = mappings.insert_ast_crate (std::move (metadata_crate), crate_num);
+
+  auto ctx = Resolver2_0::NameResolutionContext ();
+  Resolver2_0::Builtins::setup_lang_prelude (ctx);
+
+  Resolver2_0::Early early (ctx);
+  early.go (parsed_crate);
+  Resolver2_0::Late (ctx).go (parsed_crate);
 
   std::vector<AttributeProcMacro> attribute_macros;
   std::vector<CustomDeriveProcMacro> derive_macros;
@@ -1344,7 +1364,7 @@ Session::load_extern_crate (const std::string &crate_name, location_t locus)
   // always restore the crate_num
   mappings.set_current_crate (saved_crate_num);
 
-  return parsed_crate.get_node_id ();
+  return LoadedCrate{crate_name, parsed_crate.get_node_id (), std::move (ctx)};
 }
 //
 

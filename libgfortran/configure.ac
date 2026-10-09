@@ -115,7 +115,7 @@ AC_SUBST(toolexeclibdir)
 # Create a spec file, so that compile/link tests don't fail
 test -f libgfortran.spec || touch libgfortran.spec
 
-AC_LANG_C
+AC_LANG([C])
 # Check the compiler.
 # The same as in boehm-gc and libstdc++. Have to borrow it from there.
 # We must force CC to /not/ be precious variables; otherwise
@@ -259,7 +259,7 @@ AC_PROG_INSTALL
 # Configure libtool
 #AC_MSG_NOTICE([====== Starting libtool configuration])
 AC_LIBTOOL_DLOPEN
-AM_PROG_LIBTOOL
+LT_INIT
 LT_LIB_M
 ACX_LT_HOST_FLAGS
 AC_SUBST(enable_shared)
@@ -375,6 +375,15 @@ if test x$enable_caf_shmem = xtrue; then
      enable_caf_shmem=false])
   CFLAGS="$save_CFLAGS"
 fi
+case ${host} in
+  *-*-darwin[[89]]* | *-*-darwin10*)
+    # These versions define PTHREAD_PROCESS_SHARED but the functionality
+    # is not available at runtime, so the configure check misleads.
+    enable_caf_shmem=false;;
+  *-*-cygwin* | *-*-mingw*)
+    # The specific implementation for these platforms does not use pthread.
+    enable_caf_shmem=true;;
+esac
 AM_CONDITIONAL([ENABLE_CAF_SHMEM], [test x$enable_caf_shmem = xtrue])
 
 # Check strerror_r, cannot be above as versions with two and three arguments exist
@@ -470,6 +479,7 @@ GCC_CHECK_MATH_FUNC([nextafter])
 GCC_CHECK_MATH_FUNC([nextafterl])
 GCC_CHECK_MATH_FUNC([powf])
 GCC_CHECK_MATH_FUNC([pow])
+GCC_CHECK_MATH_FUNC([powl])
 GCC_CHECK_MATH_FUNC([cpowf])
 GCC_CHECK_MATH_FUNC([cpow])
 GCC_CHECK_MATH_FUNC([cpowl])
@@ -520,6 +530,7 @@ GCC_CHECK_MATH_FUNC([trunc])
 GCC_CHECK_MATH_FUNC([truncl])
 GCC_CHECK_MATH_FUNC([erff])
 GCC_CHECK_MATH_FUNC([erf])
+GCC_CHECK_MATH_FUNC([erfl])
 GCC_CHECK_MATH_FUNC([erfcf])
 GCC_CHECK_MATH_FUNC([erfc])
 GCC_CHECK_MATH_FUNC([erfcl])
@@ -787,7 +798,7 @@ fi
 
 
 # Check out attribute support.
-LIBGFOR_CHECK_ATTRIBUTE_VISIBILITY
+GCC_CHECK_ATTRIBUTE_VISIBILITY
 LIBGFOR_CHECK_ATTRIBUTE_ALIAS
 
 # Check out atomic builtins support.

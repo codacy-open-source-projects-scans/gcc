@@ -129,7 +129,7 @@ Free Documentation License}''.
 @c ***Installing GCC**********************************************************
 @ifnothtml
 @comment node-name,     next,          previous, up
-@node    Installing GCC, Binaries, , Top
+@node    Installing GCC, Specific, , Top
 @end ifnothtml
 @ifset indexhtml
 @ifnothtml
@@ -238,7 +238,7 @@ compiler, and was also the version that declared C++17 support stable.
 To build all languages in a cross-compiler or other configuration where
 3-stage bootstrap is not performed, you need to start with an existing
 GCC binary (of a new enough version) because source code for language
-frontends other than C might use GCC extensions.
+frontends other than C and C++ might use GCC extensions.
 
 @item C standard library and headers
 
@@ -294,9 +294,10 @@ section.
 @item @anchor{GCOBOL-prerequisite}GCOBOL
 
 The COBOL compiler, gcobol, first appeared in GCC 15.  To build the
-COBOL parser, you need GNU Bison 3.5.1 or later (but not 3.8.0). To build
-the lexer requires GNU Flex 2.6.4, the current version as of this writing,
-released on 2017-05-06.
+COBOL parser, you need GNU Bison 3.8.2, the current version of as of
+this writing, released 2021-09-25. To build the lexer requires GNU
+Flex 2.6.4, also the current version as of this writing, released on
+2017-05-06.
 
 The gcobol documentation is maintained as manpages using troff
 mdoc. GNU groff is required to convert them to PDF format.  Conversion
@@ -598,7 +599,7 @@ Necessary to build GCC during development because the generated output
 files are not included in the version-controlled source repository.
 They are included in releases.
 
-@item Bison version 3.5.1 or later (but not 3.8.0)
+@item Bison version 3.8.2 (or later)
 
 Necessary when modifying @file{*.y} files in the COBOL front end.
 
@@ -627,7 +628,7 @@ building the documentation without error, but you may still want to
 install a newer release to get the best appearance and usability of
 the generated manuals.
 
-Also note that Texinfo older than version 7.1 may throw incorrect build
+Also note that Texinfo older than version 7.1.1 may throw incorrect build
 warnings, though the generated documentation is correct.
 
 @item @TeX{} (any working version)
@@ -689,11 +690,7 @@ The source distribution includes the Ada, C, C++, Objective-C, COBOL
 (GCC 15 and later), D (GCC 9 and later), Fortran, Go, Modula-2 (GCC 13
 and later) and Algol 68 (GCC 16 and later, experimental) compilers, as
 well as runtime libraries for C++, Objective-C, COBOL, Fortran and
-Algol 68.  For previous versions these were downloadable as separate
-components such as the core GCC distribution, which included the C
-language front end and shared components, and language-specific
-distributions including the language front end and the language
-runtime (where appropriate).
+Algol 68.
 
 If you also intend to build Binutils (either to upgrade an existing
 installation or for use in place of the corresponding tools of your
@@ -872,13 +869,13 @@ Here are the possible CPU types:
 @quotation
 aarch64, aarch64_be, alpha, alpha64, amdgcn, arc, arceb, arm, armeb, avr, bfin,
 bpf, cris, csky, epiphany, fido, fr30, frv, ft32, h8300, hppa, hppa2.0,
-hppa64, i486, i686, ia64, iq2000, lm32, loongarch64, m32c, m32r, m32rle, m68k,
+hppa64, i486, i686, ia64, iq2000, lm32, loongarch64, m32r, m32rle, m68k,
 mcore, microblaze, microblazeel, mips, mips64, mips64el, mips64octeon,
 mips64orion, mips64vr, mipsel, mipsisa32, mipsisa32r2, mipsisa64, mipsisa64r2,
 mipsisa64r2el, mipsisa64sb1, mipsisa64sr71k, mipstx39, mmix, mn10300, moxie,
 msp430, nds32be, nds32le, nvptx, or1k, pdp11, powerpc, powerpc64,
 powerpc64le, powerpcle, pru, riscv32, riscv32be, riscv64, riscv64be, rl78, rx,
-s390, s390x, sh, shle, sparc, sparc64, tic6x, v850,
+s390x, sh, shle, sparc, sparc64, tic6x, v850,
 v850e, v850e1, vax, visium, x86_64, xstormy16, xtensa
 @end quotation
 
@@ -889,7 +886,7 @@ aix@var{version}, amdhsa, aout, cygwin, darwin@var{version},
 eabi, eabialtivec, eabisim, eabisimaltivec, elf, elf32,
 elfbare, elfoabi, freebsd@var{version}, gnu, hpux, hpux@var{version},
 kfreebsd-gnu, kopensolaris-gnu, linux-androideabi, linux-gnu,
-linux-gnu_altivec, linux-musl, linux-uclibc, lynxos, mingw32, mingw32crt,
+linux-gnu_altivec, linux-musl, linux-uclibc, lynxos, mingw32,
 mmixware, msdosdjgpp, netbsd, netbsdelf@var{version}, nto-qnx, openbsd,
 rtems, solaris@var{version}, symbianelf, tpf, uclinux, uclinux_eabi, vms,
 vxworks, vxworksae, vxworksmils
@@ -1175,26 +1172,6 @@ Specify that the @emph{host} executables should be linked with the option
 symbols when the executables are started, and that in turn allows RELRO to
 mark the GOT read-only, resulting in better security.
 
-@item @anchor{with-gnu-as}--with-gnu-as
-Specify that the compiler should assume that the
-assembler it finds is the GNU assembler.  However, this does not modify
-the rules to find an assembler and will result in confusion if the
-assembler found is not actually the GNU assembler.  (Confusion may also
-result if the compiler finds the GNU assembler but has not been
-configured with @option{--with-gnu-as}.)  If you have more than one
-assembler installed on your system, you may want to use this option in
-connection with @option{--with-as=@var{pathname}} or
-@option{--with-build-time-tools=@var{pathname}}.
-
-The following systems are the only ones where it makes a difference
-whether you use the GNU assembler.  On any other system,
-@option{--with-gnu-as} has no effect.
-
-@itemize @bullet
-@item @samp{hppa*-@var{any}-@var{any}}
-@item @samp{*-*-solaris2.11}
-@end itemize
-
 @item @anchor{with-as}--with-as=@var{pathname}
 Specify that the compiler should use the assembler pointed to by
 @var{pathname}, rather than the one found by the standard rules to find
@@ -1229,10 +1206,6 @@ You may want to use @option{--with-as} if no assembler
 is installed in the directories listed above, or if you have multiple
 assemblers installed and want to choose one that is not found by the
 above rules.
-
-@item @anchor{with-gnu-ld}--with-gnu-ld
-Same as @uref{#with-gnu-as,,@option{--with-gnu-as}}
-but for the linker.
 
 @item --with-ld=@var{pathname}
 Same as @uref{#with-as,,@option{--with-as}}
@@ -1292,10 +1265,10 @@ GCC's diagnostics capabilities via a C API, and a C++ wrapper API adding
 This option requires @option{--enable-host-shared} on non-Windows hosts.
 
 This option also enables @code{sarif-replay}, a command-line tool for
-viewing @uref{https://sarif.info/,,SARIF files}.  @code{sarif-replay} takes
-one or more @code{.sarif} files as input and attempts to replay any
-diagnostics within them to stderr (via @code{libgdiagnostics}) in the style
-of GCC's diagnostics.
+viewing @uref{https://sarifweb.azurewebsites.net/,,SARIF files}.
+@code{sarif-replay} takes one or more @code{.sarif} files as input and
+attempts to replay any diagnostics within them to stderr (via
+@code{libgdiagnostics}) in the style of GCC's diagnostics.
 
 @item --disable-gcov
 Specify that the run-time library used for coverage analysis
@@ -1366,7 +1339,7 @@ specified, then the default set of libraries is selected.
 profiles respectively.  Note that, due to some limitation of the current
 multilib framework, using the combined @code{aprofile,rmprofile}
 multilibs selects in some cases a less optimal multilib than when using
-the multilib profile for the architecture targetted.  The special value
+the multilib profile for the architecture targeted.  The special value
 @code{default} is also accepted and is equivalent to omitting the
 option, i.e., only the default run-time library will be enabled.
 
@@ -1558,8 +1531,9 @@ values, possibly consisting of a single value.  Currently only implemented
 for riscv*-*-elf*.  The accepted values and meanings are given below.
 
 
-Every config is constructed with four components: architecture string, ABI,
-reuse rule with architecture string and reuse rule with sub-extension.
+Every config is constructed with four mandatory components and one optional
+component: architecture string, ABI, reuse rule with architecture string,
+reuse rule with sub-extension and an optional list of extra options.
 
 Example 1: Add multi-lib support for rv32i with ilp32.
 @smallexample
@@ -1599,6 +1573,36 @@ medlow code model; rv64ima with lp64 and medany code model
 @smallexample
 rv64ima-lp64--;--cmodel=medlow,medany
 @end smallexample
+
+A config may carry an optional fifth component, a list of extra options, which
+is appended after the sub-extension reuse rule:
+@smallexample
+<arch>-<abi>-<extra-arch>-<sub-ext>[-<extra-options>]
+@end smallexample
+
+The extra options are a comma separated list, and each entry pairs an option
+name with the multilib directory it should map to, separated by a slash:
+@smallexample
+<extra-options> := <extra-option> ',' <extra-options>
+                 | <extra-option>
+
+<extra-option>  := <option> '/' <multilib-folder>
+@end smallexample
+
+Because the dash (@samp{-}) is used as the component separator, any dash in an
+option name must be rewritten as an underscore (@samp{_}), and the leading dash
+of the option must be dropped.  For example, @option{-fcf-protection=full} is
+written as @code{fcf_protection=full}.
+
+Example 7: Add multi-lib support for rv64imafdc with lp64d, plus a variant
+built with @option{-fcf-protection=full} placed in the @file{cfi} directory.
+@smallexample
+rv64imafdc_zicfiss_zicfilp-lp64d---fcf_protection=full/cfi
+@end smallexample
+
+This builds a multilib with
+@option{-march=rv64imafdc_zicfiss_zicfilp -mabi=lp64d -fcf-protection=full}
+and uses @file{rv64imafdc_zicfiss_zicfilp/lp64d/cfi} as the multilib folder.
 
 @item --with-multi-buildlist=@var{file}
 Specify a file containing a list of multilib directories to build.
@@ -1711,7 +1715,7 @@ not use transactional memory.
 @item --with-cpu=@var{cpu}
 @itemx --with-cpu-32=@var{cpu}
 @itemx --with-cpu-64=@var{cpu}
-Specify which cpu variant the compiler should generate code for by default.
+Specify which CPU variant the compiler should generate code for by default.
 @var{cpu} will be used as the default value of the @option{-mcpu=} switch.
 This option is only supported on some targets, including ARC, ARM, i386, M68k,
 PowerPC, RISC-V, and SPARC@.  It is mandatory for ARC@.  The
@@ -1855,12 +1859,12 @@ On MIPS targets, make @option{-mlxc1-sxc1} the default when no
 On MIPS targets, make @option{-mno-lxc1-sxc1} the default when no
 @option{-mlxc1-sxc1} option is passed.  The indexed load/store
 instructions are not directly a problem but can lead to unexpected
-behaviour when deployed in an application intended for a 32-bit address
+behavior when deployed in an application intended for a 32-bit address
 space but run on a 64-bit processor.  The issue is seen because all
 known MIPS 64-bit Linux kernels execute o32 and n32 applications
-with 64-bit addressing enabled which affects the overflow behaviour
+with 64-bit addressing enabled which affects the overflow behavior
 of the indexed addressing mode.  GCC will assume that ordinary
-32-bit arithmetic overflow behaviour is the same whether performed
+32-bit arithmetic overflow behavior is the same whether performed
 as an @code{addu} instruction or as part of the address calculation
 in @code{lwxc1} type instructions.  This assumption holds true in a
 pure 32-bit environment and can hold true in a 64-bit environment if
@@ -1958,6 +1962,19 @@ systems with limited free memory.  The default is not to add such
 dependencies and thus with parallel make potentially link different
 compilers concurrently.  If the argument is a positive integer, allow
 that number of concurrent link processes for the large binaries.
+
+@item --with-md-generator-partitions=@var{num}
+@itemx --with-md-generator-partitions=@var{counts}
+Set the number of C++ source partitions produced by the internal build-time
+tools @command{genemit}, @command{genrecog} and @command{genattrtab}.  More
+partitions give a parallel build more files to compile at once, and each
+of them is smaller, at the cost of repeating the per-file preamble.  A
+single @var{num} sets all three counts.  The @var{counts} form is
+@code{@var{emit}:@var{recog}:@var{attrtab}}.  Each count must be between
+1 and 9999.  The default is @code{6:6:1} for AArch64 and 10 for each
+generator on other targets.  A target can set a different default in
+@file{config.gcc}.  @option{--with-insnemit-partitions} is a deprecated
+alias.
 
 @item --enable-maintainer-mode
 The build rules that regenerate the Autoconf and Automake output files as
@@ -2231,7 +2248,7 @@ you are building a bi-arch or multi-arch Binutils in a combined tree.
 On mips-linux, this will build a tri-arch compiler (ABI o32/n32/64),
 defaulted to o32.
 Currently, this option only affects sparc-linux, powerpc-linux, x86-linux,
-mips-linux and s390-linux.
+and mips-linux.
 
 @item --enable-default-pie
 Turn on @option{-fPIE} and @option{-pie} by default.
@@ -2488,11 +2505,11 @@ When neither of these configure options are used, the default will be
 Specify whether @code{long double} uses the IBM extended double format
 or the IEEE 128-bit floating point format on PowerPC Linux systems.
 This configuration switch will only work on little endian PowerPC
-Linux systems and on big endian 64-bit systems where the default cpu
+Linux systems and on big endian 64-bit systems where the default CPU
 is at least power7 (i.e.@: @option{--with-cpu=power7},
 @option{--with-cpu=power8}, or @option{--with-cpu=power9} is used).
 
-If you use the @option{--with-long-double-64} configuration option,
+If you use the @option{--without-long-double-128} configuration option,
 the @option{--with-long-double-format=ibm} and
 @option{--with-long-double-format=ieee} options are ignored.
 
@@ -2724,7 +2741,7 @@ target if target Binutils supported.
 
 @item --enable-s390-excess-float-precision
 @itemx --disable-s390-excess-float-precision
-On s390(x) targets, enable treatment of float expressions with double precision
+On s390x targets, enable treatment of float expressions with double precision
 when in standards-compliant mode (e.g., when @code{--std=c99} or
 @code{-fexcess-precision=standard} are given).
 
@@ -3856,79 +3873,10 @@ If you find a bug, please report it following the
 @end ifhtml
 @end ifset
 
-@c ***Binaries****************************************************************
-@ifnothtml
-@comment node-name,     next,          previous, up
-@node    Binaries, Specific, Installing GCC, Top
-@end ifnothtml
-@ifset binarieshtml
-@ifnothtml
-@chapter Installing GCC: Binaries
-@end ifnothtml
-@cindex Binaries
-@cindex Installing GCC: Binaries
-
-We are often asked about pre-compiled versions of GCC@.  While we cannot
-provide these for all platforms, below you'll find links to binaries for
-various platforms where creating them by yourself is not easy due to various
-reasons.
-
-Please note that we did not create these binaries, nor do we
-support them.  If you have any problems installing them, please
-contact their makers.
-
-@itemize
-@item
-AIX:
-@itemize
-@item
-@uref{http://www.perzl.org/aix/,,AIX Open Source Packages (AIX5L AIX 6.1
-AIX 7.1)}.
-@end itemize
-
-@item
-DOS---@uref{https://www.delorie.com/djgpp/,,DJGPP}.
-
-@item
-macOS:
-@itemize
-@item
-The @uref{https://brew.sh,,Homebrew} package manager;
-@item
-@uref{https://www.macports.org,,MacPorts}.
-@end itemize
-
-@item
-Microsoft Windows:
-@itemize
-@item
-The @uref{https://sourceware.org/cygwin/,,Cygwin} project;
-@item
-the @uref{https://www.mingw-w64.org/,,mingw-w64} project.
-@end itemize
-
-@item
-@uref{http://www.openpkg.org/,,OpenPKG} offers binaries for quite a
-number of platforms.
-
-@item
-The @uref{https://gcc.gnu.org/wiki/GFortranBinaries,,GFortran Wiki} has
-links to GNU Fortran binaries for several platforms.
-@end itemize
-
-@html
-<hr />
-<p>
-@end html
-@ifhtml
-@uref{./index.html,,Return to the GCC Installation page}
-@end ifhtml
-@end ifset
-
 @c ***Specific****************************************************************
 @ifnothtml
 @comment node-name,     next,          previous, up
-@node    Specific, GNU Free Documentation License, Binaries, Top
+@node    Specific, Binaries, Installing GCC, Top
 @end ifnothtml
 @ifset specifichtml
 @ifnothtml
@@ -3998,8 +3946,6 @@ information have to.
 @uref{#lm32-x-elf,,lm32-*-elf}
 @item
 @uref{#lm32-x-uclinux,,lm32-*-uclinux}
-@item
-@uref{#m32c-x-elf,,m32c-*-elf}
 @item
 @uref{#m32r-x-elf,,m32r-*-elf}
 @item
@@ -4345,14 +4291,9 @@ Renesas H8/300 series of processors.
 Only the 64-bit @samp{hppa} target is supported on HP-UX.  Support
 for 32-bit @samp{hppa} was discontinued in GCC 13.
 
-We require using gas on all hppa platforms.
-
-It may be helpful to configure GCC with the
-@uref{./configure.html#with-gnu-as,,@option{--with-gnu-as}} and
-@option{--with-as=@dots{}} options to ensure that GCC can find GAS@.
-
-Only the HP linker is supported.  Thus, it is best to explicitly
-configure the target with the @option{--with-ld=@dots{}} option.
+We require using gas on all hppa platforms.  It may be helpful to
+configure GCC with the @option{--with-as=@dots{}} option to ensure
+that GCC can find GAS@.
 
 The DCE thread library is not supported, so @option{--enable-threads=dce}
 does not work.
@@ -4399,8 +4340,9 @@ later.
 @anchor{ia64-x-hpux}
 @heading ia64-*-hpux*
 Building GCC on this target requires the GNU Assembler.  The bundled HP
-assembler will not work.  To prevent GCC from using the wrong assembler,
-the option @option{--with-gnu-as} may be necessary.
+assembler will not work.  It may be helpful to configure GCC with
+the @option{--with-as=@dots{}} option to ensure that GCC can find
+GAS@.
 
 @html
 <hr />
@@ -4621,14 +4563,6 @@ More information about LoongArch can be found at
 @html
 <hr />
 @end html
-@anchor{m32c-x-elf}
-@heading m32c-*-elf
-Renesas M32C processor.
-This configuration is intended for embedded systems.
-
-@html
-<hr />
-@end html
 @anchor{m32r-x-elf}
 @heading m32r-*-elf
 Renesas M32R processor.
@@ -4687,7 +4621,7 @@ This configuration is intended for embedded systems.
 @anchor{mips-x-x}
 @heading mips-*-*
 If on a MIPS system you get an error message saying ``does not have gp
-sections for all it's [sic] sectons [sic]'', don't worry about it.  This
+sections for all it's [sic] sections [sic]'', don't worry about it.  This
 happens whenever you use GAS with the MIPS linker, but there is not
 really anything wrong, and it is okay to use the output file.  You can
 stop such warnings by installing the GNU linker.
@@ -5222,13 +5156,7 @@ GCC contains support for x86-64 using the mingw-w64
 runtime library, available from @uref{https://www.mingw-w64.org/downloads/}.
 This library should be used with the target triple x86_64-pc-mingw32.
 
-@subheading Windows CE
-Windows CE is supported as a target only on Hitachi
-SuperH (sh-wince-pe), and MIPS (mips-wince-pe).
-
 @subheading Other Windows Platforms
-GCC no longer supports Windows NT on the Alpha or PowerPC.
-
 GCC no longer supports the Windows POSIX subsystem.
 
 Old target names including *-*-winnt and *-*-windowsnt are no longer used.
@@ -5247,7 +5175,7 @@ GCC will build under Cygwin without modification; it does not build
 with Microsoft's C++ compiler and there are no plans to make it do so.
 
 The Cygwin native compiler can be configured to target any 32-bit x86
-cpu architecture desired; the default is i686-pc-cygwin.  It should be
+CPU architecture desired; the default is i686-pc-cygwin.  It should be
 used with as up-to-date a version of Binutils as possible; use either
 the latest official GNU Binutils release in the Cygwin distribution,
 or version 2.20 or above if building your own.
@@ -5309,10 +5237,74 @@ current GCC) is to be found in the GCC texinfo manual.
 @anchor{elf}
 @heading all ELF targets (SVR4, Solaris, etc.)
 C++ support is significantly better on ELF targets if you use the
-@uref{./configure.html#with-gnu-ld,,GNU linker}; duplicate copies of
+GNU linker; duplicate copies of
 inlines, vtables and template instantiations will be discarded
 automatically.
 
+@html
+<hr />
+<p>
+@end html
+@ifhtml
+@uref{./index.html,,Return to the GCC Installation page}
+@end ifhtml
+@end ifset
+
+@c ***Binaries****************************************************************
+@ifnothtml
+@comment node-name,     next,          previous, up
+@node    Binaries, GNU Free Documentation License, Specific, Top
+@end ifnothtml
+@ifset binarieshtml
+@ifnothtml
+@chapter Installing GCC: Binaries
+@end ifnothtml
+@cindex Binaries
+@cindex Installing GCC: Binaries
+
+We are often asked about pre-compiled versions of GCC@.  While we cannot
+provide these for all platforms, below you'll find links to binaries for
+various platforms where creating them by yourself is not easy due to various
+reasons.
+
+Please note that we did not create these binaries, nor do we
+support them.  If you have any problems installing them, please
+contact their makers.
+
+@itemize
+@item
+AIX:
+@itemize
+@item
+@uref{http://www.perzl.org/aix/,,AIX Open Source Packages (AIX5L AIX 6.1
+AIX 7.1)}.
+@end itemize
+
+@item
+DOS---@uref{https://www.delorie.com/djgpp/,,DJGPP}.
+
+@item
+macOS:
+@itemize
+@item
+The @uref{https://brew.sh,,Homebrew} package manager;
+@item
+@uref{https://www.macports.org,,MacPorts}.
+@end itemize
+
+@item
+Microsoft Windows:
+@itemize
+@item
+The @uref{https://sourceware.org/cygwin/,,Cygwin} project;
+@item
+the @uref{https://www.mingw-w64.org/,,mingw-w64} project.
+@end itemize
+
+@item
+The @uref{https://gcc.gnu.org/wiki/GFortranBinaries,,GFortran Wiki} has
+links to GNU Fortran binaries for several platforms.
+@end itemize
 
 @html
 <hr />

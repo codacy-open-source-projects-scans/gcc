@@ -2559,6 +2559,8 @@ public:
     return where_clause;
   }
 
+  WARN_UNUSED_RESULT WhereClause &get_where_clause () { return where_clause; }
+
   ExternalFunctionItem (
     Analysis::NodeMapping mappings, Identifier item_name,
     std::vector<std::unique_ptr<GenericParam>> generic_params,
@@ -2638,6 +2640,7 @@ protected:
 class ExternBlock : public VisItem, public WithInnerAttrs
 {
   ABI abi;
+  bool explicit_abi;
   std::vector<std::unique_ptr<ExternalItem>> extern_items;
   location_t locus;
 
@@ -2647,9 +2650,12 @@ public:
   // Returns whether extern block has extern items.
   bool has_extern_items () const { return !extern_items.empty (); }
 
+  // Returns whether the extern block was given an explicit ABI string.
+  bool has_abi () const { return explicit_abi; }
+
   ABI get_abi () const { return abi; }
 
-  ExternBlock (Analysis::NodeMapping mappings, ABI abi,
+  ExternBlock (Analysis::NodeMapping mappings, ABI abi, bool explicit_abi,
 	       std::vector<std::unique_ptr<ExternalItem>> extern_items,
 	       Visibility vis, AST::AttrVec inner_attrs,
 	       AST::AttrVec outer_attrs, location_t locus);

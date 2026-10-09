@@ -2192,7 +2192,7 @@ public:
   const theme &get_theme () const { return m_theme; }
 
 private:
-  /* Figure out all of the boundaries of interest when visualizing ths op.  */
+  /* Figure out all of the boundaries of interest when visualizing the op.  */
   std::unique_ptr<boundaries>
   find_boundaries () const
   {
@@ -2347,7 +2347,7 @@ private:
        overlapping the next char.  Hence we add two spaces here: a space
        to be covered by this overlap, plus another space of padding.  */
     result.append (styled_string (m_sm, "  "));
-    result.append (std::move (text));
+    result.append (text);
     return result;
   }
 

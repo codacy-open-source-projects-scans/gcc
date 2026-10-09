@@ -848,7 +848,7 @@ get_string_length (strinfo *si)
      attempt to compute the length from the call statement.  */
   if (si->stmt)
     {
-      gimple *stmt = si->stmt, *lenstmt;
+      gimple *stmt = si->stmt, *lenstmt = NULL;
       tree callee, lhs, fn, tem;
       location_t loc;
       gimple_stmt_iterator gsi;
@@ -902,6 +902,17 @@ get_string_length (strinfo *si)
 	  gimple_call_set_fndecl (stmt, fn);
 	  lhs = make_ssa_name (TREE_TYPE (TREE_TYPE (fn)), stmt);
 	  gimple_call_set_lhs (stmt, lhs);
+	  if (DECL_FUNCTION_CODE (callee) == BUILT_IN_STRCAT_CHK)
+	    {
+	      tree objsz = gimple_call_lhs (lenstmt);
+	      gimple *g
+		= gimple_build_assign (make_ssa_name (TREE_TYPE (objsz)),
+				       MINUS_EXPR, gimple_call_arg (stmt, 2),
+				       objsz);
+	      gimple_set_location (g, gimple_location (stmt));
+	      gsi_insert_before (&gsi, g, GSI_SAME_STMT);
+	      gimple_call_set_arg (stmt, 2, gimple_assign_lhs (g));
+	    }
 	  update_stmt (stmt);
 	  if (dump_file && (dump_flags & TDF_DETAILS) != 0)
 	    {
@@ -3984,19 +3995,7 @@ use_in_zero_equality (tree res, bool exclusive)
       if (gimple_code (use_stmt) == GIMPLE_ASSIGN)
 	{
 	  tree_code code = gimple_assign_rhs_code (use_stmt);
-	  if (code == COND_EXPR)
-	    {
-	      tree cond_expr = gimple_assign_rhs1 (use_stmt);
-	      if ((TREE_CODE (cond_expr) != EQ_EXPR
-		   && (TREE_CODE (cond_expr) != NE_EXPR))
-		  || !integer_zerop (TREE_OPERAND (cond_expr, 1)))
-		{
-		  if (exclusive)
-		    return NULL;
-		  continue;
-		}
-	    }
-	  else if (code == EQ_EXPR || code == NE_EXPR)
+	  if (code == EQ_EXPR || code == NE_EXPR)
 	    {
 	      if (!integer_zerop (gimple_assign_rhs2 (use_stmt)))
 		{

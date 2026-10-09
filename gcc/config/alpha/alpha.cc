@@ -435,6 +435,12 @@ alpha_option_override (void)
 	error ("bad value %qs for %<-mfp-rounding-mode%> switch",
 	       alpha_fprm_string);
     }
+  else if (flag_rounding_math && !TARGET_FLOAT_VAX)
+    /* Honoring a rounding mode chosen at run time requires instructions
+       that take their rounding mode from the FPCR.  Without this, code
+       built with -frounding-math silently ignores fesetround.  The VAX
+       floating-point instructions have no dynamic rounding qualifier.  */
+    alpha_fprm = ALPHA_FPRM_DYN;
 
   if (alpha_fptm_string)
     {
@@ -1242,8 +1248,8 @@ split_small_symbolic_operand (rtx x)
 }
 
 /* Indicate that INSN cannot be duplicated.  This is true for any insn
-   that we've marked with gpdisp relocs, since those have to stay in
-   1-1 correspondence with one another.
+   that we've marked with a relocation sequence number, since those have
+   to stay in 1-1 correspondence with one another.
 
    Technically we could copy them if we could set up a mapping from one
    sequence number to another, across the set of insns to be duplicated.
@@ -1253,12 +1259,21 @@ split_small_symbolic_operand (rtx x)
    Also cannot allow jsr insns to be duplicated.  If they throw exceptions,
    then they'll be in a different block from their ldgp.  Which could lead
    the bb reorder code to think that it would be ok to copy just the block
-   containing the call and branch to the block containing the ldgp.  */
+   containing the call and branch to the block containing the ldgp.
+
+   Note this must not be gated on reload_completed.  While the gpdisp pairs
+   are only created after reload, alpha_legitimize_address emits
+   movdi_er_tlsgd and movdi_er_tlsldm together with their paired
+   call_value_osf_tlsgd/tlsldm at expand time, and those already carry the
+   sequence number that ties each pair together.  Returning false before
+   reload lets the pre-RA duplicators reach them: unrolling a loop whose
+   body holds such a pair copies the sequence number along with it, and the
+   assembler then rejects the result with "duplicate !tlsgd!N".  */
 
 static bool
 alpha_cannot_copy_insn_p (rtx_insn *insn)
 {
-  if (!reload_completed || !TARGET_EXPLICIT_RELOCS)
+  if (!TARGET_EXPLICIT_RELOCS)
     return false;
   if (recog_memoized (insn) >= 0)
     return get_attr_cannot_copy (insn);
@@ -2456,7 +2471,7 @@ alpha_expand_mov_safe_bwa (machine_mode mode, rtx *operands)
 }
 
 /* Implement the movmisalign patterns.  One of the operands is a memory
-   that is not naturally aligned.  Emit instructions to load it.  */
+   that is not naturally aligned.  Emit instructions to load or store it.  */
 
 void
 alpha_expand_movmisalign (machine_mode mode, rtx *operands)
@@ -2471,7 +2486,8 @@ alpha_expand_movmisalign (machine_mode mode, rtx *operands)
       else
 	tmp = gen_reg_rtx (mode);
 
-      alpha_expand_unaligned_load (tmp, operands[1], 8, 0, 0);
+      alpha_expand_unaligned_load (tmp, operands[1], GET_MODE_SIZE (mode),
+				   0, 0);
       if (tmp != operands[0])
 	emit_move_insn (operands[0], tmp);
     }
@@ -2481,9 +2497,11 @@ alpha_expand_movmisalign (machine_mode mode, rtx *operands)
 	operands[1] = force_reg (mode, operands[1]);
       if (TARGET_SAFE_PARTIAL)
 	alpha_expand_unaligned_store_safe_partial (operands[0], operands[1],
-						   8, 0, BITS_PER_UNIT);
+						   GET_MODE_SIZE (mode), 0,
+						   BITS_PER_UNIT);
       else
-	alpha_expand_unaligned_store (operands[0], operands[1], 8, 0);
+	alpha_expand_unaligned_store (operands[0], operands[1],
+				      GET_MODE_SIZE (mode), 0);
     }
   else
     gcc_unreachable ();
@@ -2785,6 +2803,77 @@ alpha_emit_setcc (rtx operands[], machine_mode cmp_mode)
   emit_insn (gen_rtx_SET (operands[0], gen_rtx_fmt_ee (code, DImode,
 						       op0, op1)));
   return true;
+}
+
+
+/* Expand a floating-point classification of OP, storing 0 or 1 into
+   TARGET.  KIND selects the test performed.
+
+   The FP comparison instructions cannot be used for this.  Without
+   software completion -- which the compiler only arranges for -mieee,
+   i.e. alpha_fptm >= ALPHA_FPTM_SU -- a subnormal operand is either
+   flushed to zero, which makes it indistinguishable from a zero, or
+   traps with no completion information, which is fatal.  They also
+   raise an invalid-operation exception for a signaling NaN.  Examine
+   the encoding in an integer register instead.  */
+
+void
+alpha_expand_fp_classify (rtx target, rtx op, enum alpha_fp_class kind)
+{
+  machine_mode mode = GET_MODE (op);
+  const struct real_format *fmt = REAL_MODE_FORMAT (mode);
+  int width = GET_MODE_BITSIZE (as_a <scalar_float_mode> (mode));
+  int mant_bits = fmt->p - 1;
+  int exp_bits = width - mant_bits - 1;
+  HOST_WIDE_INT exp_max = (HOST_WIDE_INT_1 << exp_bits) - 1;
+  rtx bits, mag, exp, mant, res, tmp;
+
+  /* Move the raw encoding into an integer register, zero extended to
+     DImode so that the shifts below are independent of MODE.  */
+  bits = force_lowpart_subreg (int_mode_for_mode (mode).require (), op, mode);
+  bits = convert_to_mode (DImode, bits, 1);
+
+  /* Shifting out the sign bit leaves the magnitude left justified.  */
+  mag = expand_shift (LSHIFT_EXPR, DImode, bits, 65 - width, NULL_RTX, 1);
+  exp = expand_shift (RSHIFT_EXPR, DImode, mag, 64 - exp_bits, NULL_RTX, 1);
+
+  switch (kind)
+    {
+    case ALPHA_FPCLASS_FINITE:
+      /* The exponent field is not all ones.  */
+      res = emit_store_flag_force (NULL_RTX, NE, exp, GEN_INT (exp_max),
+				   DImode, 0, 1);
+      break;
+
+    case ALPHA_FPCLASS_NORMAL:
+      /* The exponent field is neither zero nor all ones, i.e.
+	 (unsigned) (exp - 1) < exp_max - 1.  */
+      tmp = expand_binop (DImode, sub_optab, exp, const1_rtx, NULL_RTX,
+			  1, OPTAB_LIB_WIDEN);
+      res = emit_store_flag_force (NULL_RTX, LTU, tmp, GEN_INT (exp_max - 1),
+				   DImode, 1, 1);
+      break;
+
+    case ALPHA_FPCLASS_INF:
+    case ALPHA_FPCLASS_NAN:
+      /* The exponent field is all ones, and the significand field is zero
+	 for an infinity, nonzero for a NaN.  */
+      mant = expand_shift (LSHIFT_EXPR, DImode, bits, 64 - mant_bits,
+			   NULL_RTX, 1);
+      tmp = emit_store_flag_force (NULL_RTX, EQ, exp, GEN_INT (exp_max),
+				   DImode, 0, 1);
+      res = emit_store_flag_force (NULL_RTX,
+				   kind == ALPHA_FPCLASS_NAN ? NE : EQ,
+				   mant, const0_rtx, DImode, 0, 1);
+      res = expand_binop (DImode, and_optab, tmp, res, NULL_RTX,
+			  1, OPTAB_LIB_WIDEN);
+      break;
+
+    default:
+      gcc_unreachable ();
+    }
+
+  emit_move_insn (target, gen_lowpart (GET_MODE (target), res));
 }
 
 
@@ -3494,7 +3583,6 @@ alpha_expand_unaligned_load (rtx tgt, rtx mem, HOST_WIDE_INT size,
 
   meml = gen_reg_rtx (DImode);
   memh = gen_reg_rtx (DImode);
-  addr = gen_reg_rtx (DImode);
   extl = gen_reg_rtx (DImode);
   exth = gen_reg_rtx (DImode);
 
@@ -3523,7 +3611,7 @@ alpha_expand_unaligned_load (rtx tgt, rtx mem, HOST_WIDE_INT size,
 
   if (sign && size == 2)
     {
-      emit_move_insn (addr, plus_constant (Pmode, mema, ofs+2));
+      addr = copy_addr_to_reg (plus_constant (Pmode, mema, ofs + 2));
 
       emit_insn (gen_extql (extl, meml, addr));
       emit_insn (gen_extqh (exth, memh, addr));
@@ -3537,7 +3625,7 @@ alpha_expand_unaligned_load (rtx tgt, rtx mem, HOST_WIDE_INT size,
     }
   else
     {
-      emit_move_insn (addr, plus_constant (Pmode, mema, ofs));
+      addr = copy_addr_to_reg (plus_constant (Pmode, mema, ofs));
       emit_insn (gen_extxl (extl, meml, GEN_INT (size*8), addr));
       switch ((int) size)
 	{
@@ -3756,10 +3844,9 @@ alpha_expand_unaligned_store_safe_partial (rtx dst, rtx src,
   /* Must handle high before low for degenerate case of aligned.  */
   if (size != 1)
     {
-      rtx addrh = gen_reg_rtx (DImode);
+      rtx addrh = copy_addr_to_reg (plus_constant (Pmode, dsta,
+						   ofs + size - 1));
       rtx aligned_addrh = gen_reg_rtx (DImode);
-      emit_insn (gen_rtx_SET (addrh,
-			      plus_constant (DImode, dsta, ofs + size - 1)));
       emit_insn (gen_rtx_SET (aligned_addrh,
 			      gen_rtx_AND (DImode, addrh, GEN_INT (-8))));
 
@@ -3867,9 +3954,8 @@ alpha_expand_unaligned_store_safe_partial (rtx dst, rtx src,
     }
 
   /* Now handle low.  */
-  rtx addrl = gen_reg_rtx (DImode);
+  rtx addrl = copy_addr_to_reg (plus_constant (Pmode, dsta, ofs));
   rtx aligned_addrl = gen_reg_rtx (DImode);
-  emit_insn (gen_rtx_SET (addrl, plus_constant (DImode, dsta, ofs)));
   emit_insn (gen_rtx_SET (aligned_addrl,
 			  gen_rtx_AND (DImode, addrl, GEN_INT (-8))));
 
@@ -6415,7 +6501,7 @@ alpha_pass_by_reference (cumulative_args_t, const function_arg_info &arg)
 
      This introduces sort of ABI incompatibility, but until _Float32 was
      introduced, C-family languages promoted 32-bit float variable arg to
-     a 64-bit double, and it was not allowed to pass float as a varible
+     a 64-bit double, and it was not allowed to pass float as a variable
      argument.  Passing _Complex float as a variable argument never
      worked on alpha.  Thus, we have no backward compatibility issues
      to worry about, and passing unpromoted _Float32 and _Complex float
@@ -6912,7 +6998,7 @@ alpha_va_start (tree valist, rtx nextarg ATTRIBUTE_UNUSED)
       TREE_SIDE_EFFECTS (t) = 1;
       expand_expr (t, const0_rtx, VOIDmode, EXPAND_NORMAL);
 
-      t = build_int_cst (NULL_TREE, NUM_ARGS * UNITS_PER_WORD);
+      t = build_int_cst (integer_type_node, NUM_ARGS * UNITS_PER_WORD);
       t = build2 (MODIFY_EXPR, TREE_TYPE (offset_field), offset_field, t);
       TREE_SIDE_EFFECTS (t) = 1;
       expand_expr (t, const0_rtx, VOIDmode, EXPAND_NORMAL);
@@ -8060,7 +8146,12 @@ alpha_initial_elimination_offset (unsigned int from,
   switch (from)
     {
     case FRAME_POINTER_REGNUM:
-      break;
+      /* With a downward-growing frame the frame pointer sits at the high
+	 end of the local variables, which is where the argument pointer
+	 is too.  */
+      if (!FRAME_GROWS_DOWNWARD)
+	break;
+      /* FALLTHRU */
 
     case ARG_POINTER_REGNUM:
       ret += (ALPHA_ROUND (get_frame_size ()
@@ -8145,8 +8236,16 @@ alpha_vms_initial_elimination_offset (unsigned int from, unsigned int to)
     switch (from)
       {
       case FRAME_POINTER_REGNUM:
-	offset = ALPHA_ROUND (sa_size + pv_save_size);
-	break;
+	/* With a downward-growing frame the frame pointer sits at the high
+	   end of the local variables, which is where the argument pointer
+	   is too.  */
+	if (!FRAME_GROWS_DOWNWARD)
+	  {
+	    offset = ALPHA_ROUND (sa_size + pv_save_size);
+	    break;
+	  }
+	/* FALLTHRU */
+
       case ARG_POINTER_REGNUM:
 	offset = (ALPHA_ROUND (sa_size + pv_save_size
 			       + get_frame_size ()
@@ -10099,7 +10198,7 @@ static void
 alpha_reorg (void)
 {
   /* Workaround for a linker error that triggers when an exception
-     handler immediatelly follows a sibcall or a noreturn function.
+     handler immediately follows a sibcall or a noreturn function.
 
 In the sibcall case:
 

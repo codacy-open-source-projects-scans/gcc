@@ -140,6 +140,8 @@ extern rtx expand_builtin (tree, rtx, rtx, machine_mode, int);
 extern enum built_in_function builtin_mathfn_code (const_tree);
 extern tree fold_builtin_expect (location_t, tree, tree, tree, tree);
 extern tree fold_builtin_constant_p (tree);
+extern tree fold_build_builtin_bswapg_bitreverseg (location_t, internal_fn,
+						   tree);
 extern bool avoid_folding_inline_builtin (tree);
 extern tree fold_call_expr (location_t, tree, bool);
 extern tree fold_builtin_call_array (location_t, tree, tree, int, tree *);
@@ -160,7 +162,7 @@ extern char target_percent_s[3];
 extern char target_percent_c[3];
 extern char target_percent_s_newline[4];
 extern bool target_char_cst_p (tree t, char *p);
-extern rtx get_memory_rtx (tree exp, tree len);
+extern rtx get_memory_rtx (tree exp, tree len, bool store_p);
 
 extern internal_fn associated_internal_fn (combined_fn, tree);
 extern internal_fn associated_internal_fn (tree);

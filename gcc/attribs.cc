@@ -853,7 +853,7 @@ decl_attributes (tree *node, tree attributes, int flags,
       bool no_add_attrs = false;
 
       /* Check for exclusions with other attributes on the current
-	 declation as well as the last declaration of the same
+	 declaration as well as the last declaration of the same
 	 symbol already processed (if one exists).  Detect and
 	 reject incompatible attributes.  */
       bool built_in = flags & ATTR_FLAG_BUILT_IN;
@@ -1439,6 +1439,14 @@ omp_declare_simd_clauses_equal (tree clauses1, tree clauses2)
 	case OMP_CLAUSE_SIMDLEN:
 	  if (simple_cst_equal (OMP_CLAUSE_SIMDLEN_EXPR (cl1),
 				OMP_CLAUSE_SIMDLEN_EXPR (cl2)) != 1)
+	    return false;
+	  if (OMP_CLAUSE_SIMDLEN_TYPE (cl1) != OMP_CLAUSE_SIMDLEN_TYPE (cl2))
+	    return false;
+	  if ((OMP_CLAUSE_SIMDLEN_DIVISOR (cl1) == NULL_TREE)
+	      != (OMP_CLAUSE_SIMDLEN_DIVISOR (cl2) == NULL_TREE)
+	      || (OMP_CLAUSE_SIMDLEN_DIVISOR (cl1)
+		  && simple_cst_equal (OMP_CLAUSE_SIMDLEN_DIVISOR (cl1),
+				       OMP_CLAUSE_SIMDLEN_DIVISOR (cl2)) != 1))
 	    return false;
 	default:
 	  break;

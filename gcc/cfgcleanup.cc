@@ -1204,6 +1204,7 @@ old_insns_match_p (int mode ATTRIBUTE_UNUSED, rtx_insn *i1, rtx_insn *i2)
 
       if (!rtx_equal_p (CALL_INSN_FUNCTION_USAGE (i1),
 			CALL_INSN_FUNCTION_USAGE (i2))
+	  || CALL_INSN_ABI_ID (i1) != CALL_INSN_ABI_ID (i2)
 	  || SIBLING_CALL_P (i1) != SIBLING_CALL_P (i2))
 	return dir_none;
 
@@ -2179,9 +2180,11 @@ try_crossjump_bb (int mode, basic_block bb)
   if (EDGE_COUNT (bb->preds) < 2)
     return false;
 
-  /* Don't crossjump if this block ends in a computed jump,
-     unless we are optimizing for size.  */
-  if (optimize_bb_for_size_p (bb)
+  /* Don't crossjump the predecessors of a computed jump when computed
+     gotos are duplicated (see pass_duplicate_computed_gotos::gate), as
+     that copies the jump back into each predecessor.  */
+  if (!optimize_function_for_size_p (cfun)
+      && flag_expensive_optimizations
       && bb != EXIT_BLOCK_PTR_FOR_FN (cfun)
       && computed_jump_p (BB_END (bb)))
     return false;

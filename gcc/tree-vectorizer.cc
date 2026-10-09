@@ -169,6 +169,9 @@ dump_stmt_cost (FILE *f, int count, enum vect_cost_for_stmt kind,
     case vec_construct:
       ks = "vec_construct";
       break;
+    case vec_deconstruct:
+      ks = "vec_deconstruct";
+      break;
     }
   fprintf (f, "%s ", ks);
   if (kind == unaligned_load || kind == unaligned_store)
@@ -1845,6 +1848,17 @@ vector_costs::add_stmt_cost (int count, vect_cost_for_stmt kind,
   return record_stmt_cost (stmt_info, where, cost);
 }
 
+unsigned int
+vector_costs::add_slp_cost (slp_tree,
+			    const array_slice<stmt_info_for_cost> &cost_vec)
+{
+  unsigned int sum = 0;
+  for (auto item : cost_vec)
+    sum += ::add_stmt_cost (this, item.count, item.kind, item.stmt_info,
+			    item.node, item.vectype, item.misalign, item.where);
+  return sum;
+}
+
 /* See the comment above the declaration for details.  */
 
 void
@@ -2035,7 +2049,7 @@ vector_costs::compare_inside_loop_cost (const vector_costs *other) const
   HOST_WIDE_INT est_rel_other_max
     = estimated_poly_value (rel_other, POLY_VALUE_MAX);
 
-  /* Check first if we can make out an unambigous total order from the minimum
+  /* Check first if we can make out an unambiguous total order from the minimum
      and maximum estimates.  */
   if (est_rel_this_min < est_rel_other_min
       && est_rel_this_max < est_rel_other_max)

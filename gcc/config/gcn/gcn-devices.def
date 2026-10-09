@@ -206,7 +206,7 @@ GCN_DEVICE(gfx9-generic, GFX9_GENERIC, 0x051, ISA_GCN5,
 
 GCN_DEVICE(gfx9-4-generic, GFX9_4_GENERIC, 0x05f, ISA_CDNA3,
 	   /* XNACK default */ HSACO_ATTR_ANY,
-	   /* SRAM_ECC default */ HSACO_ATTR_UNSUPPORTED,
+	   /* SRAM_ECC default */ HSACO_ATTR_ANY,
 	   /* WAVE64 mode */ HSACO_ATTR_UNSUPPORTED,
 	   /* CU mode */ HSACO_ATTR_UNSUPPORTED,
 	   /* Max ISA VGPRs */ 256,
@@ -385,6 +385,17 @@ GCN_DEVICE(gfx1152, GFX1152, 0x55, ISA_RDNA3,
 	   )
 
 GCN_DEVICE(gfx1153, GFX1153, 0x58, ISA_RDNA3,
+	   /* XNACK default */ HSACO_ATTR_UNSUPPORTED,
+	   /* SRAM_ECC default */ HSACO_ATTR_UNSUPPORTED,
+	   /* WAVE64 mode */ HSACO_ATTR_ON,
+	   /* CU mode */ HSACO_ATTR_ON,
+	   /* Max ISA VGPRs */ 512,
+	   /* Generic code obj version */ 0,  /* non-generic */
+	   /* Architecture Family */ GFX11,
+	   /* Generic Name */ GFX11_GENERIC
+	   )
+
+GCN_DEVICE(gfx1154, GFX1154, 0x57, ISA_RDNA3,
 	   /* XNACK default */ HSACO_ATTR_UNSUPPORTED,
 	   /* SRAM_ECC default */ HSACO_ATTR_UNSUPPORTED,
 	   /* WAVE64 mode */ HSACO_ATTR_ON,

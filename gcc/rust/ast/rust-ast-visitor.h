@@ -212,8 +212,6 @@ public:
   virtual void visit (TuplePatternItemsHasRest &tuple_items) = 0;
   virtual void visit (TuplePattern &pattern) = 0;
   virtual void visit (GroupedPattern &pattern) = 0;
-  virtual void visit (SlicePatternItemsNoRest &items) = 0;
-  virtual void visit (SlicePatternItemsHasRest &items) = 0;
   virtual void visit (SlicePattern &pattern) = 0;
   virtual void visit (AltPattern &pattern) = 0;
 
@@ -387,8 +385,6 @@ public:
   virtual void visit (AST::TuplePatternItemsHasRest &tuple_items) override;
   virtual void visit (AST::TuplePattern &pattern) override;
   virtual void visit (AST::GroupedPattern &pattern) override;
-  virtual void visit (AST::SlicePatternItemsNoRest &items) override;
-  virtual void visit (AST::SlicePatternItemsHasRest &items) override;
   virtual void visit (AST::SlicePattern &pattern) override;
   virtual void visit (AST::AltPattern &pattern) override;
   virtual void visit (AST::EmptyStmt &stmt) override;
@@ -482,6 +478,8 @@ protected:
   virtual void visit (AST::TraitImpl &impl) override;
 
   virtual void visit (AST::Trait &trait) override;
+
+  virtual void visit (AST::Function &function) override;
 
   template <typename T> void visit (T &item)
   {

@@ -149,7 +149,11 @@ static bool
 unite (unsigned int to, unsigned int from)
 {
   gcc_checking_assert (to < graph->size && from < graph->size);
-  if (to != from && graph->rep[from] != to)
+  if (to != from
+      && graph->rep[from] != to
+      /* Do not merge an artificial variable into another, this will
+	 explode solution sets unnecessarily.  */
+      && (from >= FIRST_REF_NODE || !get_varinfo (from)->is_artificial_var))
     {
       graph->rep[from] = to;
       return true;
@@ -527,7 +531,7 @@ merge_node_constraints (constraint_graph_t graph, unsigned int to,
   FOR_EACH_VEC_ELT (graph->complex[from], i, c)
     {
       /* In complex constraints for node FROM, we may have either
-	 a = *FROM, and *FROM = a, or an offseted constraint which are
+	 a = *FROM, and *FROM = a, or an offsetted constraint which are
 	 always added to the rhs node's constraints.  */
 
       if (c->rhs.type == DEREF)
@@ -641,7 +645,7 @@ add_graph_edge (constraint_graph_t graph, unsigned int to,
 	 adding the direct edge FROM -> TO when we have FROM -> ESCAPED
 	 and TO contains ESCAPED.
 	 ???  Note this is only a heuristic, it does not prevent the
-	 situation from occuring.  The heuristic helps PR38474 and
+	 situation from occurring.  The heuristic helps PR38474 and
 	 PR99912 significantly.  */
       if (to < FIRST_REF_NODE
 	  && bitmap_bit_p (graph->succs[from], find (escaped_id))
@@ -959,8 +963,8 @@ scc_visit (constraint_graph_t graph, class scc_info *si, unsigned int n)
 		}
 	      else
 		{
-		  unite (lowest_node, i);
-		  graph->indirect_cycles[i - FIRST_REF_NODE] = lowest_node;
+		  if (unite (lowest_node, i))
+		    graph->indirect_cycles[i - FIRST_REF_NODE] = lowest_node;
 		}
 	    }
 	  bitmap_set_bit (si->deleted, lowest_node);
@@ -1977,8 +1981,10 @@ find_equivalent_node (constraint_graph_t graph,
 	{
 	  /* Unify the two variables since we know they are equivalent.  */
 	  if (unite (graph->eq_rep[label], node))
-	    unify_nodes (graph, graph->eq_rep[label], node, false);
-	  return graph->eq_rep[label];
+	    {
+	      unify_nodes (graph, graph->eq_rep[label], node, false);
+	      return graph->eq_rep[label];
+	    }
 	}
       else
 	{
